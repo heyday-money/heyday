@@ -1,5 +1,5 @@
 <p>
-  <h1 align="center">Heyday Money</h1>
+  <h1 align="center">Heyday Money — Your Money, Your Heyday</h1>
   <p align="center">
     Money sucked for years. Not anymore — we fixed it and made it grow.
     <br />
