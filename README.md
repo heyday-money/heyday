@@ -18,7 +18,6 @@ Heyday Money combines practical finance tracking with a powerful simulator to gu
 ## Philosophy of Money and Finance
 [Standford Encyclopedia of Philosophy — Philosophy of Money and Finance](https://plato.stanford.edu/entries/money-finance/)
 
----
 
-**Note:**
-`Heyday(noun)/ˈheɪdeɪ/:` The time when somebody/something had most power or success, or was most popular
+> **Note:**
+> `Heyday(noun)/ˈheɪdeɪ/:` The time when somebody/something had most power or success, or was most popular
