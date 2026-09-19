@@ -1,0 +1,20 @@
+[package]
+name = "heyday-money"
+version = "0.0.1-alpha.0"
+description = "An offline personal finance desktop app"
+edition = "2021"
+
+[lib]
+name = "heyday_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

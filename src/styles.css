@@ -1,0 +1,64 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --font-sans: "Avenir Next", "Segoe UI", sans-serif;
+  --color-brand: #8942fe;
+  --color-accent: #fed728;
+}
+
+@theme inline {
+  --color-background: var(--card);
+  --color-foreground: var(--ink);
+  --color-primary: #8942fe;
+  --color-primary-foreground: #fff;
+  --color-secondary: var(--soft);
+  --color-secondary-foreground: var(--ink);
+  --color-muted-foreground: var(--muted);
+  --color-accent-foreground: #212529;
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: #8942fe;
+  --color-destructive: #c43c3c;
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-soft: var(--soft);
+}
+
+@layer base {
+  * { @apply border-border; }
+  :root {
+    --page: #fafbf7;
+    --card: #fff;
+    --ink: #212529;
+    --muted: #757b76;
+    --line: #e8ebe3;
+    --soft: #f3edff;
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
+    --page: #212529;
+    --card: #2b2e33;
+    --ink: #f6f5ef;
+    --muted: #adb4b9;
+    --line: #3b3e43;
+    --soft: #393047;
+    color-scheme: dark;
+  }
+
+  html, body, #root { @apply h-full w-full overflow-hidden; }
+  body { @apply m-0 min-w-[360px] bg-page font-sans text-ink; }
+  p { @apply leading-[1.7] text-muted; }
+  button { @apply cursor-pointer; }
+  button, a { -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, a:focus-visible, select:focus-visible {
+    @apply outline-3 outline-offset-4 outline-brand;
+  }
+  button:disabled, select:disabled { @apply cursor-not-allowed opacity-55; }
+}
