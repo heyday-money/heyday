@@ -21,3 +21,7 @@ Heyday Money combines practical finance tracking with a powerful simulator to gu
 
 > **Note:**
 > `Heyday(noun)/ˈheɪdeɪ/:` The time when somebody/something had most power or success, or was most popular
+
+## License
+
+Heyday Money is licensed under the [Apache License 2.0](LICENSE).

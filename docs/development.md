@@ -73,8 +73,8 @@ The database is `heyday.db` under Tauri's application data directory for
 `~/Library/Application Support/money.heyday.desktop/heyday.db` on macOS. It is
 created on first launch and migrations run at startup.
 
-Lockfiles are included. Developer ID signing, notarization, and an
-open-source license choice remain to be configured before public distribution.
+Lockfiles are included. The project is licensed under Apache-2.0; see `LICENSE`.
+Developer ID signing and notarization remain to be configured before public distribution.
 
 ## Cashflow planner
 
