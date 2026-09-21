@@ -3,6 +3,11 @@ use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
 mod incomes;
+mod installments;
+mod planning;
+mod subscriptions;
+mod transaction_options;
+mod transactions;
 
 #[derive(Serialize, sqlx::FromRow)]
 struct Settings {
@@ -77,12 +82,24 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
+            planning::get_financial_data,
+            subscriptions::save_subscription,
+            subscriptions::delete_subscription,
+            installments::save_installment,
+            installments::delete_installment,
+            planning::save_payment_plan,
+            planning::delete_payment_plan,
             update_period,
             update_currency,
             accounts::create_account,
             accounts::list_accounts,
             incomes::create_income,
-            incomes::list_incomes
+            incomes::list_incomes,
+            transactions::create_transaction,
+            transactions::list_transactions,
+            transactions::delete_transaction,
+            transaction_options::list_transaction_options,
+            transaction_options::save_transaction_option
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Heyday Money");

@@ -7,8 +7,10 @@ pub struct Account {
     name: String,
     #[serde(rename = "type")]
     account_type: String,
+    loan_type: Option<String>,
     // Amounts cross IPC as decimal integer strings, never lossy JS numbers.
     opening_balance: String,
+    current_balance: String,
     institution: Option<String>,
     last_four: Option<String>,
     notes: Option<String>,
@@ -18,13 +20,14 @@ pub struct Account {
     interest_rate_bps: Option<i64>,
 }
 
-const COLUMNS: &str = "id, name, type AS account_type, CAST(opening_balance AS TEXT) AS opening_balance, institution, last_four, notes, CAST(credit_limit AS TEXT) AS credit_limit, statement_day, payment_due_day, interest_rate_bps";
+pub(crate) const COLUMNS: &str = "id, name, type AS account_type, loan_type, CAST(opening_balance AS TEXT) AS opening_balance, CAST(current_balance AS TEXT) AS current_balance, institution, last_four, notes, CAST(credit_limit AS TEXT) AS credit_limit, statement_day, payment_due_day, interest_rate_bps";
 
 #[derive(Deserialize)]
 pub struct NewAccount {
     name: String,
     #[serde(rename = "type")]
     account_type: String,
+    loan_type: Option<String>,
     opening_balance: String,
     currency: String,
     institution: Option<String>,
@@ -54,6 +57,23 @@ pub async fn insert_account(pool: &SqlitePool, input: NewAccount) -> Result<Acco
     let kind = input.account_type.as_str();
     if !["cash", "bank", "credit_card", "loan", "investment"].contains(&kind) {
         return Err("Choose a supported account type.".into());
+    }
+    if kind == "loan" {
+        if !input.loan_type.as_deref().is_some_and(|value| {
+            [
+                "mortgage",
+                "auto_loan",
+                "student_loan",
+                "personal_loan",
+                "medical_debt",
+                "other_debt",
+            ]
+            .contains(&value)
+        }) {
+            return Err("Choose a supported loan type.".into());
+        }
+    } else if input.loan_type.is_some() {
+        return Err("Loan type applies only to loan accounts.".into());
     }
     let name = optional_text(Some(input.name), 100)?.ok_or("Enter an account name.")?;
     let institution = optional_text(input.institution, 100)?;
@@ -106,10 +126,11 @@ pub async fn insert_account(pool: &SqlitePool, input: NewAccount) -> Result<Acco
             "Choose the app currency in Settings, then reload accounts before saving.".into(),
         );
     }
-    let query = format!("INSERT INTO accounts (id, name, type, opening_balance, institution, last_four, notes, credit_limit, statement_day, payment_due_day, interest_rate_bps) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING {COLUMNS}");
+    let query = format!("INSERT INTO accounts (id, name, type, opening_balance, current_balance, institution, last_four, notes, credit_limit, statement_day, payment_due_day, interest_rate_bps, loan_type) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING {COLUMNS}");
     let account = sqlx::query_as::<_, Account>(&query)
         .bind(name)
         .bind(kind)
+        .bind(balance)
         .bind(balance)
         .bind(institution)
         .bind(last_four)
@@ -118,6 +139,7 @@ pub async fn insert_account(pool: &SqlitePool, input: NewAccount) -> Result<Acco
         .bind(input.statement_day)
         .bind(input.payment_due_day)
         .bind(input.interest_rate_bps)
+        .bind(input.loan_type)
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -165,6 +187,7 @@ mod tests {
         NewAccount {
             name: " Test account ".into(),
             account_type: kind.into(),
+            loan_type: (kind == "loan").then(|| "other_debt".into()),
             currency: "THB".into(),
             opening_balance: "9007199254740993".into(),
             institution: None,
@@ -176,6 +199,85 @@ mod tests {
             interest_rate_bps: None,
         }
     }
+    #[tokio::test]
+    async fn loan_classifications_are_persisted_and_validated() {
+        let pool = database().await;
+        crate::save_currency(&pool, "THB").await.unwrap();
+        for kind in [
+            "mortgage",
+            "auto_loan",
+            "student_loan",
+            "personal_loan",
+            "medical_debt",
+            "other_debt",
+        ] {
+            let mut new = input("loan");
+            new.loan_type = Some(kind.into());
+            let created = insert_account(&pool, new).await.unwrap();
+            let stored: Account =
+                sqlx::query_as(&format!("SELECT {COLUMNS} FROM accounts WHERE id = ?"))
+                    .bind(created.id)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(stored.loan_type.as_deref(), Some(kind));
+            assert_eq!(stored.current_balance, "9007199254740993");
+        }
+        for classification in [None, Some("invalid"), Some("")] {
+            let mut new = input("loan");
+            new.loan_type = classification.map(str::to_owned);
+            assert!(insert_account(&pool, new).await.is_err());
+        }
+        for kind in ["cash", "bank", "credit_card", "investment"] {
+            let mut new = input(kind);
+            new.loan_type = Some("mortgage".into());
+            assert!(insert_account(&pool, new).await.is_err());
+        }
+        assert!(sqlx::query("UPDATE accounts SET loan_type = 'invalid'")
+            .execute(&pool)
+            .await
+            .is_err());
+        assert!(sqlx::query("UPDATE accounts SET type = 'bank'")
+            .execute(&pool)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn loan_migration_preserves_existing_records() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for migration in [
+            include_str!("../migrations/0001_initial.sql"),
+            include_str!("../migrations/0002_account_details.sql"),
+            include_str!("../migrations/0003_transactions.sql"),
+            include_str!("../migrations/0004_optional_transaction_description.sql"),
+            include_str!("../migrations/0005_payees_and_categories.sql"),
+            include_str!("../migrations/0006_payment_plans.sql"),
+        ] {
+            sqlx::raw_sql(migration).execute(&pool).await.unwrap();
+        }
+        sqlx::query("INSERT INTO accounts (id, name, type, opening_balance, current_balance, is_archived) VALUES ('old', 'Old loan', 'loan', 1234, 1000, 1)").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO incomes (id, name, destination_account_id, type, estimated_amount, recurrence_day_of_month) VALUES ('income', 'Income', 'old', 'other', 100, 1)").execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0007_loan_types.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        let stored: Account =
+            sqlx::query_as(&format!("SELECT {COLUMNS} FROM accounts WHERE id = 'old'"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(stored.loan_type, None);
+        assert_eq!(stored.opening_balance, "1234");
+        assert_eq!(stored.current_balance, "1000");
+        let row: (i64, String) = sqlx::query_as("SELECT a.is_archived, i.destination_account_id FROM accounts a JOIN incomes i ON a.id = i.destination_account_id").fetch_one(&pool).await.unwrap();
+        assert_eq!(row, (1, "old".into()));
+    }
+
     #[tokio::test]
     async fn create_all_types_and_lock_currency() {
         let pool = database().await;

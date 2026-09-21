@@ -18,7 +18,7 @@ pub struct Income {
     updated_at: String,
 }
 
-const SELECT: &str = "SELECT i.id, i.name, i.destination_account_id, a.name AS destination_account_name, i.type AS income_type, CAST(i.estimated_amount AS TEXT) AS estimated_amount, i.recurrence_frequency, i.recurrence_day_of_month, i.is_auto_create_transaction, i.is_active, i.created_at, i.updated_at FROM incomes i JOIN accounts a ON a.id = i.destination_account_id";
+pub(crate) const SELECT: &str = "SELECT i.id, i.name, i.destination_account_id, a.name AS destination_account_name, i.type AS income_type, CAST(i.estimated_amount AS TEXT) AS estimated_amount, i.recurrence_frequency, i.recurrence_day_of_month, i.is_auto_create_transaction, i.is_active, i.created_at, i.updated_at FROM incomes i JOIN accounts a ON a.id = i.destination_account_id";
 
 #[derive(Deserialize)]
 pub struct NewIncome {
@@ -234,12 +234,10 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(balance, 150000);
-        let transactions: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'transactions'",
-        )
-        .fetch_one(&reopened)
-        .await
-        .unwrap();
+        let transactions: i64 = sqlx::query_scalar("SELECT count(*) FROM transactions")
+            .fetch_one(&reopened)
+            .await
+            .unwrap();
         assert_eq!(transactions, 0);
         reopened.close().await;
         std::fs::remove_file(path).unwrap();

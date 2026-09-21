@@ -1,8 +1,13 @@
+import { SubscriptionsPage } from './components/SubscriptionsPage'
+import { InstallmentsPage } from './components/InstallmentsPage'
+import { MonthlyOutlook } from './components/MonthlyOutlook'
+import { NetWorthPage } from './components/NetWorthPage'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { createHashHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 import { AppLayout, HomePage, AccountsPage, IncomePage, SettingsPage } from './pages'
 import './styles.css'
+import { TransactionsPage } from './components/TransactionsPage'
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -10,8 +15,13 @@ const rootRoute = createRootRoute({
 })
 const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/outlook', component: MonthlyOutlook }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: NetWorthPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/income', component: IncomePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions', component: TransactionsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/installments', component: InstallmentsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/subscriptions', component: SubscriptionsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
 ])
 const router = createRouter({ routeTree, history: createHashHistory() })

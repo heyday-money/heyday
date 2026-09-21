@@ -8,8 +8,8 @@ const groups = [
   ['loan', 'Loans'], ['investment', 'Investments'],
 ] as const
 
-export function accountDisplayBalance(account: Pick<Account, 'type' | 'opening_balance'>) {
-  const balance = BigInt(account.opening_balance)
+export function accountDisplayBalance(account: Pick<Account, 'type' | 'opening_balance'> & Partial<Pick<Account, 'current_balance'>>) {
+  const balance = BigInt(account.current_balance ?? account.opening_balance)
   return ['credit_card', 'loan'].includes(account.type) ? -balance : balance
 }
 

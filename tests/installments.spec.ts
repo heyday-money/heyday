@@ -1,0 +1,270 @@
+import { test, expect } from '@playwright/test'
+import type { Installment, SaveInstallment } from '../src/lib/desktop'
+
+test.beforeEach(async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-01-15T12:00:00') })
+  await page.addInitScript(() => {
+    const accounts = [
+      { id: 'bank', name: 'Everyday bank', type: 'bank', current_balance: '1000000' },
+      { id: 'card', name: 'Credit card', type: 'credit_card', current_balance: '500000' },
+      { id: 'loan', name: 'Car loan', type: 'loan', current_balance: '2000000' },
+    ].map(account => ({ ...account, opening_balance: account.current_balance, loan_type: account.type === 'loan' ? 'auto_loan' : null, institution: null, last_four: null, notes: null, credit_limit: account.type === 'credit_card' ? '10000000' : null, statement_day: null, payment_due_day: null, interest_rate_bps: null }))
+    const plans = (): Installment[] => JSON.parse(localStorage.getItem('installments') ?? '[]')
+    Object.defineProperty(window, 'isTauri', { value: true })
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: SaveInstallment; id: string }) => {
+      const active = accounts.map(account => ({ ...account, current_balance: account.id === 'card' ? localStorage.getItem('card-owed') ?? account.current_balance : account.current_balance })).filter(account => (!sessionStorage.getItem('hide-debt') || account.type === 'bank') && (!sessionStorage.getItem('hide-card') || account.type !== 'credit_card'))
+      switch (command) {
+        case 'plugin:app|version': return '0.1.0'
+        case 'get_settings': return { currency: 'THB', period_start_day: 1 }
+        case 'list_accounts': return active
+        case 'list_incomes': return []
+        case 'list_transactions': return JSON.parse(localStorage.getItem('purchase-transactions') ?? '[]')
+        case 'get_financial_data': return { settings: { currency: 'THB', period_start_day: 1 }, accounts: active, incomes: [], transactions: JSON.parse(localStorage.getItem('purchase-transactions') ?? '[]'), plans: [], categories: [], installments: plans() }
+        case 'save_installment': {
+          if (sessionStorage.getItem('fail-installment')) throw 'Could not save installment.'
+          const input = args.input
+          if (input.purchase) {
+            const owed = localStorage.getItem('card-owed') ?? accounts.find(account => account.id === 'card')!.current_balance
+            localStorage.setItem('card-owed', (BigInt(owed) + BigInt(input.purchase.amount)).toString())
+            localStorage.setItem('purchase-transactions', JSON.stringify([{ id: 'purchase-transaction', type: 'expense', account_id: input.debt_account_id, account_name: 'Credit card', destination_account_id: null, destination_account_name: null, amount: input.purchase.amount, date: input.purchase.date, description: input.name, payee_id: null, payee_name: null, category_id: null, category_name: null }]))
+          }
+          const value = { ...input, purchase_kind: input.purchase ? 'new_purchase' : plans().find(plan => plan.id === input.id)?.purchase_kind ?? 'existing_purchase', purchase_transaction_id: input.purchase ? 'purchase-transaction' : plans().find(plan => plan.id === input.id)?.purchase_transaction_id ?? null, id: input.id ?? crypto.randomUUID(), account_name: 'Everyday bank', debt_account_name: accounts.find(account => account.id === input.debt_account_id)!.name, debt_account_type: accounts.find(account => account.id === input.debt_account_id)!.type }
+          localStorage.setItem('installments', JSON.stringify([...plans().filter(plan => plan.id !== value.id), value]))
+          return
+        }
+        case 'delete_installment':
+          if (sessionStorage.getItem('fail-delete')) throw 'Could not remove installment.'
+          localStorage.setItem('installments', JSON.stringify(plans().filter(plan => plan.id !== args.id))); return
+        default: throw new Error(command)
+      }
+    } } })
+  })
+})
+
+test('create credit card purchase schedules, preserve drafts, edit monthly payments, and remove forecasts', async ({ page }) => {
+  await page.goto('/#/installments')
+  await page.getByRole('button', { name: 'Add installment', exact: true }).click()
+  await page.getByLabel('Purchase status').selectOption('existing_purchase')
+  const dialog = page.getByRole('dialog')
+  await page.getByLabel('Installment name', { exact: true }).fill('Laptop')
+  await expect(page.getByLabel('Credit card', { exact: true }).getByRole('option', { name: /Car loan/ })).toHaveCount(0)
+  await page.getByLabel('Credit card', { exact: true }).selectOption('card')
+  await page.getByLabel('Monthly payment (THB)', { exact: true }).fill('100.01')
+  await expect(page.getByLabel('Annual interest rate (%, optional)')).toHaveValue('0')
+  await page.getByLabel('Number of installments', { exact: true }).fill('3')
+  await page.getByLabel('First due date', { exact: true }).fill('2026-01-31')
+  await expect(dialog.getByRole('status')).toContainText('300.03 THB')
+  await expect(dialog.getByRole('status')).toContainText('2026-03-31')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toContainText('Discard unsaved installment changes?')
+  await page.getByRole('button', { name: 'Keep editing' }).click()
+  await page.evaluate(() => sessionStorage.setItem('fail-installment', '1'))
+  await page.getByRole('button', { name: 'Save installment', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Could not save installment')
+  await expect(page.getByLabel('Monthly payment (THB)')).toHaveValue('100.01')
+  await page.evaluate(() => sessionStorage.removeItem('fail-installment'))
+  await page.getByRole('button', { name: 'Save installment', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  const table = page.getByRole('table', { name: 'Installment plans', exact: true })
+  await expect(table.getByRole('columnheader', { name: 'Monthly payment', exact: true })).toBeVisible()
+  await expect(table.getByRole('row').filter({ hasText: 'Laptop' })).toContainText('100.01 THB')
+  async function expectForecast(amount: string) {
+    await page.getByRole('navigation').getByRole('link', { name: 'Outlook', exact: true }).click()
+    await expect(page.getByRole('table', { name: 'Installment plans', exact: true })).toHaveCount(0)
+    const repayment = page.getByRole('table', { name: /Cash outlook/ }).getByRole('row').filter({ has: page.getByRole('button', { name: 'Debt repayments', exact: true }) })
+    await expect(repayment.getByRole('cell').first()).toContainText(amount)
+    await page.getByRole('navigation').getByRole('link', { name: 'Installments', exact: true }).click()
+  }
+  await expectForecast('100.01 THB')
+  await page.getByRole('button', { name: 'Add installment', exact: true }).click()
+  await page.getByLabel('Purchase status').selectOption('existing_purchase')
+  await page.getByLabel('Installment name', { exact: true }).fill('Phone')
+  await expect(page.getByLabel('Credit card', { exact: true }).getByRole('option', { name: /Car loan/ })).toHaveCount(0)
+  await page.getByLabel('Credit card', { exact: true }).selectOption('card')
+  await page.getByLabel('Annual interest rate (%, optional)').fill('7.5')
+  await page.getByLabel('Monthly payment (THB)', { exact: true }).fill('500')
+  await page.getByLabel('Number of installments', { exact: true }).fill('24')
+  await page.getByLabel('First due date', { exact: true }).fill('2025-12-31')
+  await page.getByRole('button', { name: 'Save installment', exact: true }).click()
+  await expect(table.locator('tbody tr')).toHaveCount(2)
+  await expectForecast('600.01 THB')
+  await page.reload()
+  await expect(table.getByRole('row').filter({ hasText: 'Phone' })).toContainText('In progress')
+  await expect(table.getByRole('row').filter({ hasText: 'Phone' })).toContainText('7.5%')
+  await expect(table.getByRole('row').filter({ hasText: 'Laptop' })).toContainText('0%')
+  await page.getByRole('button', { name: 'Edit installment Laptop', exact: true }).click()
+  await expect(page.getByLabel('Monthly payment (THB)')).toHaveValue('100.01')
+  await page.getByLabel('Annual interest rate (%, optional)').fill('-1')
+  await page.getByRole('button', { name: 'Save installment', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Interest rate must be zero or greater')
+  await page.getByLabel('Annual interest rate (%, optional)').fill('12.34')
+  await page.getByLabel('Monthly payment (THB)').fill('200')
+  await page.getByRole('button', { name: 'Save installment', exact: true }).click()
+  await expectForecast('700.00 THB')
+  await expect(table.getByRole('row').filter({ hasText: 'Laptop' })).toContainText('12.34%')
+  await page.setViewportSize({ width: 760, height: 700 })
+  const region = page.getByRole('region', { name: 'Scrollable installment plans' })
+  expect(await region.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+  expect(await page.locator('main').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.getByRole('button', { name: 'Remove installment Laptop', exact: true }).click()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(table.getByRole('rowheader', { name: 'Laptop', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Remove installment Laptop', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove installment', exact: true }).click()
+  await expect(table.locator('tbody tr')).toHaveCount(1)
+  await expectForecast('500.00 THB')
+})
+
+test('ended and unavailable schedules remain visible without claiming payments are paid', async ({ page }) => {
+  await page.goto('/#/installments')
+  await page.evaluate(() => localStorage.setItem('installments', JSON.stringify([{ id: 'old', name: 'Old purchase', account_id: 'bank', account_name: 'Everyday bank', debt_account_id: 'card', debt_account_name: 'Credit card', monthly_amount: '10000', installment_count: 2, first_due_date: '2025-01-31' }])))
+  await page.reload()
+  const table = page.getByRole('table', { name: 'Installment plans', exact: true })
+  await expect(table).toContainText('Schedule ended')
+  await expect(table).toContainText('Not set')
+  await expect(table.getByRole('cell', { name: '—', exact: true })).toBeVisible()
+  await expect(table.getByText(/paid|completed/i)).toHaveCount(0)
+  await page.evaluate(() => sessionStorage.setItem('hide-debt', '1'))
+  await page.reload()
+  await expect(table).toContainText('Account unavailable · excluded')
+  await expect(page.getByRole('button', { name: 'Add installment', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Edit installment Old purchase', exact: true }).click()
+  await expect(page.getByLabel('Credit card')).toHaveValue('card')
+  await expect(page.getByLabel('Credit card').getByRole('option', { name: 'Credit card (unavailable)' })).toBeDisabled()
+})
+
+
+test('Installments has a dedicated sidebar link immediately below Transactions', async ({ page }) => {
+  await page.goto('/#/outlook')
+  const nav = page.getByRole('navigation')
+  const links = await nav.getByRole('link').evaluateAll(elements => elements.map(element => element.getAttribute('href')))
+  const transactionIndex = links.findIndex(href => href?.endsWith('/transactions'))
+  expect(transactionIndex).toBeGreaterThanOrEqual(0)
+  expect(links.findIndex(href => href?.endsWith('/installments'))).toBe(transactionIndex + 1)
+  const link = nav.getByRole('link', { name: 'Installments', exact: true })
+  await expect(link).toHaveAttribute('title', 'Installments')
+  await link.click()
+  await expect(page).toHaveURL(/#\/installments$/)
+  await expect(link).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('heading', { name: 'Installment plans', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Expand sidebar' }).click()
+  await expect(link).toHaveText('Installments')
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Add installment', exact: true })).toBeVisible()
+})
+
+
+test('legacy loan schedules remain visible and cannot enable new installments', async ({ page }) => {
+  await page.goto('/#/installments')
+  await page.evaluate(() => {
+    localStorage.setItem('installments', JSON.stringify([{ id: 'legacy-loan', name: 'Car payments', account_id: 'bank', account_name: 'Everyday bank', debt_account_id: 'loan', debt_account_name: 'Car loan', debt_account_type: 'loan', monthly_amount: '50000', interest_rate_bps: '750', installment_count: 24, first_due_date: '2026-01-31' }]))
+    sessionStorage.setItem('hide-card', '1')
+  })
+  await page.reload()
+  const table = page.getByRole('table', { name: 'Installment plans', exact: true })
+  await expect(table).toContainText('Existing loan schedule')
+  await expect(table).toContainText('500.00 THB')
+  await expect(page.getByRole('button', { name: 'Edit installment Car payments' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Remove installment Car payments' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add installment', exact: true })).toBeDisabled()
+  await page.getByRole('navigation').getByRole('link', { name: 'Outlook', exact: true }).click()
+  const repayment = page.getByRole('table', { name: /Cash outlook/ }).getByRole('row').filter({ has: page.getByRole('button', { name: 'Debt repayments', exact: true }) })
+  await expect(repayment.getByRole('cell').first()).toContainText('500.00 THB')
+})
+
+
+test('new purchases preview the card impact, record one expense, and remain after schedule removal', async ({ page }) => {
+  await page.goto('/#/installments')
+  await page.evaluate(() => localStorage.setItem('card-owed', '1000000'))
+  await page.reload()
+  await page.getByRole('button', { name: 'Add installment', exact: true }).click()
+  await expect(page.getByLabel('Purchase status')).toHaveValue('')
+  await page.getByLabel('Purchase status').selectOption('new_purchase')
+  await page.getByLabel('Purchase amount (THB)').fill('20000')
+  await page.getByLabel('Installment name', { exact: true }).fill('New phone')
+  await page.getByLabel('Credit card', { exact: true }).selectOption('card')
+  await page.getByLabel('Monthly payment (THB)').fill('2000')
+  await page.getByLabel('Number of installments').fill('10')
+  await page.getByLabel('First due date').fill('2026-01-31')
+  await expect(page.getByLabel('Card balance after purchase')).toContainText('30,000.00 THB')
+  await expect(page.getByLabel('Card balance after purchase')).toContainText('70,000.00 THB')
+  await page.getByLabel('Purchase status').selectOption('existing_purchase')
+  await expect(page.getByLabel('Purchase amount (THB)')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toContainText('Saving will not add it again')
+  await page.getByLabel('Purchase status').selectOption('new_purchase')
+  await expect(page.getByLabel('Purchase amount (THB)')).toHaveValue('20000')
+  await page.getByRole('button', { name: 'Save installment', exact: true }).click()
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('card-owed'))).toBe('3000000')
+  await expect(page.getByRole('table', { name: 'Installment plans' })).toContainText('Purchase recorded')
+  await page.getByRole('button', { name: 'Edit installment New phone' }).click()
+  await expect(page.getByLabel('Purchase status')).toHaveCount(0)
+  await expect(page.getByLabel('Credit card', { exact: true })).toBeDisabled()
+  await page.getByLabel('Monthly payment (THB)').fill('2500')
+  await page.getByRole('button', { name: 'Save installment', exact: true }).click()
+  expect(await page.evaluate(() => localStorage.getItem('card-owed'))).toBe('3000000')
+  await page.getByRole('button', { name: 'Remove installment New phone' }).click()
+  await page.getByRole('button', { name: 'Remove installment', exact: true }).click()
+  expect(await page.evaluate(() => localStorage.getItem('card-owed'))).toBe('3000000')
+  await page.getByRole('navigation').getByRole('link', { name: 'Transactions', exact: true }).click()
+  const history = page.getByRole('table', { name: 'Transaction history' })
+  await expect(history.locator('tbody tr')).toHaveCount(1)
+  await expect(history).toContainText('New phone')
+  await expect(history).toContainText('20,000.00 THB')
+})
+
+test('calendar shows a 12-month item matrix with monthly and remaining totals', async ({ page }) => {
+  await page.goto('/#/installments')
+  await page.evaluate(() => {
+    const base = { account_id: 'bank', account_name: 'Everyday bank', debt_account_id: 'card', debt_account_name: 'Credit card', debt_account_type: 'credit_card', interest_rate_bps: '0', purchase_kind: 'existing_purchase', purchase_transaction_id: null }
+    localStorage.setItem('installments', JSON.stringify([
+      { ...base, id: 'laptop', name: 'Laptop', monthly_amount: '20000', installment_count: 14, first_due_date: '2026-01-31' },
+      { ...base, id: 'phone', name: 'Phone', monthly_amount: '10000', installment_count: 1, first_due_date: '2026-01-15' },
+    ]))
+  })
+  await page.reload()
+  const calendar = page.getByRole('button', { name: 'Monthly installment summary', exact: true })
+  await calendar.click()
+  const dialog = page.getByRole('dialog', { name: 'Monthly installment summary', exact: true })
+  const schedule = dialog.getByRole('table', { name: 'Monthly installment schedule' })
+  await expect(schedule.getByRole('columnheader')).toHaveCount(14)
+  await expect(schedule.getByRole('columnheader').nth(1)).toHaveText('Jan 2026')
+  await expect(schedule.getByRole('columnheader').nth(12)).toHaveText('Dec 2026')
+  await expect(schedule.getByRole('columnheader').last()).toHaveText('Remaining total')
+  const row = (name: string) => schedule.getByRole('row').filter({ has: page.getByRole('rowheader', { name, exact: true }) })
+  // Row headers include the account subtitle for plans.
+  const laptop = schedule.getByRole('row').filter({ hasText: 'Laptop' })
+  const phone = schedule.getByRole('row').filter({ hasText: 'Phone' })
+  await expect(laptop.getByRole('cell').first()).toHaveText('200.00')
+  await expect(laptop.getByRole('cell').last()).toHaveText('2,800.00')
+  await expect(phone.getByRole('cell').first()).toHaveText('100.00')
+  await expect(phone.getByRole('cell').nth(1)).toHaveText('—')
+  await expect(row('Total').getByRole('cell').first()).toHaveText('300.00')
+  await expect(row('Total').getByRole('cell').nth(1)).toHaveText('200.00')
+  await expect(row('Total').getByRole('cell').last()).toHaveText('2,900.00')
+  await dialog.getByRole('button', { name: 'Next month', exact: true }).click()
+  await expect(schedule.getByRole('columnheader').nth(1)).toHaveText('Feb 2026')
+  await expect(phone).toHaveCount(0)
+  await expect(row('Total').getByRole('cell').last()).toHaveText('2,600.00')
+  await dialog.getByLabel('Start month').fill('2027-03')
+  await expect(dialog).toContainText('No remaining installments from this month')
+  await expect(row('Total').getByRole('cell').last()).toHaveText('0.00')
+  await dialog.getByRole('button', { name: 'This month', exact: true }).click()
+  await expect(row('Total').getByRole('cell').last()).toHaveText('2,900.00')
+  await page.setViewportSize({ width: 600, height: 700 })
+  expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  const region = dialog.getByRole('region', { name: 'Scrollable monthly installment schedule' })
+  await region.evaluate(element => { element.scrollLeft = 0 })
+  const remaining = schedule.getByRole('columnheader', { name: 'Remaining total' })
+  await expect(remaining).toBeInViewport()
+  const initialRight = await remaining.evaluate(element => element.getBoundingClientRect().right)
+  await region.evaluate(element => { element.scrollLeft = 400 })
+  await expect(laptop.getByRole('cell').last()).toBeInViewport()
+  expect(await remaining.evaluate(element => element.getBoundingClientRect().right)).toBeCloseTo(initialRight, 0)
+  await region.evaluate(element => { element.scrollLeft = element.scrollWidth })
+  await expect(schedule.getByRole('columnheader', { name: 'Remaining total' })).toBeInViewport()
+  await expect(laptop.getByRole('rowheader')).toBeInViewport()
+  await page.keyboard.press('Escape')
+  await expect(dialog).not.toBeVisible()
+  await expect(calendar).toBeFocused()
+})

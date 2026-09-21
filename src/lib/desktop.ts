@@ -20,10 +20,21 @@ export function updateCurrency(currency: string): Promise<Settings> {
 }
 
 export type AccountType = 'cash' | 'bank' | 'credit_card' | 'loan' | 'investment'
+export const loanTypes = [
+  { value: 'mortgage', label: 'Mortgage' },
+  { value: 'auto_loan', label: 'Auto Loan' },
+  { value: 'student_loan', label: 'Student Loan' },
+  { value: 'personal_loan', label: 'Personal Loan' },
+  { value: 'medical_debt', label: 'Medical Debt' },
+  { value: 'other_debt', label: 'Other Debt' },
+] as const
+export type LoanType = typeof loanTypes[number]['value']
 export interface Account {
   id: string
   name: string
   type: AccountType
+  loan_type: LoanType | null
+  current_balance: string
   opening_balance: string
   institution: string | null
   last_four: string | null
@@ -33,7 +44,7 @@ export interface Account {
   payment_due_day: number | null
   interest_rate_bps: number | null
 }
-export type NewAccount = Omit<Account, 'id'> & { currency: string }
+export type NewAccount = Omit<Account, 'id' | 'current_balance'> & { currency: string }
 
 export function listAccounts(): Promise<Account[]> {
   return invoke<Account[]>('list_accounts')
@@ -66,4 +77,132 @@ export function listIncomes(): Promise<Income[]> {
 }
 export function createIncome(input: NewIncome): Promise<Income> {
   return invoke<Income>('create_income', { input })
+}
+
+export type TransactionType = 'income' | 'expense' | 'transfer' | 'repayment'
+export interface Transaction {
+  id: string
+  type: TransactionType
+  account_id: string
+  account_name: string
+  destination_account_id: string | null
+  destination_account_name: string | null
+  amount: string
+  date: string
+  description: string
+  payee_id: string | null
+  payee_name: string | null
+  category_id: string | null
+  category_name: string | null
+}
+export type NewTransaction = Omit<Transaction, 'id' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name'> & { currency: string }
+export function listTransactions(): Promise<Transaction[]> { return invoke('list_transactions') }
+export async function createTransaction(input: NewTransaction): Promise<Transaction> {
+  const result = await invoke<Transaction>('create_transaction', { input })
+  window.dispatchEvent(new Event('transactions-changed'))
+  window.dispatchEvent(new Event('accounts-changed'))
+  return result
+}
+export async function deleteTransaction(id: string): Promise<void> {
+  await invoke('delete_transaction', { id })
+  window.dispatchEvent(new Event('accounts-changed'))
+}
+
+export type TransactionOptionKind = 'payee' | 'category'
+export interface TransactionOption { id: string; name: string; is_archived: boolean }
+export interface TransactionOptions { payees: TransactionOption[]; categories: TransactionOption[] }
+export interface SaveTransactionOption { kind: TransactionOptionKind; id: string | null; name: string; is_archived: boolean }
+export function listTransactionOptions(): Promise<TransactionOptions> { return invoke('list_transaction_options') }
+export async function saveTransactionOption(input: SaveTransactionOption): Promise<TransactionOption> {
+  const option = await invoke<TransactionOption>('save_transaction_option', { input })
+  window.dispatchEvent(new Event('transaction-options-changed'))
+  return option
+}
+
+export interface PaymentPlan {
+  id: string
+  name: string
+  type: 'expense' | 'repayment'
+  account_id: string
+  account_name: string
+  destination_account_id: string | null
+  destination_account_name: string | null
+  category_id: string | null
+  category_name: string | null
+  amount: string
+  date: string
+}
+export type SavePaymentPlan = Omit<PaymentPlan, 'id' | 'account_name' | 'destination_account_name' | 'category_name'> & { id: string | null; currency: string }
+export interface FinancialData {
+  settings: Settings
+  accounts: Account[]
+  incomes: Income[]
+  transactions: Transaction[]
+  plans: PaymentPlan[]
+  installments: Installment[]
+  subscriptions: Subscription[]
+  categories: TransactionOption[]
+}
+export function getFinancialData(): Promise<FinancialData> { return invoke('get_financial_data') }
+export async function savePaymentPlan(input: SavePaymentPlan): Promise<PaymentPlan> {
+  const plan = await invoke<PaymentPlan>('save_payment_plan', { input })
+  window.dispatchEvent(new Event('plans-changed'))
+  return plan
+}
+export async function deletePaymentPlan(id: string): Promise<void> {
+  await invoke('delete_payment_plan', { id })
+  window.dispatchEvent(new Event('plans-changed'))
+}
+
+export interface Installment {
+  id: string
+  name: string
+  account_id: string
+  account_name: string
+  debt_account_id: string
+  debt_account_name: string
+  debt_account_type: AccountType
+  monthly_amount: string
+  installment_count: number
+  interest_rate_bps: string | null
+  first_due_date: string
+  purchase_kind: 'existing_purchase' | 'new_purchase'
+  purchase_transaction_id: string | null
+}
+export type SaveInstallment = Omit<Installment, 'id' | 'account_name' | 'debt_account_name' | 'debt_account_type' | 'purchase_kind' | 'purchase_transaction_id'> & { id: string | null; currency: string; purchase: { amount: string; date: string } | null }
+export async function saveInstallment(input: SaveInstallment): Promise<void> {
+  await invoke('save_installment', { input })
+  if (input.purchase) {
+    window.dispatchEvent(new Event('accounts-changed'))
+    window.dispatchEvent(new Event('transactions-changed'))
+  }
+  window.dispatchEvent(new Event('plans-changed'))
+}
+export async function deleteInstallment(id: string): Promise<void> {
+  await invoke('delete_installment', { id })
+  window.dispatchEvent(new Event('plans-changed'))
+}
+
+export interface Subscription {
+  id: string
+  name: string
+  account_id: string
+  account_name: string
+  account_type: AccountType
+  category_id: string | null
+  category_name: string | null
+  amount: string
+  frequency: 'monthly' | 'yearly'
+  first_billing_date: string
+  end_date: string | null
+  is_active: boolean
+}
+export type SaveSubscription = Omit<Subscription, 'id' | 'account_name' | 'account_type' | 'category_name'> & { id: string | null; currency: string }
+export async function saveSubscription(input: SaveSubscription): Promise<void> {
+  await invoke('save_subscription', { input })
+  window.dispatchEvent(new Event('plans-changed'))
+}
+export async function deleteSubscription(id: string): Promise<void> {
+  await invoke('delete_subscription', { id })
+  window.dispatchEvent(new Event('plans-changed'))
 }

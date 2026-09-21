@@ -11,6 +11,7 @@ async function setup(page: import('@playwright/test').Page) {
         switch (command) {
           case 'plugin:app|version': return '0.1.0'
           case 'get_settings': return { currency: localStorage.getItem('test-currency'), period_start_day: 25 }
+          case 'list_transaction_options': return { payees: [], categories: [] }
           case 'list_accounts': return localStorage.getItem('test-account') ? [account] : []
           case 'list_incomes': return sources()
           case 'create_income': {

@@ -26,6 +26,7 @@ test('set currency, create all account types, and preserve them across reload', 
           case 'update_currency':
             if (accounts().length) throw 'Currency cannot change after accounts or income have been created.'
             localStorage.setItem('test-currency', args.currency!); return settings()
+          case 'list_transaction_options': return { payees: [], categories: [] }
           case 'list_accounts': return accounts()
           case 'create_account': {
             if (sessionStorage.getItem('fail-account')) throw 'Could not save account. Please try again.'
@@ -64,9 +65,11 @@ test('set currency, create all account types, and preserve them across reload', 
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'Discard changes' }).click()
   await expect(dialog).not.toBeVisible()
-  for (const type of ['cash', 'bank', 'credit_card', 'loan', 'investment']) {
+  const tabLabels = { cash: 'Cash', bank: 'Bank', credit_card: 'Credit cards', loan: 'Loans', investment: 'Investments' }
+  for (const type of ['cash', 'bank', 'credit_card', 'loan', 'investment'] as const) {
+    await page.getByRole('tab', { name: `${tabLabels[type]} (0)`, exact: true }).click()
     await page.getByRole('button', { name: 'Add account', exact: true }).click()
-    await page.getByLabel('Account type', { exact: true }).selectOption(type)
+    await expect(page.getByLabel('Account type', { exact: true })).toHaveValue(type)
     await page.getByLabel('Account name', { exact: true }).fill(`My ${type}`)
     await page.getByLabel(/^(Opening balance|Amount owed|Current value)/).fill('1234.56')
     if (type === 'credit_card' || type === 'loan') await page.getByText('Optional details', { exact: true }).click()
@@ -85,6 +88,8 @@ test('set currency, create all account types, and preserve them across reload', 
       await page.setViewportSize({ width: 1200, height: 800 })
       await page.screenshot({ path: 'test-results/account-dialog.png' })
     }
+    if (type === 'loan') await page.getByLabel('Loan type', { exact: true }).selectOption('mortgage')
+    else await expect(page.getByLabel('Loan type', { exact: true })).toHaveCount(0)
     if (type === 'loan') await page.getByLabel('Annual interest rate (%, optional)').fill('4.75')
     if (type === 'cash') {
       await page.evaluate(() => sessionStorage.setItem('fail-account', 'true'))
@@ -97,15 +102,37 @@ test('set currency, create all account types, and preserve them across reload', 
     await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Account added.' })).toBeVisible()
     await expect(dialog).not.toBeVisible()
     await expect(page.getByRole('heading', { name: `My ${type}`, exact: true })).toBeVisible()
+    await expect(page.getByRole('tab', { name: `${tabLabels[type]} (1)`, exact: true })).toHaveAttribute('aria-selected', 'true')
     const sidebarAccount = page.getByRole('complementary').getByRole('link', { name: new RegExp(`^My ${type}:`) })
     await expect(sidebarAccount).toBeVisible()
     await expect(sidebarAccount.locator('[data-balance-sign]')).toHaveAttribute('data-balance-sign', ['credit_card', 'loan'].includes(type) ? 'negative' : 'positive')
   }
   await page.reload()
   await expect(page.getByRole('complementary').getByRole('region', { name: 'Credit cards', exact: true })).toBeVisible()
-  await expect(page.getByRole('list', { name: 'Accounts' }).getByRole('listitem')).toHaveCount(5)
+  await expect(page.getByRole('tab', { name: 'All (5)', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tabpanel').getByRole('listitem')).toHaveCount(5)
+  await expect(page.getByRole('tabpanel').getByRole('region')).toHaveCount(5)
   await expect(page.getByText('Credit limit: 50,000.00 THB')).toBeVisible()
   await expect(page.getByText('Annual interest rate: 4.75%')).toBeVisible()
+  await expect(page.getByText('Mortgage · Liability', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: 'All (5)', exact: true }).focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: 'Cash (1)', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tabpanel').getByRole('listitem')).toHaveCount(1)
+  await page.setViewportSize({ width: 650, height: 700 })
+  await page.keyboard.press('End')
+  await expect(page.getByRole('tab', { name: 'Investments (1)', exact: true })).toBeFocused()
+  await expect(page.getByRole('tabpanel').getByRole('heading', { name: 'My investment', exact: true })).toBeVisible()
+  expect(await page.locator('main').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.setViewportSize({ width: 1200, height: 800 })
+  await page.getByRole('tab', { name: 'Bank (1)', exact: true }).click()
+  await page.getByRole('button', { name: 'Add account', exact: true }).click()
+  await expect(page.getByLabel('Account type', { exact: true })).toHaveValue('bank')
+  await page.getByLabel('Account type', { exact: true }).selectOption('cash')
+  await page.getByLabel('Account name', { exact: true }).fill('Extra cash')
+  await page.getByRole('button', { name: 'Save account', exact: true }).click()
+  await expect(page.getByRole('tab', { name: 'Cash (2)', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('heading', { name: 'Extra cash', exact: true })).toBeVisible()
   await page.getByRole('navigation').getByRole('link', { name: 'Settings', exact: true }).click()
   await page.getByLabel('Currency', { exact: true }).selectOption('USD')
   await page.getByRole('button', { name: 'Save currency' }).click()

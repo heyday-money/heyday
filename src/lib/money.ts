@@ -12,12 +12,12 @@ export function decimalToInteger(value: string, digits: number): string {
   return integer.toString()
 }
 
-export function formatAmount(value: string, currency: string) {
+export function formatAmount(value: string, currency: string, showCurrency = true) {
   const digits = fractionDigits(currency)
   const amount = BigInt(value)
   const absolute = amount < 0n ? -amount : amount
   const scale = 10n ** BigInt(digits)
   const whole = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(absolute / scale)
   const decimal = new Intl.NumberFormat().formatToParts(1.1).find(part => part.type === 'decimal')?.value ?? '.'
-  return `${amount < 0n ? '−' : ''}${whole}${digits ? decimal + (absolute % scale).toString().padStart(digits, '0') : ''} ${currency}`
+  return `${amount < 0n ? '−' : ''}${whole}${digits ? decimal + (absolute % scale).toString().padStart(digits, '0') : ''}${showCurrency ? ` ${currency}` : ''}`
 }
