@@ -69,6 +69,7 @@ test('subscription navigation and create, reload, pause, resume, edit and remove
   await expect(table).toContainText('Streaming')
   async function forecast(text: string) {
     await nav.getByRole('link', { name: 'Outlook', exact: true }).click()
+  await page.getByRole('button', { name: 'Account-Based Outlook', exact: true }).click()
     const expenses = page.getByRole('table', { name: /Cash outlook/ }).getByRole('row').filter({ has: page.getByRole('button', { name: 'Cash expenses', exact: true }) })
     await expect(expenses.getByRole('cell').first()).toContainText(text)
     await nav.getByRole('link', { name: 'Subscriptions', exact: true }).click()

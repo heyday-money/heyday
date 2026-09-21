@@ -26,7 +26,7 @@ export function useFinancialData() {
       if (day !== lastDay) { lastDay = day; void load() }
     }
     void load()
-    const events = ['accounts-changed', 'transactions-changed', 'plans-changed', 'transaction-options-changed']
+    const events = ['accounts-changed', 'transactions-changed', 'plans-changed', 'transaction-options-changed', 'incomes-changed']
     events.forEach(event => window.addEventListener(event, load))
     window.addEventListener('focus', dayChanged)
     const timer = window.setInterval(dayChanged, 60000)

@@ -2,9 +2,12 @@ use serde::Serialize;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
+mod cashflow;
+mod income_deductions;
 mod incomes;
 mod installments;
 mod planning;
+mod reset;
 mod subscriptions;
 mod transaction_options;
 mod transactions;
@@ -82,6 +85,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
+            reset::clear_all_data,
+            cashflow::get_cashflow_planner,
+            cashflow::save_cashflow_planner,
             planning::get_financial_data,
             subscriptions::save_subscription,
             subscriptions::delete_subscription,
@@ -95,6 +101,8 @@ pub fn run() {
             accounts::list_accounts,
             incomes::create_income,
             incomes::list_incomes,
+            income_deductions::list_income_deductions,
+            income_deductions::save_salary_deductions,
             transactions::create_transaction,
             transactions::list_transactions,
             transactions::delete_transaction,

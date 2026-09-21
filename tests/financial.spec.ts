@@ -6,7 +6,7 @@ function account(id: string, type: Account['type'], balance: string): Account {
   return { id, name: id, type, current_balance: balance, opening_balance: balance, loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_bps: null }
 }
 function income(id: string, destination: string, day: number, amount = '1000', active = true): Income {
-  return { id, name: id, type: 'salary', destination_account_id: destination, destination_account_name: destination, estimated_amount: amount, recurrence_frequency: 'monthly', recurrence_day_of_month: day, is_active: active, is_auto_create_transaction: false, created_at: '', updated_at: '' }
+  return { id, name: id, type: 'salary', destination_account_id: destination, destination_account_name: destination, estimated_amount: amount, deductions_total: '0', recurrence_frequency: 'monthly', recurrence_day_of_month: day, is_active: active, is_auto_create_transaction: false, created_at: '', updated_at: '' }
 }
 function transaction(type: Transaction['type'], source: string, amount: string, destination: string | null = null): Transaction {
   return { id: `${type}-${source}-${amount}`, type, account_id: source, account_name: source, destination_account_id: destination, destination_account_name: destination, amount, date: '2026-01-15', description: '', payee_id: null, payee_name: null, category_id: null, category_name: null }
@@ -86,4 +86,12 @@ test('installments forecast once per month without changing actuals or treating 
   expect(monthlyOutlook(input, new Date(2026, 0, 31))[0].buckets.repayments.forecast).toBe(0n)
   input.accounts = input.accounts.filter(account => account.id !== 'card')
   expect(monthlyOutlook(input, new Date(2026, 0, 15))[0].buckets.repayments.forecast).toBe(0n)
+})
+
+test('account-based outlook forecasts net salary once after configured deductions', () => {
+  const input = data()
+  input.incomes = [{ ...income('salary', 'bank', 25, '5000000'), deductions_total: '275000' }]
+  const periods = monthlyOutlook(input, new Date(2026, 0, 15))
+  expect(periods[0].buckets.income.forecast).toBe(4725000n)
+  expect(periods[1].buckets.income.forecast).toBe(4725000n)
 })

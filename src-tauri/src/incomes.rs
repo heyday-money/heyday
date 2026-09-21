@@ -10,6 +10,7 @@ pub struct Income {
     #[serde(rename = "type")]
     income_type: String,
     estimated_amount: String,
+    deductions_total: String,
     recurrence_frequency: String,
     recurrence_day_of_month: i64,
     is_auto_create_transaction: bool,
@@ -18,10 +19,12 @@ pub struct Income {
     updated_at: String,
 }
 
-pub(crate) const SELECT: &str = "SELECT i.id, i.name, i.destination_account_id, a.name AS destination_account_name, i.type AS income_type, CAST(i.estimated_amount AS TEXT) AS estimated_amount, i.recurrence_frequency, i.recurrence_day_of_month, i.is_auto_create_transaction, i.is_active, i.created_at, i.updated_at FROM incomes i JOIN accounts a ON a.id = i.destination_account_id";
+pub(crate) const SELECT: &str = "SELECT i.id, i.name, i.destination_account_id, a.name AS destination_account_name, i.type AS income_type, CAST(i.estimated_amount AS TEXT) AS estimated_amount, CAST(COALESCE((SELECT SUM(d.amount) FROM income_deductions d WHERE d.income_id=i.id),0) AS TEXT) AS deductions_total, i.recurrence_frequency, i.recurrence_day_of_month, i.is_auto_create_transaction, i.is_active, i.created_at, i.updated_at FROM incomes i JOIN accounts a ON a.id = i.destination_account_id";
 
 #[derive(Deserialize)]
 pub struct NewIncome {
+    #[serde(default)]
+    deductions: Vec<crate::income_deductions::DeductionInput>,
     name: String,
     destination_account_id: String,
     #[serde(rename = "type")]
@@ -49,6 +52,7 @@ pub async fn insert_income(pool: &SqlitePool, input: NewIncome) -> Result<Income
     if amount < 0 {
         return Err("Estimated amount cannot be negative.".into());
     }
+    crate::income_deductions::validate(&input.deductions, amount, input.income_type == "salary")?;
     if input.recurrence_frequency != "monthly" {
         return Err("Only monthly recurrence is currently supported.".into());
     }
@@ -82,6 +86,7 @@ pub async fn insert_income(pool: &SqlitePool, input: NewIncome) -> Result<Income
         .bind(name).bind(input.destination_account_id).bind(input.income_type).bind(amount)
         .bind(input.recurrence_day_of_month).bind(input.is_active)
         .fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    crate::income_deductions::replace(&mut tx, &id, &input.deductions).await?;
     let income = sqlx::query_as::<_, Income>(&format!("{SELECT} WHERE i.id = ?"))
         .bind(id)
         .fetch_one(&mut *tx)
@@ -114,6 +119,7 @@ mod tests {
 
     fn input() -> NewIncome {
         NewIncome {
+            deductions: vec![],
             name: " Salary ".into(),
             destination_account_id: "bank".into(),
             income_type: "salary".into(),
@@ -130,6 +136,59 @@ mod tests {
         crate::save_currency(pool, "THB").await.unwrap();
         sqlx::query("INSERT INTO accounts (id, name, type, opening_balance) VALUES ('bank', 'Everyday bank', 'bank', 150000)").execute(pool).await.unwrap();
     }
+    #[tokio::test]
+    async fn create_salary_and_deductions_atomically_and_reject_other_types() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(":memory:")
+                    .foreign_keys(true),
+            )
+            .await
+            .unwrap();
+        seed(&pool).await;
+        let mut salary = input();
+        salary.estimated_amount = "5000000".into();
+        salary.deductions = vec![crate::income_deductions::DeductionInput {
+            id: None,
+            name: "Tax".into(),
+            description: "".into(),
+            amount: "275000".into(),
+        }];
+        let result = insert_income(&pool, salary).await.unwrap();
+        assert_eq!(result.estimated_amount, "5000000");
+        assert_eq!(result.deductions_total, "275000");
+        let mut invalid = input();
+        invalid.income_type = "other".into();
+        invalid.deductions = vec![crate::income_deductions::DeductionInput {
+            id: None,
+            name: "Tax".into(),
+            description: "".into(),
+            amount: "1".into(),
+        }];
+        assert!(insert_income(&pool, invalid).await.is_err());
+        let mut stale = input();
+        stale.deductions = vec![crate::income_deductions::DeductionInput {
+            id: Some("unowned".into()),
+            name: "Tax".into(),
+            description: "".into(),
+            amount: "1".into(),
+        }];
+        assert!(insert_income(&pool, stale).await.is_err());
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM incomes")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        let balance: i64 =
+            sqlx::query_scalar("SELECT current_balance FROM accounts WHERE id='bank'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(balance, 0);
+    }
+
     #[tokio::test]
     async fn rejects_invalid_sources_without_writes() {
         let pool = SqlitePoolOptions::new()

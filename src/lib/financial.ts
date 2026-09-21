@@ -74,7 +74,7 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
       // Boundaries and income occurrences clamp independently in each calendar month.
       for (let offset = 0; offset <= 1; offset++) {
         const date = dateKey(monthlyDate(from.getFullYear(), from.getMonth() + offset, income.recurrence_day_of_month))
-        if (inside(date) && date > todayString) add(buckets.income, `expected:${income.id}`, `${income.name} · Expected`, 'forecast', BigInt(income.estimated_amount))
+        if (inside(date) && date > todayString) add(buckets.income, `expected:${income.id}`, `${income.name} · Expected`, 'forecast', BigInt(income.estimated_amount) - BigInt(income.deductions_total ?? '0'))
       }
     }
     for (const plan of data.plans) {

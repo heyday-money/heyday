@@ -70,6 +70,7 @@ test('create credit card purchase schedules, preserve drafts, edit monthly payme
   await expect(table.getByRole('row').filter({ hasText: 'Laptop' })).toContainText('100.01 THB')
   async function expectForecast(amount: string) {
     await page.getByRole('navigation').getByRole('link', { name: 'Outlook', exact: true }).click()
+  await page.getByRole('button', { name: 'Account-Based Outlook', exact: true }).click()
     await expect(page.getByRole('table', { name: 'Installment plans', exact: true })).toHaveCount(0)
     const repayment = page.getByRole('table', { name: /Cash outlook/ }).getByRole('row').filter({ has: page.getByRole('button', { name: 'Debt repayments', exact: true }) })
     await expect(repayment.getByRole('cell').first()).toContainText(amount)
@@ -136,6 +137,7 @@ test('ended and unavailable schedules remain visible without claiming payments a
 
 test('Installments has a dedicated sidebar link immediately below Transactions', async ({ page }) => {
   await page.goto('/#/outlook')
+  await page.getByRole('button', { name: 'Account-Based Outlook', exact: true }).click()
   const nav = page.getByRole('navigation')
   const links = await nav.getByRole('link').evaluateAll(elements => elements.map(element => element.getAttribute('href')))
   const transactionIndex = links.findIndex(href => href?.endsWith('/transactions'))
@@ -168,6 +170,7 @@ test('legacy loan schedules remain visible and cannot enable new installments', 
   await expect(page.getByRole('button', { name: 'Remove installment Car payments' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add installment', exact: true })).toBeDisabled()
   await page.getByRole('navigation').getByRole('link', { name: 'Outlook', exact: true }).click()
+  await page.getByRole('button', { name: 'Account-Based Outlook', exact: true }).click()
   const repayment = page.getByRole('table', { name: /Cash outlook/ }).getByRole('row').filter({ has: page.getByRole('button', { name: 'Debt repayments', exact: true }) })
   await expect(repayment.getByRole('cell').first()).toContainText('500.00 THB')
 })

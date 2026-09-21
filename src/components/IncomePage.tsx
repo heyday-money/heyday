@@ -9,6 +9,7 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Dialog
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
 import { FormField } from './FormField'
+import { deductionInputs, initialDeductions, SalaryDeductionFields, SalaryDeductionsDialog } from './SalaryDeductions'
 
 const incomeTypes = [
   { value: 'salary', label: 'Salary' },
@@ -30,6 +31,10 @@ export function IncomePage() {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [incomeType, setIncomeType] = useState<IncomeType>('salary')
+  const [gross, setGross] = useState('')
+  const [deductions, setDeductions] = useState(initialDeductions)
+  const [editingDeductions, setEditingDeductions] = useState<Income | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const currency = settings?.currency
 
@@ -46,7 +51,7 @@ export function IncomePage() {
   const close = () => { setOpen(false); setDirty(false); setConfirmDiscard(false); setError(null) }
   const changeOpen = (next: boolean) => {
     if (saving) return
-    if (next) { setDirty(false); setConfirmDiscard(false); setError(null); setOpen(true) }
+    if (next) { setIncomeType('salary'); setGross(''); setDeductions(initialDeductions()); setDirty(false); setConfirmDiscard(false); setError(null); setOpen(true) }
     else if (dirty) setConfirmDiscard(true)
     else close()
   }
@@ -60,7 +65,10 @@ export function IncomePage() {
     try {
       const amount = decimalToInteger(text('estimated_amount'), fractionDigits(currency))
       if (BigInt(amount) < 0n) throw new Error('Estimated amount cannot be negative.')
+      const rows = incomeType === 'salary' ? deductionInputs(deductions, currency) : []
+      if (rows.reduce((sum, row) => sum + BigInt(row.amount), 0n) > BigInt(amount)) throw new Error('Total deductions cannot exceed gross salary.')
       const income = await createIncome({
+        deductions: rows,
         name: text('name'), type: text('type') as IncomeType,
         destination_account_id: text('destination_account_id'), estimated_amount: amount,
         currency, recurrence_frequency: 'monthly', recurrence_day_of_month: Number(text('day')),
@@ -97,13 +105,14 @@ export function IncomePage() {
               <fieldset disabled={saving}>
                 <div className="grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">
                   <FormField label="Income name"><Input ref={nameRef} name="name" required maxLength={100} className={fieldStyle} placeholder="e.g. Monthly salary" /></FormField>
-                  <FormField label="Income type"><NativeSelect name="type" defaultValue="salary" className={fieldStyle}>{incomeTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</NativeSelect></FormField>
+                  <FormField label="Income type"><NativeSelect name="type" value={incomeType} onChange={e => setIncomeType(e.target.value as IncomeType)} className={fieldStyle}>{incomeTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</NativeSelect></FormField>
                   <FormField label="Destination account"><NativeSelect name="destination_account_id" required defaultValue="" className={fieldStyle}><option value="" disabled>Choose an account</option>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</NativeSelect></FormField>
-                  <FormField label={`Estimated amount (${currency})`}><Input name="estimated_amount" inputMode="decimal" required className={fieldStyle} placeholder="0" /></FormField>
+                  <FormField label={`Estimated amount (${currency})`}><Input name="estimated_amount" inputMode="decimal" value={gross} onChange={e => setGross(e.target.value)} required className={fieldStyle} placeholder="0" /></FormField>
                   <FormField label="Frequency"><NativeSelect name="frequency" defaultValue="monthly" className={fieldStyle}><option value="monthly">Monthly</option></NativeSelect></FormField>
                   <FormField label="Day of month"><NativeSelect name="day" defaultValue="1" className={fieldStyle}>{Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>Day {day}</option>)}</NativeSelect></FormField>
                   <FormField label="Status"><NativeSelect name="is_active" defaultValue="true" className={fieldStyle}><option value="true">Active</option><option value="false">Inactive</option></NativeSelect></FormField>
                 </div>
+                {incomeType === 'salary' && <><p className="mt-3 text-xs">Enter gross salary before deductions as the estimated amount.</p><SalaryDeductionFields rows={deductions} onChange={next => { setDeductions(next); setDirty(true) }} gross={gross} currency={currency} /></>}
                 <p className="mt-4 text-[12px]">When the scheduled day doesn’t exist, use the last day of that month. This schedule is independent of your payday cycle.</p>
                 <div className="mt-5 rounded-xl border border-line p-4"><label className="flex items-center gap-2 text-[13px] text-muted"><input type="checkbox" disabled checked={false} readOnly className="size-4" />Automatically create transactions</label><p className="mt-2 text-[12px]">Coming later. Income sources currently describe estimates only.</p></div>
               </fieldset>
@@ -117,9 +126,10 @@ export function IncomePage() {
           : <ul className="space-y-3" aria-label="Income sources">{sources.map(source => <li key={source.id} className="rounded-[18px] border border-line bg-card p-5">
             <div className="flex items-start justify-between gap-4 max-[600px]:flex-col">
               <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-semibold">{source.name}</h3><span className={`rounded-full px-2 py-0.5 text-[11px] ${source.is_active ? 'bg-soft text-brand' : 'bg-page text-muted'}`}>{source.is_active ? 'Active' : 'Inactive'}</span></div><p className="mt-2 break-words text-[13px]">{incomeTypes.find(type => type.value === source.type)?.label} · To {source.destination_account_name}</p><p className="mt-1 text-[12px]">Monthly · Day {source.recurrence_day_of_month}{source.recurrence_day_of_month > 28 ? ' (or month-end)' : ''}</p></div>
-              <div className="min-w-0 text-right max-[600px]:text-left"><p className="break-words text-[20px] font-semibold text-ink">{formatAmount(source.estimated_amount, currency)}</p><p className="text-[12px]">Estimated per payment</p></div>
+              <div className="min-w-0 text-right max-[600px]:text-left"><p className="break-words text-[20px] font-semibold text-ink">{formatAmount(source.estimated_amount, currency)}</p><p className="text-[12px]">{source.type === 'salary' ? 'Estimated gross per payment' : 'Estimated per payment'}</p>{source.type === 'salary' && <><p className="mt-2 text-xs">Deductions: {formatAmount(source.deductions_total ?? '0', currency)}</p><p className="text-sm font-semibold text-ink">Net: {formatAmount((BigInt(source.estimated_amount) - BigInt(source.deductions_total ?? '0')).toString(), currency)}</p><Button className="mt-2" size="sm" variant="outline" onClick={() => setEditingDeductions(source)} aria-label={`Manage deductions for ${source.name}`}>Manage Deductions</Button></>}</div>
             </div>
           </li>)}</ul>}
       </>}
+    {editingDeductions && currency && <SalaryDeductionsDialog income={editingDeductions} currency={currency} onSaved={income => setSources(current => current.map(source => source.id === income.id ? income : source))} onClose={() => setEditingDeductions(null)} />}
   </Dialog>
 }

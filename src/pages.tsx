@@ -1,3 +1,4 @@
+import { DangerZone } from "./components/DangerZone";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { TransactionOptionsSettings } from "./components/TransactionOptionsSettings";
 import { TransactionShortcut, AddTransactionButton } from "./components/TransactionShortcut";
@@ -455,6 +456,7 @@ export function SettingsPage() {
           Backup/restore is planned.
         </p>
       </section>
+          <DangerZone disabled={saving || !settings} />
         </TabsContent>
         <TabsContent value="payees" forceMount>
           {desktopAvailable ? <TransactionOptionsSettings kind="payee" /> : <p className="rounded-xl bg-soft p-5">Open the desktop app to manage payees.</p>}

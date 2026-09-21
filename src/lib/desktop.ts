@@ -63,6 +63,7 @@ export interface Income {
   destination_account_name: string
   type: IncomeType
   estimated_amount: string
+  deductions_total: string
   recurrence_frequency: 'monthly'
   recurrence_day_of_month: number
   is_auto_create_transaction: boolean
@@ -70,13 +71,23 @@ export interface Income {
   created_at: string
   updated_at: string
 }
-export type NewIncome = Omit<Income, 'id' | 'destination_account_name' | 'created_at' | 'updated_at'> & { currency: string }
+export type NewIncome = Omit<Income, 'id' | 'destination_account_name' | 'created_at' | 'updated_at' | 'deductions_total'> & { currency: string; deductions?: IncomeDeductionInput[] }
 
 export function listIncomes(): Promise<Income[]> {
   return invoke<Income[]>('list_incomes')
 }
-export function createIncome(input: NewIncome): Promise<Income> {
-  return invoke<Income>('create_income', { input })
+export async function createIncome(input: NewIncome): Promise<Income> {
+  const income = await invoke<Income>('create_income', { input })
+  window.dispatchEvent(new Event('incomes-changed'))
+  return income
+}
+export interface IncomeDeduction { id: string; income_id: string; name: string; description: string; amount: string }
+export type IncomeDeductionInput = Omit<IncomeDeduction, 'income_id' | 'id'> & { id: string | null }
+export const listIncomeDeductions = (incomeId: string) => invoke<IncomeDeduction[]>('list_income_deductions', { incomeId })
+export async function saveSalaryDeductions(input: { income_id: string; currency: string; deductions: IncomeDeductionInput[] }) {
+  const income = await invoke<Income>('save_salary_deductions', { input })
+  window.dispatchEvent(new Event('incomes-changed'))
+  return income
 }
 
 export type TransactionType = 'income' | 'expense' | 'transfer' | 'repayment'
@@ -205,4 +216,8 @@ export async function saveSubscription(input: SaveSubscription): Promise<void> {
 export async function deleteSubscription(id: string): Promise<void> {
   await invoke('delete_subscription', { id })
   window.dispatchEvent(new Event('plans-changed'))
+}
+
+export function clearAllData(confirmation: string): Promise<void> {
+  return invoke<void>('clear_all_data', { confirmation })
 }

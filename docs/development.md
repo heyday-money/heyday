@@ -75,3 +75,110 @@ created on first launch and migrations run at startup.
 
 Lockfiles are included. Signing, notarization, release automation, and an
 open-source license choice remain to be configured before public distribution.
+
+## Cashflow planner
+
+Outlook defaults to the English THB cashflow planner. The previous account-derived
+outlook is available using **Account-Based Outlook**. Migration 0012 adds independent
+planner data; it does not change ledger currency, transactions, balances, or existing
+schedules. The planner can be used before setting up accounts.
+
+The seven columns follow the payday start day in Settings. A `YYYY-MM` key identifies
+the calendar month in which a cycle starts. Selecting another window only changes
+visibility. Changing the payday setting updates date boundaries while retaining
+entries under their original keys. Recurrence runs once per cycle; installment
+counts include the first cycle and their final cycle is inclusive.
+
+Select a name to edit item details or a bordered amount to edit just one cycle.
+Explicit entries override schedules, including zero. Clearing an entry restores the
+scheduled amount, if any. Schedule edits update generated figures across their
+range, including past cycles, while keeping individual overrides. Deleting an item
+removes its entries and changes historical planner totals after confirmation.
+
+Opening cash is a nullable initial-cycle anchor. Carry-forward includes all cycles
+between that anchor and the selected window. All financial arithmetic uses BigInt
+satang, with individual persisted amounts validated as SQLite i64 values in Rust.
+Completion is explicitly set by the user; amounts alone never complete a cycle.
+
+General expenses link to transaction categories. The migration seeds ten category
+names when absent and reuses existing normalized names, including archived ones.
+Planner item names remain independently editable. No transaction totals are imported.
+Gross income queries current Income definitions from the same SQLite snapshot. Active
+THB sources with available destination accounts generate expected amounts using their
+monthly recurrence within each payday cycle. Non-THB sources are excluded without
+conversion. Inactive/unavailable sources generate no estimates; entered overrides stay.
+Source details link to Income. Additional manual Gross income rows remain available.
+Migration 0013 stores source-specific cycle overrides and removes only untouched income
+placeholders, preserving customizations and entered amounts (including zero).
+Estimates use current definitions even for past cycles; save an override to retain a
+cycle's entered amount. Clearing it restores the estimate. No receipts are inferred.
+Migration 0014 links Debt rows to loan accounts and card installment rows to the
+Installments page, in the same SQLite snapshot. Loan balances are reference details,
+never payment amounts. Enter a cycle's loan payment manually unless it has legacy
+loan-linked schedules, which are included once in the loan row. Card schedules use
+actual due dates grouped into payday cycles, including independently clamped month
+ends, and stop at the final installment. Multiple plans for one card remain separate.
+Unavailable accounts generate no schedule amounts. Source-specific overrides replace
+one cycle's generated amount (including zero) and affect carry-forward. Linked rows
+and their overrides require THB; other currencies are excluded without conversion.
+Source links open Accounts or Installments; manual additions remain available.
+Only untouched debt/installment placeholders are removed, preserving entered figures
+and customizations. Check retained manual rows for duplicates of linked sources.
+Editing a source schedule updates generated amounts; deleting it also removes its
+linked planner overrides. No balances or transactions change through planner edits.
+Migration 0015 connects recorded card payments. Migration 0016 labels this section
+**Credit Cards** and applies consistent title case to the other planner sections and
+subtotals, without changing stable IDs or financial data.
+It sums cash/bank repayments and transfers into each credit card per payday cycle,
+using exact BigInt arithmetic on transaction amount strings. Purchases, refunds and
+debt-to-debt transfers are excluded. Archived account history stays included. Linked
+card rows are read-only and link to Transactions; edits/deletions refresh the planner.
+Transactions do not identify installment portions. In a cycle containing recorded
+payments, the full recorded card total replaces that card's linked installment
+forecasts, including cycle overrides, without changing saved entries or marking any
+installment paid. Partial payments count only the cash recorded, and further expected
+payments in the same cycle are not inferred. If transactions are removed, saved
+installment forecasts/overrides resume. The category is renamed to avoid describing
+the unsplit total as only the non-installment part. Manual rows remain additive and
+must not duplicate recorded payments; only untouched default card rows are removed.
+Subscriptions and one-time payment plans remain separate. No installment allocation,
+paid-status matching, or automatic duplicate detection for manual rows is implemented.
+
+Validation: `bun run build`, `cargo test --manifest-path src-tauri/Cargo.toml --lib`,
+and `bun run test:e2e -- tests/cashflow.spec.ts tests/cashflow-ui.spec.ts`.
+Browser tests mock Tauri IPC; Rust tests exercise actual SQLite migrations and reopening.
+
+### Salary deductions
+
+Migration 0017 adds reusable deductions owned by Salary income sources. Create them
+with a new salary, or use **Manage Deductions** on an existing salary in Income.
+Suggested blank rows cover withholding tax, social security, provident fund, payroll
+loan payments, and other deductions; custom names and descriptions are supported.
+Amounts are per salary payment, in the shared currency's minor units. No percentage
+rates or automation are assumed. Source deduction totals cannot exceed gross salary.
+A salary and its initial deductions save atomically; updates preserve stable deduction
+IDs and cycle overrides. Removing a deduction explicitly removes its cycle overrides.
+
+Outlook retains separate **Gross Income** and **Income Deductions** sections. Linked
+deductions follow their salary's recurrence and account availability, use THB sources,
+and are subtracted exactly once from gross income. Cycle overrides support explicit
+zero and remain independent of other cycles. The section's Manage link opens Income.
+The separate account-based outlook forecasts net salary received into cash accounts.
+Income definitions and deductions never create transactions or change balances.
+
+Previously entered/manual Outlook deductions remain, since the app cannot safely
+assign them to a salary. Only untouched default placeholders are removed. Review old
+manual deductions before adding equivalent source deductions to avoid duplication.
+General income-source editing remains future work; deduction management is available
+for existing salaries, including inactive salaries and archived destinations.
+
+The planner table groups Gross Income and Income Deductions under **Income**, ending
+with highlighted Net Income. **Expenses** groups debt, card installments, card
+payments and general expenses, followed by Total Expenses and Total Outflows Including
+Deductions. **Cash Balance** finishes with Opening Cash, Cycle Surplus / Deficit and
+Cumulative Closing Cash. Tinted headers and thicker dividers separate the blocks;
+negative amounts remain red in both themes. Calculations and stored data are unchanged.
+
+### Clear local data
+
+Settings > General includes a Danger Zone with a typed `DELETE ALL DATA` confirmation. The Rust command deletes all user financial records, planner entries, schedules, payees, and categories in one foreign-key-safe transaction, then resets currency to unset and payday start to 1. Schema, migration history, built-in Outlook sections, and appearance preferences remain. Success reloads the interface and discards drafts; failure rolls back all deletions. This action is irreversible; backup/restore remains future work.
