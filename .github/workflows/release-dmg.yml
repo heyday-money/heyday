@@ -1,0 +1,76 @@
+name: Build macOS DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-dmg-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-dmg:
+    name: Universal macOS DMG
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Apply tag version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/set-release-version.py
+
+      - name: Test Rust operations
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      # Tauri runs beforeBuildCommand (TypeScript checks and Vite build).
+      - name: Build DMG and upload to release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: '-'
+        with:
+          tauriScript: bun run tauri
+          args: --target universal-apple-darwin --bundles dmg --verbose
+          tagName: ${{ github.ref_name }}
+          releaseName: Heyday Money ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          releaseBody: |
+            Download the universal macOS DMG below (Apple Silicon and Intel).
+            This build is ad-hoc signed and is not Apple-notarized.
+
+      - name: Keep DMG as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Heyday-Money-${{ github.ref_name }}-macOS-universal
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 30

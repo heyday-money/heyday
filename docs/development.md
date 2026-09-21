@@ -73,7 +73,7 @@ The database is `heyday.db` under Tauri's application data directory for
 `~/Library/Application Support/money.heyday.desktop/heyday.db` on macOS. It is
 created on first launch and migrations run at startup.
 
-Lockfiles are included. Signing, notarization, release automation, and an
+Lockfiles are included. Developer ID signing, notarization, and an
 open-source license choice remain to be configured before public distribution.
 
 ## Cashflow planner
@@ -182,3 +182,27 @@ negative amounts remain red in both themes. Calculations and stored data are unc
 ### Clear local data
 
 Settings > General includes a Danger Zone with a typed `DELETE ALL DATA` confirmation. The Rust command deletes all user financial records, planner entries, schedules, payees, and categories in one foreign-key-safe transaction, then resets currency to unset and payday start to 1. Schema, migration history, built-in Outlook sections, and appearance preferences remain. Success reloads the interface and discards drafts; failure rolls back all deletions. This action is irreversible; backup/restore remains future work.
+
+## Tag-triggered macOS release
+
+`.github/workflows/release-dmg.yml` runs on pushed `v*` tags. Tags must be semantic
+versions, such as `v0.0.0-alpha.0` or `v1.0.0`. Commit the workflow and source first,
+then create and push the tag:
+
+```sh
+git tag v0.0.0-alpha.0
+git push origin v0.0.0-alpha.0
+```
+
+The workflow installs the packageManager-pinned Bun version and locked dependencies,
+sets the app version from the tag in the CI checkout (including Cargo.lock), runs
+Rust tests, and builds a universal Apple Silicon/Intel DMG. Tauri's build hook runs
+TypeScript checks and Vite. It publishes the DMG on the tag's GitHub Release and also
+keeps a workflow artifact for 30 days. Prerelease tags are marked as prereleases.
+Only the built-in GITHUB_TOKEN with contents-write permission is needed.
+
+Builds use ad-hoc signing, without Apple notarization; macOS may require approval
+in Privacy & Security. Developer ID signing/notarization and automatic updates
+remain future work. No local tags or releases are created by implementing this workflow.
+
+Based on the [Tauri GitHub Actions guide](https://v2.tauri.app/distribute/pipelines/github/).
