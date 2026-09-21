@@ -1,0 +1,14 @@
+node_modules/
+/AGENTS.md
+dist/
+test-results/
+playwright-report/
+src-tauri/target/
+src-tauri/gen/
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
