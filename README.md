@@ -7,6 +7,8 @@
   </p>
 </p>
 
+[![Build macOS DMG](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml/badge.svg?branch=main)](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml)
+
 ## What is?
 
 Heyday Money is an open-source personal finance tracking and simulation platform, designed for those seeking financial independence with a simple goal: to turn every penny into its heyday. Built on a foundation of data security and user control, Heyday Money enables users to track expenses, monitor investments, and achieve financial clarity—all securely on their local machines.
