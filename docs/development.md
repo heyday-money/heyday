@@ -249,7 +249,6 @@ bun run tauri signer generate -w "$HOME/.tauri/heyday-updater.key"
 In GitHub repository Settings > Secrets and variables > Actions, configure:
 
 - Repository variable `HEYDAY_UPDATER_PUBLIC_KEY`: contents of the generated `.pub` file.
-  A repository secret with the same name is also accepted; the variable takes precedence.
 - Secret `TAURI_SIGNING_PRIVATE_KEY`: contents of the private key file.
 - Secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: its password, if used.
 
