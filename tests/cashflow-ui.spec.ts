@@ -222,3 +222,16 @@ test('recorded card payments refresh by account and cycle without adding install
   await expect(page.getByRole('button', { name: 'Visa 2026-12: Recorded payments', exact: true })).toContainText('0.00')
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2026-12 amount', exact: true })).toContainText('3,000.00')
 })
+
+test('current cycle follows the computer date after focus while explicit selections remain pinned', async ({ page }) => {
+  await expect(page.getByLabel('First visible cycle')).toHaveValue('2026-12')
+  await page.clock.setFixedTime(new Date(2027, 0, 25, 12))
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByLabel('First visible cycle')).toHaveValue('2027-01')
+  await page.getByLabel('First visible cycle').fill('2026-11')
+  await page.clock.setFixedTime(new Date(2027, 1, 25, 12))
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+  await expect(page.getByLabel('First visible cycle')).toHaveValue('2026-11')
+  await page.getByRole('button', { name: 'Current cycle', exact: true }).click()
+  await expect(page.getByLabel('First visible cycle')).toHaveValue('2027-02')
+})

@@ -48,7 +48,7 @@ export function DangerZone({ disabled = false }: { disabled?: boolean }) {
       <DialogContent showCloseButton={!busy} onInteractOutside={(event) => event.preventDefault()} onEscapeKeyDown={(event) => { if (busy) event.preventDefault() }}>
         <DialogHeader>
           <DialogTitle>Clear all data?</DialogTitle>
-          <DialogDescription>This permanently deletes all accounts and balances, transactions, income and deductions, installments, subscriptions, payment plans, Outlook entries, payees, and spending categories. Currency and payday settings will reset. Built-in Outlook sections and appearance preferences remain. The app will reload and discard open drafts. This cannot be undone.</DialogDescription>
+          <DialogDescription>This permanently deletes all accounts and balances, transactions, income and deductions, installments, subscriptions, payment plans, Outlook entries, payees, and spending categories. Currency and payday settings will reset. Built-in Outlook sections, appearance preferences, and existing backup files remain. The app will reload and discard open drafts. This cannot be undone.</DialogDescription>
         </DialogHeader>
         <form onSubmit={reset} className="space-y-4">
           <div className="space-y-2">

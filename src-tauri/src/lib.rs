@@ -11,6 +11,7 @@ mod reset;
 mod subscriptions;
 mod transaction_options;
 mod transactions;
+mod updates;
 
 #[derive(Serialize, sqlx::FromRow)]
 struct Settings {
@@ -66,10 +67,19 @@ async fn update_currency(
     save_currency(pool.inner(), &currency).await
 }
 
+fn data_directory(base: std::path::PathBuf, development: bool) -> std::path::PathBuf {
+    if development {
+        base.join("development")
+    } else {
+        base
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let directory = app.path().app_data_dir()?;
+            let directory = data_directory(app.path().app_data_dir()?, cfg!(debug_assertions));
             std::fs::create_dir_all(&directory)?;
             let options = SqliteConnectOptions::new()
                 .filename(directory.join("heyday.db"))
@@ -85,6 +95,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
+            updates::check_app_update,
+            updates::install_app_update,
             reset::clear_all_data,
             cashflow::get_cashflow_planner,
             cashflow::save_cashflow_planner,
@@ -117,6 +129,17 @@ pub fn run() {
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[test]
+    fn development_storage_never_uses_production_database() {
+        let base = std::path::PathBuf::from("app-data/money.heyday.desktop");
+        assert_eq!(data_directory(base.clone(), false), base);
+        assert_eq!(data_directory(base.clone(), true), base.join("development"));
+        assert_ne!(
+            data_directory(base.clone(), true).join("heyday.db"),
+            base.join("heyday.db")
+        );
+    }
 
     #[tokio::test]
     async fn migration_defaults_and_income_integrity() {

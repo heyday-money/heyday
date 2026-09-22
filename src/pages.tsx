@@ -1,3 +1,5 @@
+import { AppUpdates } from "./components/AppUpdates";
+import { useLocalDate } from "./lib/useLocalDate";
 import { DangerZone } from "./components/DangerZone";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { TransactionOptionsSettings } from "./components/TransactionOptionsSettings";
@@ -302,6 +304,7 @@ export { AccountsPage } from "./components/AccountsPage";
 export { IncomePage } from "./components/IncomePage";
 
 export function SettingsPage() {
+  const today = useLocalDate();
   const { dark, setDark } = useContext(ThemeContext);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -417,7 +420,7 @@ export function SettingsPage() {
                 </select>
               </div>
               <p className="mt-2 text-[14px]">
-                Your current cycle: <strong>{periodLabel(day)}</strong>
+                Your current cycle: <strong>{periodLabel(day, today)}</strong>
               </p>
               <p className="mt-2 text-[14px]">
                 If a month has fewer days, the cycle starts on its last day.
@@ -446,6 +449,10 @@ export function SettingsPage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
+                <dt>Computer date</dt>
+                <dd className="text-right text-muted">{today.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</dd>
+              </div>
+              <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
                 <dt>Storage</dt>
                 <dd className="text-right text-muted">Local SQLite database</dd>
               </div>
@@ -453,9 +460,10 @@ export function SettingsPage() {
           </>
         )}
         <p className="mt-2 text-[14px] font-normal text-muted">
-          Backup/restore is planned.
+          Manual backup and restore are planned.
         </p>
       </section>
+          <AppUpdates version={version} disabled={saving || !!settings && day !== settings.period_start_day} />
           <DangerZone disabled={saving || !settings} />
         </TabsContent>
         <TabsContent value="payees" forceMount>

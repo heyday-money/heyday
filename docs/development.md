@@ -202,7 +202,69 @@ keeps a workflow artifact for 30 days. Prerelease tags are marked as prereleases
 Only the built-in GITHUB_TOKEN with contents-write permission is needed.
 
 Builds use ad-hoc signing, without Apple notarization; macOS may require approval
-in Privacy & Security. Developer ID signing/notarization and automatic updates
-remain future work. No local tags or releases are created by implementing this workflow.
+in Privacy & Security. Developer ID signing/notarization remain future work. Signed in-app updates
+require the one-time key setup described below. No local tags or releases are created by implementing this workflow.
 
 Based on the [Tauri GitHub Actions guide](https://v2.tauri.app/distribute/pipelines/github/).
+
+### Local date and development storage
+
+The WebView reads the computer's local date (no network clock). Outlook's default
+window follows the current payday cycle, refreshing every 30 seconds and on focus
+or visibility changes. Explicitly selected cycles remain selected; Current cycle
+returns to following the computer date. Settings shows the computer date.
+
+Debug builds (`bun run desktop:dev`) use `development/heyday.db` under the app data
+directory. On macOS this is
+`~/Library/Application Support/money.heyday.desktop/development/heyday.db`.
+Release builds retain `~/Library/Application Support/money.heyday.desktop/heyday.db`.
+No existing database is moved or copied; development starts with a separate empty
+database and runs the same migrations. `tauri dev --release` is a release build
+and uses production storage; use the normal debug dev command for isolation.
+
+## In-app release checks and signed updates
+
+Settings > General > App Updates checks public releases from
+`heyday-money/heyday` only when requested. It selects the highest newer semantic
+version among the 100 most recent GitHub releases, ignoring drafts and invalid
+tags. Stable builds exclude prereleases; alpha builds include them. Network
+failures and GitHub rate limits are shown with a retry action. Financial features
+remain offline. Development builds may check but cannot install updates.
+
+Installation uses Tauri's updater to verify signatures, then creates a consistent
+SQLite `VACUUM INTO` snapshot in the app data directory's `backups/` folder before
+replacing the app and restarting. A failed download, signature, or backup stops
+installation. The existing database path and app identifier are unchanged.
+Snapshots are retained; restoration is currently manual. Save open drafts before
+installing. Startup continues to apply the existing versioned SQLx migrations.
+
+### One-time signing setup
+
+Generate and securely retain a Tauri updater signing key on your own computer:
+
+```sh
+bun run tauri signer generate -w "$HOME/.tauri/heyday-updater.key"
+```
+
+In GitHub repository Settings > Secrets and variables > Actions, configure:
+
+- Variable `HEYDAY_UPDATER_PUBLIC_KEY`: contents of the generated `.pub` file.
+- Secret `TAURI_SIGNING_PRIVATE_KEY`: contents of the private key file.
+- Secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: its password, if used.
+
+Never commit the private key. Keep the same key for future releases and retain
+an offline backup. This signing key is separate from Apple Developer ID signing.
+
+The tag workflow injects the public key into the native app and enables updater
+artifacts only when both public/private keys are configured. It builds `app,dmg`;
+tauri-action uploads the signed app archive, signature, and `latest.json` as well
+as the DMG. Each release's own manifest supports alpha updates without relying
+on GitHub's stable-only latest release URL. Missing keys leave DMG releases working
+but disable in-app installation. A partially configured key pair fails CI early.
+
+Existing published apps without the updater must first be upgraded manually to a
+build containing this feature and your public key. A real signed release-to-release
+installation still needs verification on an installed macOS app; mocked browser
+tests do not exercise native app replacement or Apple Gatekeeper.
+
+Reference: https://v2.tauri.app/plugin/updater/
