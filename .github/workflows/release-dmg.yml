@@ -18,7 +18,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     env:
-      HEYDAY_UPDATER_PUBLIC_KEY: ${{ vars.HEYDAY_UPDATER_PUBLIC_KEY }}
+      HEYDAY_UPDATER_PUBLIC_KEY: ${{ vars.HEYDAY_UPDATER_PUBLIC_KEY || secrets.HEYDAY_UPDATER_PUBLIC_KEY }}
     permissions:
       contents: write
     steps:
