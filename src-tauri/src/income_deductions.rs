@@ -4,14 +4,16 @@ use std::collections::HashSet;
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct IncomeDeduction {
+    pub debt_account_name: Option<String>,
     pub id: String,
     pub income_id: String,
     pub name: String,
     pub description: String,
     pub amount: String,
+    pub debt_account_id: Option<String>,
 }
 pub(crate) const SELECT: &str =
-    "SELECT id,income_id,name,description,CAST(amount AS TEXT) AS amount FROM income_deductions";
+    "SELECT id,income_id,name,description,CAST(amount AS TEXT) AS amount,debt_account_id,(SELECT name FROM accounts WHERE id=income_deductions.debt_account_id) AS debt_account_name FROM income_deductions";
 
 #[derive(Deserialize)]
 pub struct DeductionInput {
@@ -19,6 +21,7 @@ pub struct DeductionInput {
     pub name: String,
     pub description: String,
     pub amount: String,
+    pub debt_account_id: Option<String>,
 }
 #[derive(Deserialize)]
 pub struct SaveSalaryDeductions {
@@ -75,6 +78,15 @@ pub async fn replace(
             .await
             .map_err(|e| e.to_string())?;
     for row in rows {
+        if let Some(account_id) = &row.debt_account_id {
+            let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type IN ('loan','credit_card') AND (is_archived=0 OR EXISTS(SELECT 1 FROM income_deductions WHERE id=? AND income_id=? AND debt_account_id=accounts.id)))")
+                .bind(account_id).bind(&row.id).bind(income_id).fetch_one(&mut *conn).await.map_err(|e| e.to_string())?;
+            if !valid {
+                return Err(
+                    "Choose an active loan or credit card account for the deduction.".into(),
+                );
+            }
+        }
         if row.id.as_ref().is_some_and(|id| !owned.contains(id)) {
             return Err("Deduction is unavailable or belongs to another income source.".into());
         }
@@ -94,8 +106,8 @@ pub async fn replace(
             .amount
             .parse()
             .map_err(|_| "Invalid deduction amount.")?;
-        sqlx::query("INSERT INTO income_deductions(id,income_id,name,description,amount) VALUES(COALESCE(?,lower(hex(randomblob(16)))),?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,amount=excluded.amount")
-            .bind(&row.id).bind(income_id).bind(row.name.trim()).bind(row.description.trim()).bind(amount).execute(&mut *conn).await.map_err(|e| e.to_string())?;
+        sqlx::query("INSERT INTO income_deductions(id,income_id,name,description,amount,debt_account_id) VALUES(COALESCE(?,lower(hex(randomblob(16)))),?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,amount=excluded.amount,debt_account_id=excluded.debt_account_id")
+            .bind(&row.id).bind(income_id).bind(row.name.trim()).bind(row.description.trim()).bind(amount).bind(&row.debt_account_id).execute(&mut *conn).await.map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -165,6 +177,7 @@ mod tests {
             name: name.into(),
             description: "Per salary payment".into(),
             amount: amount.into(),
+            debt_account_id: None,
         }
     }
     fn input(rows: Vec<DeductionInput>) -> SaveSalaryDeductions {
@@ -183,6 +196,73 @@ mod tests {
         sqlx::query("INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('bank','Bank','bank',10000,10000)").execute(pool).await.unwrap();
         sqlx::query("INSERT INTO incomes(id,name,destination_account_id,type,estimated_amount,recurrence_day_of_month) VALUES('salary','Salary','bank','salary',5000000,25),('other','Other','bank','other',5000000,25)").execute(pool).await.unwrap();
     }
+    #[tokio::test]
+    async fn link_student_loan_validate_archive_and_preserve_balances() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(":memory:")
+                    .foreign_keys(true),
+            )
+            .await
+            .unwrap();
+        seed(&pool).await;
+        sqlx::query("INSERT INTO accounts(id,name,type,loan_type,opening_balance,current_balance) VALUES('student','Student Loan','loan','student_loan',10000000,10000000)").execute(&pool).await.unwrap();
+        let mut deduction = row(None, "Student Loan", "200000");
+        deduction.debt_account_id = Some("student".into());
+        save(&pool, input(vec![deduction])).await.unwrap();
+        let saved: IncomeDeduction = sqlx::query_as(SELECT).fetch_one(&pool).await.unwrap();
+        assert_eq!(saved.debt_account_id.as_deref(), Some("student"));
+        assert_eq!(saved.debt_account_name.as_deref(), Some("Student Loan"));
+        let balance: i64 =
+            sqlx::query_scalar("SELECT current_balance FROM accounts WHERE id='student'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(balance, 10000000);
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+        sqlx::query("INSERT INTO planner_deduction_amounts VALUES(?,'2026-12',0)")
+            .bind(&saved.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        for invalid in ["bank", "missing"] {
+            let mut deduction = row(Some(&saved.id), "Student Loan", "100000");
+            deduction.debt_account_id = Some(invalid.into());
+            assert!(save(&pool, input(vec![deduction])).await.is_err());
+        }
+        sqlx::query("UPDATE accounts SET is_archived=1 WHERE id='student'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let mut retained = row(Some(&saved.id), "Student Loan", "200000");
+        retained.debt_account_id = Some("student".into());
+        save(&pool, input(vec![retained])).await.unwrap();
+        let mut new = row(None, "Another loan deduction", "200000");
+        new.debt_account_id = Some("student".into());
+        assert!(save(&pool, input(vec![new])).await.is_err());
+        save(
+            &pool,
+            input(vec![row(Some(&saved.id), "Student Loan", "200000")]),
+        )
+        .await
+        .unwrap();
+        let unlinked: IncomeDeduction = sqlx::query_as(SELECT).fetch_one(&pool).await.unwrap();
+        assert!(unlinked.debt_account_id.is_none());
+        let amount: i64 =
+            sqlx::query_scalar("SELECT amount FROM planner_deduction_amounts WHERE deduction_id=?")
+                .bind(&saved.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(amount, 0);
+    }
+
     #[tokio::test]
     async fn validate_salary_deductions_and_preserve_ids_overrides_and_ledger() {
         let pool = SqlitePoolOptions::new()

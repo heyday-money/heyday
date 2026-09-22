@@ -1,3 +1,4 @@
+import { useLocalDate } from '../lib/useLocalDate'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { toast } from 'sonner'
@@ -43,6 +44,9 @@ const summaryHelp = {
 export function CashflowPlanner() {
   const [data, setData] = useState<PlannerData | null>(null)
   const [selected, setSelected] = useState('')
+  const today = useLocalDate()
+  const activeCycle = data ? currentCycle(data.period_start_day, today) : ''
+  const visibleCycle = selected || activeCycle
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -50,7 +54,7 @@ export function CashflowPlanner() {
   async function load() {
     const current = ++request.current
     setError(null)
-    try { const result = await getPlanner(); if (current === request.current) { setData(result); setSelected(old => old || currentCycle(result.period_start_day)) } }
+    try { const result = await getPlanner(); if (current === request.current) { setData(result) } }
     catch (e) { if (current === request.current) setError(errorMessage(e)) }
   }
   useEffect(() => {
@@ -78,11 +82,11 @@ export function CashflowPlanner() {
   return <section className="min-w-0" aria-labelledby="planner-title">
     {error && <div role="alert" className="mb-3 rounded-xl bg-soft p-3">Could not refresh the planner. Displayed figures may be out of date. <Button variant="outline" onClick={load}>Retry planner</Button></div>}
     <div className="mb-4 flex flex-wrap items-end justify-between gap-4"><div><h2 id="planner-title" className="text-2xl font-semibold">Cashflow Planner</h2></div>
-      <div className="flex flex-wrap items-end gap-2"><Field label="First visible cycle"><Input type="month" min="0001-01" max="9999-05" value={selected} disabled={busy} onChange={e => { const value = e.target.value; if (/^\d{4}-\d{2}$/.test(value) && value >= '0001-01' && value <= '9999-05') setSelected(value) }} /></Field><Button variant="outline" onClick={() => setSelected(currentCycle(data.period_start_day))}>Current cycle</Button><Button variant="outline" onClick={() => setEditor({ kind: 'opening' })}>Set opening cash</Button></div>
+      <div className="flex flex-wrap items-end gap-2"><Field label="First visible cycle"><Input type="month" min="0001-01" max="9999-05" value={visibleCycle} disabled={busy} onChange={e => { const value = e.target.value; if (/^\d{4}-\d{2}$/.test(value) && value >= '0001-01' && value <= '9999-05') setSelected(value) }} /></Field><Button variant="outline" onClick={() => setSelected('')}>Current cycle</Button><Button variant="outline" onClick={() => setEditor({ kind: 'opening' })}>Set opening cash</Button></div>
     </div>
     {data.source_currency !== 'THB' && (data.incomes.length > 0 || data.debt_accounts.length > 0 || data.installments.length > 0 || data.credit_cards.length > 0) && <p className="mb-3 rounded-xl bg-soft p-3">Linked sources use {data.source_currency ?? 'an unset currency'} and are excluded from this THB planner. No currency conversion is applied.</p>}
     {!data.opening && <p className="mb-4 rounded-xl bg-soft p-4">Enter opening cash and its initial cycle to calculate cumulative balances. Explicit zero is valid.</p>}
-    <TooltipProvider><PlannerTable data={data} selected={selected} busy={busy} edit={setEditor} save={save} /></TooltipProvider>
+    <TooltipProvider><PlannerTable data={data} activeCycle={activeCycle} selected={visibleCycle} busy={busy} edit={setEditor} save={save} /></TooltipProvider>
     <div className="mt-4 space-y-2 text-xs text-muted">
       <p>Enter actual or estimated payments. No tax or social security rates are assumed. Blank entries contribute zero; totals remain based on entered data until you explicitly mark a cycle complete. Cumulative balances may include incomplete earlier cycles.</p>
       <p>Payroll loan deductions belong only under income deductions. Debt rows contain payments, not outstanding balances.</p>
@@ -90,11 +94,11 @@ export function CashflowPlanner() {
       <p>General expenses use transaction categories and cover cash, bank transfer or debit payments only. Credit card purchases count when the bill is paid, not again as general expenses.</p>
       <p>Income source amounts are estimates from their current definitions, including in earlier cycles; they are not proof of receipt. Override an individual cycle to keep its entered amount. Inactive sources and archived destinations generate no estimates. Loan rows come from Accounts; card payments come from saved Installments schedules. Schedules, including past dates, are estimates, not confirmed payments. Only cash/bank payments to credit cards are read from Transactions here; subscriptions and other transactions are not imported. The account-based outlook remains available above.</p>
     </div>
-    {editor && <PlannerDialog editor={editor} data={data} selected={selected} save={save} close={() => setEditor(null)} />}
+    {editor && <PlannerDialog editor={editor} data={data} selected={visibleCycle} save={save} close={() => setEditor(null)} />}
   </section>
 }
 
-function PlannerTable({ data, selected, busy, edit, save }: { data: PlannerData; selected: string; busy: boolean; edit: (editor: Editor) => void; save: (change: PlannerChange) => Promise<void> }) {
+function PlannerTable({ data, selected, activeCycle, busy, edit, save }: { data: PlannerData; activeCycle: string; selected: string; busy: boolean; edit: (editor: Editor) => void; save: (change: PlannerChange) => Promise<void> }) {
   const [error, setError] = useState<string | null>(null)
   const cycles = useMemo(() => plannerCycles(data, selected), [data, selected])
   const rows = useMemo<Row[]>(() => {
@@ -143,7 +147,7 @@ function PlannerTable({ data, selected, busy, edit, save }: { data: PlannerData;
       return <div className="flex items-center gap-1"><button className="min-w-0 flex-1 truncate text-left font-medium underline decoration-dotted underline-offset-4 hover:text-brand" onClick={() => edit({ kind: 'item', category: item.category_id, item })} aria-label={`Edit ${item.name}`}>{item.card_name ? `${item.card_name} · ` : ''}{item.name}</button><HelpTooltip label={item.name} text={`${item.card_name ? `${item.card_name} · ` : ''}${item.name}. ${item.description || 'Select the item name to edit its details.'}${category}`} /><Button size="icon-xs" variant="ghost" className="text-muted" disabled={busy} aria-label={`Delete ${item.name}`} title={`Delete ${item.name}`} onClick={() => edit({ kind: 'delete', item })}><Trash2 aria-hidden="true" /></Button></div>
     } },
     ...cycles.map((cycle, index): ColumnDef<Row> => ({ id: cycle.month, meta: { headerClassName: 'sticky top-0 z-20 min-w-[160px] bg-card px-2 py-2 border-b border-line text-right align-top', cellClassName: `min-w-[160px] px-2 py-1.5 border-b border-line text-right tabular-nums ${index === 0 ? 'bg-soft/50' : ''}` }, header: () => {
-      const status = data.months.find(m => m.month === cycle.month)?.status ?? (cycle.month > currentCycle(data.period_start_day) ? 'forecast' : 'tracking')
+      const status = data.months.find(m => m.month === cycle.month)?.status ?? (cycle.month > activeCycle ? 'forecast' : 'tracking')
       return <><span className="block font-semibold">{monthLabel(cycle.month)}</span><span className="mt-1 block text-[10px] font-normal text-muted">{cycleLabel(cycle.month, data.period_start_day)}</span><NativeSelect size="sm" className="mt-1 h-7 py-1 text-xs" aria-label={`Status ${cycle.month}`} value={status} disabled={busy} onChange={async e => { setError(null); try { await save({ kind: 'status', month: cycle.month, status: e.target.value as CycleStatus }) } catch (e) { setError(errorMessage(e)) } }}><option value="tracking">Tracking cycle</option><option value="forecast">Forecast</option><option value="complete">Actual · complete cycle</option></NativeSelect><span className="mt-1 block text-xs font-normal text-muted">{status === 'complete' ? 'Marked complete by you' : 'Based on entered data'}</span></>
     }, cell: ({ row }) => {
       const entry = row.original

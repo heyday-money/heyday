@@ -81,8 +81,8 @@ export async function createIncome(input: NewIncome): Promise<Income> {
   window.dispatchEvent(new Event('incomes-changed'))
   return income
 }
-export interface IncomeDeduction { id: string; income_id: string; name: string; description: string; amount: string }
-export type IncomeDeductionInput = Omit<IncomeDeduction, 'income_id' | 'id'> & { id: string | null }
+export interface IncomeDeduction { id: string; income_id: string; name: string; description: string; amount: string; debt_account_id?: string | null; debt_account_name?: string | null }
+export type IncomeDeductionInput = Omit<IncomeDeduction, 'income_id' | 'id' | 'debt_account_name'> & { id: string | null }
 export const listIncomeDeductions = (incomeId: string) => invoke<IncomeDeduction[]>('list_income_deductions', { incomeId })
 export async function saveSalaryDeductions(input: { income_id: string; currency: string; deductions: IncomeDeductionInput[] }) {
   const income = await invoke<Income>('save_salary_deductions', { input })

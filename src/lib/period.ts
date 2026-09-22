@@ -9,8 +9,8 @@ export function currentPeriod(day: number, today = new Date()) {
   return { start: boundary(year, month), end: boundary(year, month + 1) }
 }
 
-export function periodLabel(day: number) {
-  const { start, end } = currentPeriod(day)
+export function periodLabel(day: number, today = new Date()) {
+  const { start, end } = currentPeriod(day, today)
   const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1)
   const format = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   return `${format.format(start)} – ${format.format(lastDay)}`

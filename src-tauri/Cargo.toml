@@ -1,8 +1,9 @@
 [package]
 name = "heyday-money"
-version = "0.0.1-alpha.0"
+version = "0.0.1-alpha.1"
 description = "An offline personal finance desktop app"
 edition = "2021"
+license = "Apache-2.0"
 
 [lib]
 name = "heyday_desktop_lib"
@@ -15,6 +16,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+tauri-plugin-updater = "2"
+semver = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }

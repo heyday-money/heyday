@@ -229,3 +229,26 @@ test('salary deductions clamp with salary dates across February and preserve pre
   expect(cycleTotals(input, '2024-02').netIncome).toBe(2n)
   expect(cycleTotals(input, '2024-02').buckets.deductions).toBe(18014398509481984n)
 })
+
+test('linked payroll loan is deducted once without generating an extra debt payment', () => {
+  const input = data()
+  input.incomes = [{ id: 'salary', name: 'Salary', estimated_amount: '5000000', recurrence_day_of_month: 25, is_active: true, destination_account_name: 'Bank', account_archived: false }]
+  input.income_deductions = [{ id: 'student', income_id: 'salary', name: 'Education Debt', description: '', amount: '200000', debt_account_id: 'loan', debt_account_name: 'Student Loan' }]
+  expect(cycleTotals(input, '2026-12')).toMatchObject({ buckets: { deductions: 200000n, debt: 0n }, netIncome: 4800000n, expenses: 0n, surplus: 4800000n })
+  expect(cycleTotals(input, '2027-01').netIncome).toBe(4800000n)
+  expect(plannerItems(input).find(item => item.deduction)?.description).toContain('Student Loan')
+})
+
+test('linked loan identifies additional payments and preserves separate cycle entries', () => {
+  const input = data()
+  input.incomes = [{ id: 'salary', name: 'Salary', estimated_amount: '5000000', recurrence_day_of_month: 25, is_active: true, destination_account_name: 'Bank', account_archived: false }]
+  input.income_deductions = [{ id: 'student', income_id: 'salary', name: 'Education Debt', description: '', amount: '200000', debt_account_id: 'loan', debt_account_name: 'Student Loan' }]
+  input.debt_accounts = [{ id: 'loan', name: 'Student Loan', loan_type: 'student_loan', current_balance: '10000000', notes: null, is_archived: false }]
+  input.amounts = [{ item_id: 'debt:loan', month: '2026-12', amount: '50000' }]
+  expect(plannerItems(input).find(item => item.id === 'debt:loan')?.name).toBe('Student Loan · Additional Payments')
+  expect(cycleTotals(input, '2026-12')).toMatchObject({ netIncome: 4800000n, expenses: 50000n, surplus: 4750000n })
+  expect(cycleTotals(input, '2027-01').surplus).toBe(4800000n)
+  input.incomes[0].is_active = false
+  expect(plannerItems(input).find(item => item.id === 'debt:loan')?.name).toBe('Student Loan')
+  expect(cycleTotals(input, '2026-12').buckets.debt).toBe(50000n)
+})

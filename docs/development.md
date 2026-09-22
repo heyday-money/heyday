@@ -73,8 +73,8 @@ The database is `heyday.db` under Tauri's application data directory for
 `~/Library/Application Support/money.heyday.desktop/heyday.db` on macOS. It is
 created on first launch and migrations run at startup.
 
-Lockfiles are included. Developer ID signing, notarization, and an
-open-source license choice remain to be configured before public distribution.
+Lockfiles are included. The project is licensed under Apache-2.0; see `LICENSE`.
+Developer ID signing and notarization remain to be configured before public distribution.
 
 ## Cashflow planner
 
@@ -202,7 +202,89 @@ keeps a workflow artifact for 30 days. Prerelease tags are marked as prereleases
 Only the built-in GITHUB_TOKEN with contents-write permission is needed.
 
 Builds use ad-hoc signing, without Apple notarization; macOS may require approval
-in Privacy & Security. Developer ID signing/notarization and automatic updates
-remain future work. No local tags or releases are created by implementing this workflow.
+in Privacy & Security. Developer ID signing/notarization remain future work. Signed in-app updates
+require the one-time key setup described below. No local tags or releases are created by implementing this workflow.
 
 Based on the [Tauri GitHub Actions guide](https://v2.tauri.app/distribute/pipelines/github/).
+
+### Local date and development storage
+
+The WebView reads the computer's local date (no network clock). Outlook's default
+window follows the current payday cycle, refreshing every 30 seconds and on focus
+or visibility changes. Explicitly selected cycles remain selected; Current cycle
+returns to following the computer date. Settings shows the computer date.
+
+Debug builds (`bun run desktop:dev`) use `development/heyday.db` under the app data
+directory. On macOS this is
+`~/Library/Application Support/money.heyday.desktop/development/heyday.db`.
+Release builds retain `~/Library/Application Support/money.heyday.desktop/heyday.db`.
+No existing database is moved or copied; development starts with a separate empty
+database and runs the same migrations. `tauri dev --release` is a release build
+and uses production storage; use the normal debug dev command for isolation.
+
+## In-app release checks and signed updates
+
+Settings > General > App Updates checks public releases from
+`heyday-money/heyday` only when requested. It selects the highest newer semantic
+version among the 100 most recent GitHub releases, ignoring drafts and invalid
+tags. Stable builds exclude prereleases; alpha builds include them. Network
+failures and GitHub rate limits are shown with a retry action. Financial features
+remain offline. Development builds may check but cannot install updates.
+
+Installation uses Tauri's updater to verify signatures, then creates a consistent
+SQLite `VACUUM INTO` snapshot in the app data directory's `backups/` folder before
+replacing the app and restarting. A failed download, signature, or backup stops
+installation. The existing database path and app identifier are unchanged.
+Snapshots are retained; restoration is currently manual. Save open drafts before
+installing. Startup continues to apply the existing versioned SQLx migrations.
+
+### One-time signing setup
+
+Generate and securely retain a Tauri updater signing key on your own computer:
+
+```sh
+bun run tauri signer generate -w "$HOME/.tauri/heyday-updater.key"
+```
+
+In GitHub repository Settings > Secrets and variables > Actions, configure:
+
+- Variable `HEYDAY_UPDATER_PUBLIC_KEY`: contents of the generated `.pub` file.
+- Secret `TAURI_SIGNING_PRIVATE_KEY`: contents of the private key file.
+- Secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: its password, if used.
+
+Never commit the private key. Keep the same key for future releases and retain
+an offline backup. This signing key is separate from Apple Developer ID signing.
+
+The tag workflow injects the public key into the native app and enables updater
+artifacts only when both public/private keys are configured. It builds `app,dmg`;
+tauri-action uploads the signed app archive, signature, and `latest.json` as well
+as the DMG. Each release's own manifest supports alpha updates without relying
+on GitHub's stable-only latest release URL. Missing keys leave DMG releases working
+but disable in-app installation. A partially configured key pair fails CI early.
+
+Existing published apps without the updater must first be upgraded manually to a
+build containing this feature and your public key. A real signed release-to-release
+installation still needs verification on an installed macOS app; mocked browser
+tests do not exercise native app replacement or Apple Gatekeeper.
+
+Reference: https://v2.tauri.app/plugin/updater/
+
+## Salary deductions linked to debt
+
+Migration 0018 adds an optional debt account reference to each salary deduction.
+Income > salary creation or Manage Deductions allows linking an active loan or
+credit card, including a Student Loan. The salary schedule supplies the deduction
+amount in Outlook; the link is shown in its help tooltip. No extra Debt Payments
+entry, ledger transaction, or loan balance change is generated. Enter payroll
+repayments only under deductions; any separate Debt Payments amounts must represent
+additional payments. Actual payroll repayment posting remains future work.
+
+Existing deductions migrate with no link and keep IDs, amounts, and cycle overrides.
+Archived linked accounts remain visible and may be retained or unlinked; new links
+require active debt accounts. Invalid links fail the entire save. Unlinking preserves
+the deduction and its overrides. Removing a deduction never removes its debt account.
+
+The salary form labels deductions as amounts per month. Loan rows linked to active
+salary deductions are labeled `Additional Payments` in Outlook; their help text
+points payroll amounts back to Income Deductions. Existing separate cycle entries
+and legacy schedules are preserved for review, not silently removed or offset.
