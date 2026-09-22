@@ -114,16 +114,17 @@ export function plannerItems(data: PlannerData): PlannerItem[] {
       if (!salary) continue
       linked.push({ ...defaults, id: `deduction:${deduction.id}`, category_id: 'deductions', name: `${salary.name} · ${deduction.name}`, deduction,
         income: { ...salary, estimated_amount: deduction.amount },
-        description: `${deduction.description || deduction.name}. Deducted per salary payment, monthly on day ${salary.recurrence_day_of_month}. ${!salary.is_active ? 'Inactive salary; estimates excluded.' : salary.account_archived ? 'Destination unavailable; estimates excluded.' : ''} Gross salary remains in Gross Income; this amount is subtracted once here. Manage this deduction on Income.` })
+        description: `${deduction.description || deduction.name}. ${deduction.debt_account_id ? `Linked debt: ${deduction.debt_account_name ?? "Unavailable account"}. Expected payroll repayment; actual debt balance is unchanged. ` : ""}Deducted per salary payment, monthly on day ${salary.recurrence_day_of_month}. ${!salary.is_active ? 'Inactive salary; estimates excluded.' : salary.account_archived ? 'Destination unavailable; estimates excluded.' : ''} Gross salary remains in Gross Income; this amount is subtracted once here. Manage this deduction on Income.` })
     }
     for (const card of data.credit_cards) {
       linked.push({ ...defaults, id: `card:${card.id}`, category_id: 'cards', name: card.name, credit_card: card,
         description: `Cash and bank repayments/transfers recorded in Transactions, totaled for each payday cycle.${card.is_archived ? ' Archived account; historical payments retained.' : ''} Purchases, refunds and debt-to-debt transfers are excluded. Where payments exist, this recorded total replaces this card's linked installment forecasts for that cycle; no installment split or paid status is inferred.` })
     }
     for (const account of data.debt_accounts) {
+      const payroll = data.income_deductions.filter(deduction => deduction.debt_account_id === account.id && data.incomes.some(salary => salary.id === deduction.income_id && salary.is_active && !salary.account_archived))
       const legacy = data.installments.some(plan => plan.debt_account_type === 'loan' && plan.debt_account_id === account.id)
-      linked.push({ ...defaults, id: `debt:${account.id}`, category_id: 'debt', name: account.name, debt_account: account,
-        description: `${account.loan_type?.replaceAll('_', ' ') ?? 'Loan'} · Balance: ${plannerMoney(BigInt(account.current_balance))} THB (positive means owed, negative means credit). ${account.notes ?? ''} ${account.is_archived ? 'Archived account. ' : ''}${legacy ? 'Legacy loan schedules are included once in this row. Entering a cycle amount replaces their combined payment.' : 'Enter the payment for each cycle; the balance is not a payment.'} Exclude payments already deducted through payroll.` })
+      linked.push({ ...defaults, id: `debt:${account.id}`, category_id: 'debt', name: payroll.length ? `${account.name} · Additional Payments` : account.name, debt_account: account,
+        description: `${payroll.length ? `Payroll repayments (${payroll.map(deduction => deduction.name).join(', ')}) are entered on the salary and included under Income Deductions. This row is for additional payments outside payroll. Existing entered amounts and schedules are retained; review them for duplicates. ` : ''}${account.loan_type?.replaceAll('_', ' ') ?? 'Loan'} · Balance: ${plannerMoney(BigInt(account.current_balance))} THB (positive means owed, negative means credit). ${account.notes ?? ''} ${account.is_archived ? 'Archived account. ' : ''}${legacy ? 'Legacy loan schedules are included once in this row. Entering a cycle amount replaces their combined payment.' : 'Enter the payment for each cycle; the balance is not a payment.'} Exclude payments already deducted through payroll.` })
     }
     for (const plan of data.installments.filter(plan => plan.debt_account_type === 'credit_card')) {
       linked.push({ ...defaults, id: `installment:${plan.id}`, category_id: 'installments', name: plan.name, card_name: plan.debt_account_name, installment: plan,

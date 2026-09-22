@@ -268,3 +268,23 @@ installation still needs verification on an installed macOS app; mocked browser
 tests do not exercise native app replacement or Apple Gatekeeper.
 
 Reference: https://v2.tauri.app/plugin/updater/
+
+## Salary deductions linked to debt
+
+Migration 0018 adds an optional debt account reference to each salary deduction.
+Income > salary creation or Manage Deductions allows linking an active loan or
+credit card, including a Student Loan. The salary schedule supplies the deduction
+amount in Outlook; the link is shown in its help tooltip. No extra Debt Payments
+entry, ledger transaction, or loan balance change is generated. Enter payroll
+repayments only under deductions; any separate Debt Payments amounts must represent
+additional payments. Actual payroll repayment posting remains future work.
+
+Existing deductions migrate with no link and keep IDs, amounts, and cycle overrides.
+Archived linked accounts remain visible and may be retained or unlinked; new links
+require active debt accounts. Invalid links fail the entire save. Unlinking preserves
+the deduction and its overrides. Removing a deduction never removes its debt account.
+
+The salary form labels deductions as amounts per month. Loan rows linked to active
+salary deductions are labeled `Additional Payments` in Outlook; their help text
+points payroll amounts back to Income Deductions. Existing separate cycle entries
+and legacy schedules are preserved for review, not silently removed or offset.

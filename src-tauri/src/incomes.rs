@@ -151,6 +151,7 @@ mod tests {
         let mut salary = input();
         salary.estimated_amount = "5000000".into();
         salary.deductions = vec![crate::income_deductions::DeductionInput {
+            debt_account_id: None,
             id: None,
             name: "Tax".into(),
             description: "".into(),
@@ -162,6 +163,7 @@ mod tests {
         let mut invalid = input();
         invalid.income_type = "other".into();
         invalid.deductions = vec![crate::income_deductions::DeductionInput {
+            debt_account_id: None,
             id: None,
             name: "Tax".into(),
             description: "".into(),
@@ -170,6 +172,7 @@ mod tests {
         assert!(insert_income(&pool, invalid).await.is_err());
         let mut stale = input();
         stale.deductions = vec![crate::income_deductions::DeductionInput {
+            debt_account_id: None,
             id: Some("unowned".into()),
             name: "Tax".into(),
             description: "".into(),

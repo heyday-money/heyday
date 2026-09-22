@@ -112,7 +112,7 @@ export function IncomePage() {
                   <FormField label="Day of month"><NativeSelect name="day" defaultValue="1" className={fieldStyle}>{Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>Day {day}</option>)}</NativeSelect></FormField>
                   <FormField label="Status"><NativeSelect name="is_active" defaultValue="true" className={fieldStyle}><option value="true">Active</option><option value="false">Inactive</option></NativeSelect></FormField>
                 </div>
-                {incomeType === 'salary' && <><p className="mt-3 text-xs">Enter gross salary before deductions as the estimated amount.</p><SalaryDeductionFields rows={deductions} onChange={next => { setDeductions(next); setDirty(true) }} gross={gross} currency={currency} /></>}
+                {incomeType === 'salary' && <><p className="mt-3 text-xs">Enter gross salary before deductions as the estimated amount.</p><SalaryDeductionFields accounts={accounts} rows={deductions} onChange={next => { setDeductions(next); setDirty(true) }} gross={gross} currency={currency} /></>}
                 <p className="mt-4 text-[12px]">When the scheduled day doesn’t exist, use the last day of that month. This schedule is independent of your payday cycle.</p>
                 <div className="mt-5 rounded-xl border border-line p-4"><label className="flex items-center gap-2 text-[13px] text-muted"><input type="checkbox" disabled checked={false} readOnly className="size-4" />Automatically create transactions</label><p className="mt-2 text-[12px]">Coming later. Income sources currently describe estimates only.</p></div>
               </fieldset>

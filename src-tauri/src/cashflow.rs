@@ -577,6 +577,12 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0018_deduction_debt_account.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let data = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert_eq!(data.period_start_day, 31);
         assert_eq!(
@@ -705,6 +711,12 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0018_deduction_debt_account.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "income-0"));
         assert!(result
@@ -876,6 +888,12 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0018_deduction_debt_account.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -961,6 +979,12 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0018_deduction_debt_account.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -996,7 +1020,7 @@ mod tests {
         .await
         .unwrap();
         sqlx::query("INSERT INTO incomes(id,name,destination_account_id,type,estimated_amount,recurrence_day_of_month) VALUES('salary','Salary','bank','salary',5000000,25)").execute(&pool).await.unwrap();
-        sqlx::query("INSERT INTO income_deductions VALUES('tax','salary','Tax','',200000)")
+        sqlx::query("INSERT INTO income_deductions(id,income_id,name,description,amount) VALUES('tax','salary','Tax','',200000)")
             .execute(&pool)
             .await
             .unwrap();
@@ -1069,6 +1093,12 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0018_deduction_debt_account.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "deductions-0"));
         assert!(result.items.iter().any(|i| i.name == "My social security"));
