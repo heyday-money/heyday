@@ -18,10 +18,10 @@ export function installmentSchedule(plan: Pick<Installment, 'first_due_date' | '
   })
 }
 
-export function interestRateText(basisPoints: string) {
-  const value = BigInt(basisPoints)
-  const fraction = (value % 100n).toString().padStart(2, '0').replace(/0+$/, '')
-  return `${value / 100n}${fraction ? '.' + fraction : ''}`
+export function interestRateText(thousandths: string) {
+  const value = BigInt(thousandths)
+  const fraction = (value % 1000n).toString().padStart(3, '0').replace(/0+$/, '')
+  return `${value / 1000n}${fraction ? '.' + fraction : ''}`
 }
 
 export function installmentYearSummary(plans: Installment[], startMonth: string) {

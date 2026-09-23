@@ -3,7 +3,7 @@ import { dateKey, monthlyOutlook, netWorth } from '../src/lib/financial'
 import type { Account, FinancialData, Income, PaymentPlan, Transaction } from '../src/lib/desktop'
 
 function account(id: string, type: Account['type'], balance: string): Account {
-  return { id, name: id, type, current_balance: balance, opening_balance: balance, loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_bps: null }
+  return { id, name: id, type, current_balance: balance, opening_balance: balance, loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_millis: null }
 }
 function income(id: string, destination: string, day: number, amount = '1000', active = true): Income {
   return { id, name: id, type: 'salary', destination_account_id: destination, destination_account_name: destination, estimated_amount: amount, deductions_total: '0', recurrence_frequency: 'monthly', recurrence_day_of_month: day, is_active: active, is_auto_create_transaction: false, created_at: '', updated_at: '' }
@@ -76,7 +76,7 @@ test('past, inactive-account plans and paid dates are excluded; year rollover an
 
 test('installments forecast once per month without changing actuals or treating elapsed payments as paid', () => {
   const input = data()
-  input.installments = [{ id: 'laptop', name: 'Laptop', account_id: 'bank', account_name: 'bank', debt_account_id: 'card', debt_account_name: 'card', debt_account_type: 'credit_card', purchase_kind: 'existing_purchase', purchase_transaction_id: null, monthly_amount: '9007199254740993', interest_rate_bps: null, installment_count: 3, first_due_date: '2026-01-31' }]
+  input.installments = [{ id: 'laptop', name: 'Laptop', account_id: 'bank', account_name: 'bank', debt_account_id: 'card', debt_account_name: 'card', debt_account_type: 'credit_card', purchase_kind: 'existing_purchase', purchase_transaction_id: null, monthly_amount: '9007199254740993', interest_rate_millis: null, installment_count: 3, first_due_date: '2026-01-31' }]
   const before = JSON.stringify(input)
   const periods = monthlyOutlook(input, new Date(2026, 0, 15))
   expect(periods.slice(0, 3).map(period => period.buckets.repayments.forecast)).toEqual(Array(3).fill(9007199254740993n))
@@ -94,4 +94,19 @@ test('account-based outlook forecasts net salary once after configured deduction
   const periods = monthlyOutlook(input, new Date(2026, 0, 15))
   expect(periods[0].buckets.income.forecast).toBe(4725000n)
   expect(periods[1].buckets.income.forecast).toBe(4725000n)
+})
+
+
+test('wallets contribute cash, cancel top-ups, and forecast wallet income', () => {
+  const input = data()
+  input.accounts = [account('bank', 'bank', '10000'), account('wallet', 'wallet', '2500')]
+  input.transactions = [transaction('transfer', 'bank', '3000', 'wallet'), transaction('expense', 'wallet', '500')]
+  input.incomes = [income('Wallet income', 'wallet', 25, '1000')]
+  const period = monthlyOutlook(input, new Date(2026, 0, 15))[0]
+  expect(period.opening).toBe(13000n)
+  expect(period.actualNet).toBe(-500n)
+  expect(period.buckets.other.actual).toBe(0n)
+  expect(period.buckets.income.forecast).toBe(1000n)
+  expect(period.closing).toBe(13500n)
+  expect(netWorth(input.accounts).total).toBe(12500n)
 })

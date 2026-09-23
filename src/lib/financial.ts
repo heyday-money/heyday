@@ -9,7 +9,7 @@ export function dateKey(date: Date) {
 export function monthlyDate(year: number, month: number, day: number) {
   return new Date(year, month, Math.min(day, new Date(year, month + 1, 0).getDate()))
 }
-export function isCash(account: Account) { return account.type === 'cash' || account.type === 'bank' }
+export function isCash(account: Account) { return account.type === 'cash' || account.type === 'bank' || account.type === 'wallet' }
 export function isDebt(account: Account) { return account.type === 'credit_card' || account.type === 'loan' }
 export function accountValue(account: Account) {
   const balance = BigInt(account.current_balance ?? account.opening_balance)

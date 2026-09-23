@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { NewAccount, Account } from '../src/lib/desktop'
+import type { NewAccount, AccountUpdate, Account } from '../src/lib/desktop'
 import { decimalToInteger, formatAmount, fractionDigits } from '../src/lib/money'
 
 test('money conversion respects currency precision without floating point loss', () => {
@@ -17,7 +17,7 @@ test('set currency, create all account types, and preserve them across reload', 
   await page.addInitScript(() => {
     Object.defineProperty(window, 'isTauri', { value: true })
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {
-      invoke: async (command: string, args: { currency?: string; input?: NewAccount }) => {
+      invoke: async (command: string, args: { currency?: string; input?: NewAccount | AccountUpdate }) => {
         const settings = () => ({ currency: localStorage.getItem('test-currency'), period_start_day: 1 })
         const accounts = (): Account[] => JSON.parse(localStorage.getItem('test-accounts') ?? '[]')
         switch (command) {
@@ -28,9 +28,18 @@ test('set currency, create all account types, and preserve them across reload', 
             localStorage.setItem('test-currency', args.currency!); return settings()
           case 'list_transaction_options': return { payees: [], categories: [] }
           case 'list_accounts': return accounts()
+          case 'update_account': {
+            if (sessionStorage.getItem('fail-account')) throw 'Could not save account. Please try again.'
+            const { id, ...details } = args.input as AccountUpdate
+            if ('opening_balance' in details || 'current_balance' in details) throw 'Balance must not be sent for editing.'
+            const saved = accounts().find(account => account.id === id)!
+            const account = { ...saved, ...details, id }
+            localStorage.setItem('test-accounts', JSON.stringify(accounts().map(item => item.id === id ? account : item)))
+            return account
+          }
           case 'create_account': {
             if (sessionStorage.getItem('fail-account')) throw 'Could not save account. Please try again.'
-            const account = { ...args.input!, id: crypto.randomUUID() }
+            const account = { ...(args.input as NewAccount), id: crypto.randomUUID() }
             localStorage.setItem('test-accounts', JSON.stringify([...accounts(), account]))
             return account
           }
@@ -65,16 +74,16 @@ test('set currency, create all account types, and preserve them across reload', 
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'Discard changes' }).click()
   await expect(dialog).not.toBeVisible()
-  const tabLabels = { cash: 'Cash', bank: 'Bank', credit_card: 'Credit cards', loan: 'Loans', investment: 'Investments' }
-  for (const type of ['cash', 'bank', 'credit_card', 'loan', 'investment'] as const) {
+  const tabLabels = { cash: 'Cash', bank: 'Bank', wallet: 'Wallets', credit_card: 'Credit cards', loan: 'Loans', investment: 'Investments' }
+  for (const type of ['cash', 'bank', 'wallet', 'credit_card', 'loan', 'investment'] as const) {
     await page.getByRole('tab', { name: `${tabLabels[type]} (0)`, exact: true }).click()
     await page.getByRole('button', { name: 'Add account', exact: true }).click()
     await expect(page.getByLabel('Account type', { exact: true })).toHaveValue(type)
     await page.getByLabel('Account name', { exact: true }).fill(`My ${type}`)
     await page.getByLabel(/^(Opening balance|Amount owed|Current value)/).fill('1234.56')
-    if (type === 'credit_card' || type === 'loan') await page.getByText('Optional details', { exact: true }).click()
+    await page.getByText('Optional details', { exact: true }).click()
+    await page.getByLabel('Last four digits (optional)').fill('0123')
     if (type === 'credit_card') {
-      await page.getByLabel('Last four digits (optional)').fill('0123')
       await page.getByLabel(/^Credit limit/).fill('50000')
       await page.getByLabel('Statement day (optional)').selectOption('31')
       await page.getByLabel('Payment due day (optional)').selectOption('15')
@@ -90,7 +99,7 @@ test('set currency, create all account types, and preserve them across reload', 
     }
     if (type === 'loan') await page.getByLabel('Loan type', { exact: true }).selectOption('mortgage')
     else await expect(page.getByLabel('Loan type', { exact: true })).toHaveCount(0)
-    if (type === 'loan') await page.getByLabel('Annual interest rate (%, optional)').fill('4.75')
+    if (type === 'loan') await page.getByLabel('Annual interest rate (%, optional)').fill('1.195')
     if (type === 'cash') {
       await page.evaluate(() => sessionStorage.setItem('fail-account', 'true'))
       await page.getByRole('button', { name: 'Save account', exact: true }).click()
@@ -109,13 +118,47 @@ test('set currency, create all account types, and preserve them across reload', 
   }
   await page.reload()
   await expect(page.getByRole('complementary').getByRole('region', { name: 'Credit cards', exact: true })).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'All (5)', exact: true })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('tabpanel').getByRole('listitem')).toHaveCount(5)
-  await expect(page.getByRole('tabpanel').getByRole('region')).toHaveCount(5)
+  await expect(page.getByRole('tab', { name: 'All (6)', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tabpanel').getByRole('listitem')).toHaveCount(6)
+  await expect(page.getByRole('tabpanel').getByText(/•••• 0123/)).toHaveCount(6)
+  await expect(page.getByRole('tabpanel').getByRole('region')).toHaveCount(6)
   await expect(page.getByText('Credit limit: 50,000.00 THB')).toBeVisible()
-  await expect(page.getByText('Annual interest rate: 4.75%')).toBeVisible()
-  await expect(page.getByText('Mortgage · Liability', { exact: true })).toBeVisible()
-  await page.getByRole('tab', { name: 'All (5)', exact: true }).focus()
+  await expect(page.getByText('Annual interest rate: 1.195%')).toBeVisible()
+  await expect(page.getByText('Mortgage · Liability · •••• 0123', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit account My loan', exact: true }).click()
+  const editDialog = page.getByRole('dialog', { name: 'Edit account', exact: true })
+  await expect(page.getByLabel('Account name', { exact: true })).toHaveValue('My loan')
+  await expect(page.getByLabel('Opening balance (THB)')).toHaveValue('1234.56')
+  await expect(page.getByLabel('Opening balance (THB)')).toHaveAttribute('readonly', '')
+  await expect(page.getByLabel('Account type', { exact: true })).toBeDisabled()
+  await expect(page.getByLabel('Last four digits (optional)')).toHaveValue('0123')
+  await expect(page.getByLabel('Annual interest rate (%, optional)')).toHaveValue('1.195')
+  await page.getByLabel('Account name', { exact: true }).fill('Student loan')
+  await page.getByLabel('Loan type', { exact: true }).selectOption('student_loan')
+  await page.getByLabel('Last four digits (optional)').fill('0099')
+  await page.getByLabel('Payment due day (optional)').selectOption('25')
+  await page.getByLabel('Notes (optional)').fill('Updated account details')
+  await page.keyboard.press('Escape')
+  await expect(page.getByText('Discard your unsaved account?')).toBeVisible()
+  await page.getByRole('button', { name: 'Keep editing' }).click()
+  await page.evaluate(() => sessionStorage.setItem('fail-account', 'true'))
+  await page.getByRole('button', { name: 'Save account', exact: true }).click()
+  await expect(editDialog.getByRole('alert')).toContainText('Could not save')
+  await expect(page.getByLabel('Account name', { exact: true })).toHaveValue('Student loan')
+  await page.evaluate(() => sessionStorage.removeItem('fail-account'))
+  await page.getByRole('button', { name: 'Save account', exact: true }).click()
+  await expect(editDialog).not.toBeVisible()
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Account updated.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Student loan', exact: true })).toBeVisible()
+  await expect(page.getByRole('complementary').getByRole('link', { name: /^Student loan:/ })).toBeVisible()
+  await page.reload()
+  await page.getByRole('button', { name: 'Edit account Student loan', exact: true }).click()
+  await expect(page.getByLabel('Opening balance (THB)')).toHaveValue('1234.56')
+  await expect(page.getByLabel('Last four digits (optional)')).toHaveValue('0099')
+  await expect(page.getByLabel('Loan type', { exact: true })).toHaveValue('student_loan')
+  await expect(page.getByLabel('Notes (optional)')).toHaveValue('Updated account details')
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('tab', { name: 'All (6)', exact: true }).focus()
   await page.keyboard.press('ArrowRight')
   await expect(page.getByRole('tab', { name: 'Cash (1)', exact: true })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('tabpanel').getByRole('listitem')).toHaveCount(1)

@@ -1,3 +1,4 @@
+import { AccountTransactionsPage } from './components/AccountTransactionsPage'
 import { SubscriptionsPage } from './components/SubscriptionsPage'
 import { InstallmentsPage } from './components/InstallmentsPage'
 import { MonthlyOutlook } from './components/MonthlyOutlook'
@@ -18,6 +19,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/outlook', component: MonthlyOutlook }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: NetWorthPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', validateSearch: (search: Record<string, unknown>): { reconcile?: boolean } => ({ reconcile: search.reconcile === true || search.reconcile === 'true' ? true : undefined }), component: AccountTransactionsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/income', component: IncomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions', component: TransactionsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/installments', component: InstallmentsPage }),

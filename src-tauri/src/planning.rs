@@ -73,9 +73,9 @@ async fn save(pool: &SqlitePool, input: SavePlan) -> Result<PaymentPlan, String>
     if currency.as_deref() != Some(input.currency.as_str()) {
         return Err("Currency changed. Reload before saving the plan.".into());
     }
-    let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND is_archived = 0 AND type IN ('cash', 'bank'))").bind(&input.account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND is_archived = 0 AND type IN ('cash', 'bank', 'wallet'))").bind(&input.account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     if !valid {
-        return Err("Choose an active cash or bank account to pay from.".into());
+        return Err("Choose an active cash, bank, or digital wallet account to pay from.".into());
     }
     if let Some(id) = &input.destination_account_id {
         let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND is_archived = 0 AND type IN ('credit_card', 'loan'))").bind(id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
@@ -242,6 +242,23 @@ mod tests {
             .await
             .unwrap()
     }
+    #[tokio::test]
+    async fn wallet_can_fund_schedule_without_changing_balances() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        seed(&pool).await;
+        sqlx::query("UPDATE accounts SET type='wallet' WHERE id='bank'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let before = balances(&pool).await;
+        save(&pool, input()).await.unwrap();
+        assert_eq!(balances(&pool).await, before);
+    }
+
     #[tokio::test]
     async fn save_edit_delete_plans_never_change_balances_or_transactions() {
         let pool = SqlitePoolOptions::new()

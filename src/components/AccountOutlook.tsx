@@ -34,11 +34,11 @@ export function AccountOutlook() {
       : error ? <div role="alert">Could not load your monthly outlook. <Button variant="outline" onClick={reload}>Retry outlook</Button></div>
       : !data ? <p role="status">Loading monthly outlook…</p>
       : !currency ? <p className="rounded-xl bg-soft p-5">Choose your currency in <Link to="/settings" className="text-brand">Settings</Link> to start planning.</p>
-      : !data.accounts.some(isCash) ? <p className="rounded-xl bg-soft p-5">Add a cash or bank account in <Link to="/accounts" className="text-brand">Accounts</Link> to build your monthly outlook. Investments and debt are included in <Link to="/net-worth" className="text-brand">Net Worth</Link>.</p>
+      : !data.accounts.some(isCash) ? <p className="rounded-xl bg-soft p-5">Add a cash, bank, or digital wallet account in <Link to="/accounts" className="text-brand">Accounts</Link> to build your monthly outlook. Investments and debt are included in <Link to="/net-worth" className="text-brand">Net Worth</Link>.</p>
       : <>
         <OutlookTable periods={periods} currency={currency} tomorrow={tomorrow} onPlan={openPlan} loading={loading} />
         <p className="mt-3 text-xs">Actuals run through today ({dateKey(today)}). Forecasts start tomorrow. Opening cash is reconstructed from current balances minus recorded cash movements in this cycle, including manually entered starting balances.</p>
-        <p className="mt-2 text-xs">Forecasts include active monthly income, dated payment plans, installment schedules, and cash/bank subscriptions. Missing plans are not assumed to be zero spending. Credit-card purchases affect debt, not cash; plan repayments separately. Transfers between cash/bank accounts cancel out.</p>
+        <p className="mt-2 text-xs">Forecasts include active monthly income, dated payment plans, installment schedules, and cash/bank/wallet subscriptions. Missing plans are not assumed to be zero spending. Credit-card purchases affect debt, not cash; plan repayments separately. Transfers between cash/bank/wallet accounts cancel out.</p>
         <p className="mt-2 text-xs">Income schedules and plans are not matched to early payments. Update or remove a plan if you pay early. Due or past plans are excluded from forecasts; record their actual payments in Transactions.</p>
         <details className="mt-5 rounded-2xl border border-line bg-card p-5">
           <summary className="cursor-pointer font-semibold">Payment plans ({data.plans.length})</summary>

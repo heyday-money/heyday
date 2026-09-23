@@ -162,7 +162,7 @@ function cardPayment(id: string, amount: string, date = '2026-12-25', overrides:
 test('recorded card payments sum per card and payday cycle without counting purchases or debt transfers', () => {
   const input = data()
   input.credit_cards = [{ id: 'card', name: 'Visa', is_archived: false }, { id: 'other', name: 'Mastercard', is_archived: true }]
-  input.card_transactions = [cardPayment('first', '100000'), cardPayment('second', '250000', '2027-01-24', { type: 'transfer' }), cardPayment('next', '70000', '2027-01-25'), cardPayment('other', '40000', '2026-12-25', { destination_account_id: 'other' }),
+  input.card_transactions = [cardPayment('first', '100000'), cardPayment('second', '250000', '2027-01-24', { type: 'transfer', account_type: 'wallet' }), cardPayment('next', '70000', '2027-01-25'), cardPayment('other', '40000', '2026-12-25', { destination_account_id: 'other' }),
     cardPayment('purchase', '9999999', '2026-12-25', { type: 'expense', account_id: 'card', account_type: 'credit_card', destination_account_id: null, destination_account_type: null }),
     cardPayment('debt-transfer', '9999999', '2026-12-25', { account_type: 'loan' }),
     cardPayment('refund', '9999999', '2026-12-25', { type: 'income', account_id: 'card', account_type: 'credit_card', destination_account_id: null, destination_account_type: null })]

@@ -62,7 +62,7 @@ async fn save(pool: &SqlitePool, input: SaveSubscription) -> Result<(), String> 
     if currency.as_deref() != Some(input.currency.as_str()) {
         return Err("Currency changed. Reload before saving the subscription.".into());
     }
-    let account: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND is_archived = 0 AND type IN ('cash', 'bank', 'credit_card'))").bind(&input.account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    let account: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND is_archived = 0 AND type IN ('cash', 'bank', 'wallet', 'credit_card'))").bind(&input.account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     // A paused existing schedule can keep its unavailable account so it can be disabled.
     let unchanged_account: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM subscriptions WHERE id = ? AND account_id = ?)",
@@ -73,7 +73,7 @@ async fn save(pool: &SqlitePool, input: SaveSubscription) -> Result<(), String> 
     .await
     .map_err(|e| e.to_string())?;
     if !account && (input.is_active || !unchanged_account) {
-        return Err("Choose an active cash, bank, or credit card account.".into());
+        return Err("Choose an active cash, bank, digital wallet, or credit card account.".into());
     }
     if let Some(id) = &input.category_id {
         let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM categories WHERE id = ? AND (is_archived = 0 OR EXISTS(SELECT 1 FROM subscriptions WHERE id = ? AND category_id = categories.id)))").bind(id).bind(&input.id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
@@ -155,6 +155,23 @@ mod tests {
             .await
             .unwrap()
     }
+    #[tokio::test]
+    async fn wallet_can_fund_schedule_without_changing_balances() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        seed(&pool).await;
+        sqlx::query("UPDATE accounts SET type='wallet' WHERE id='bank'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let before = balances(&pool).await;
+        save(&pool, input()).await.unwrap();
+        assert_eq!(balances(&pool).await, before);
+    }
+
     #[tokio::test]
     async fn schedules_persist_and_edits_pause_resume_remove_without_ledger_effects() {
         let path = std::env::temp_dir().join(format!(

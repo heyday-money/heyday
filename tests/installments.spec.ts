@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
       { id: 'bank', name: 'Everyday bank', type: 'bank', current_balance: '1000000' },
       { id: 'card', name: 'Credit card', type: 'credit_card', current_balance: '500000' },
       { id: 'loan', name: 'Car loan', type: 'loan', current_balance: '2000000' },
-    ].map(account => ({ ...account, opening_balance: account.current_balance, loan_type: account.type === 'loan' ? 'auto_loan' : null, institution: null, last_four: null, notes: null, credit_limit: account.type === 'credit_card' ? '10000000' : null, statement_day: null, payment_due_day: null, interest_rate_bps: null }))
+    ].map(account => ({ ...account, opening_balance: account.current_balance, loan_type: account.type === 'loan' ? 'auto_loan' : null, institution: null, last_four: null, notes: null, credit_limit: account.type === 'credit_card' ? '10000000' : null, statement_day: null, payment_due_day: null, interest_rate_millis: null }))
     const plans = (): Installment[] => JSON.parse(localStorage.getItem('installments') ?? '[]')
     Object.defineProperty(window, 'isTauri', { value: true })
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: SaveInstallment; id: string }) => {
@@ -82,7 +82,7 @@ test('create credit card purchase schedules, preserve drafts, edit monthly payme
   await page.getByLabel('Installment name', { exact: true }).fill('Phone')
   await expect(page.getByLabel('Credit card', { exact: true }).getByRole('option', { name: /Car loan/ })).toHaveCount(0)
   await page.getByLabel('Credit card', { exact: true }).selectOption('card')
-  await page.getByLabel('Annual interest rate (%, optional)').fill('7.5')
+  await page.getByLabel('Annual interest rate (%, optional)').fill('1.195')
   await page.getByLabel('Monthly payment (THB)', { exact: true }).fill('500')
   await page.getByLabel('Number of installments', { exact: true }).fill('24')
   await page.getByLabel('First due date', { exact: true }).fill('2025-12-31')
@@ -91,13 +91,16 @@ test('create credit card purchase schedules, preserve drafts, edit monthly payme
   await expectForecast('600.01 THB')
   await page.reload()
   await expect(table.getByRole('row').filter({ hasText: 'Phone' })).toContainText('In progress')
-  await expect(table.getByRole('row').filter({ hasText: 'Phone' })).toContainText('7.5%')
+  await expect(table.getByRole('row').filter({ hasText: 'Phone' })).toContainText('1.195%')
   await expect(table.getByRole('row').filter({ hasText: 'Laptop' })).toContainText('0%')
   await page.getByRole('button', { name: 'Edit installment Laptop', exact: true }).click()
   await expect(page.getByLabel('Monthly payment (THB)')).toHaveValue('100.01')
   await page.getByLabel('Annual interest rate (%, optional)').fill('-1')
   await page.getByRole('button', { name: 'Save installment', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('Interest rate must be zero or greater')
+  await page.getByLabel('Annual interest rate (%, optional)').fill('1.1955')
+  await page.getByRole('button', { name: 'Save installment', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('up to 3 decimal places')
   await page.getByLabel('Annual interest rate (%, optional)').fill('12.34')
   await page.getByLabel('Monthly payment (THB)').fill('200')
   await page.getByRole('button', { name: 'Save installment', exact: true }).click()
@@ -159,7 +162,7 @@ test('Installments has a dedicated sidebar link immediately below Transactions',
 test('legacy loan schedules remain visible and cannot enable new installments', async ({ page }) => {
   await page.goto('/#/installments')
   await page.evaluate(() => {
-    localStorage.setItem('installments', JSON.stringify([{ id: 'legacy-loan', name: 'Car payments', account_id: 'bank', account_name: 'Everyday bank', debt_account_id: 'loan', debt_account_name: 'Car loan', debt_account_type: 'loan', monthly_amount: '50000', interest_rate_bps: '750', installment_count: 24, first_due_date: '2026-01-31' }]))
+    localStorage.setItem('installments', JSON.stringify([{ id: 'legacy-loan', name: 'Car payments', account_id: 'bank', account_name: 'Everyday bank', debt_account_id: 'loan', debt_account_name: 'Car loan', debt_account_type: 'loan', monthly_amount: '50000', interest_rate_millis: '7500', installment_count: 24, first_due_date: '2026-01-31' }]))
     sessionStorage.setItem('hide-card', '1')
   })
   await page.reload()
@@ -219,7 +222,7 @@ test('new purchases preview the card impact, record one expense, and remain afte
 test('calendar shows a 12-month item matrix with monthly and remaining totals', async ({ page }) => {
   await page.goto('/#/installments')
   await page.evaluate(() => {
-    const base = { account_id: 'bank', account_name: 'Everyday bank', debt_account_id: 'card', debt_account_name: 'Credit card', debt_account_type: 'credit_card', interest_rate_bps: '0', purchase_kind: 'existing_purchase', purchase_transaction_id: null }
+    const base = { account_id: 'bank', account_name: 'Everyday bank', debt_account_id: 'card', debt_account_name: 'Credit card', debt_account_type: 'credit_card', interest_rate_millis: '0', purchase_kind: 'existing_purchase', purchase_transaction_id: null }
     localStorage.setItem('installments', JSON.stringify([
       { ...base, id: 'laptop', name: 'Laptop', monthly_amount: '20000', installment_count: 14, first_due_date: '2026-01-31' },
       { ...base, id: 'phone', name: 'Phone', monthly_amount: '10000', installment_count: 1, first_due_date: '2026-01-15' },

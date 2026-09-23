@@ -7,6 +7,7 @@ mod income_deductions;
 mod incomes;
 mod installments;
 mod planning;
+mod reconciliation;
 mod reset;
 mod subscriptions;
 mod transaction_options;
@@ -109,7 +110,11 @@ pub fn run() {
             planning::delete_payment_plan,
             update_period,
             update_currency,
+            reconciliation::get_reconciliation,
+            reconciliation::set_transaction_verification,
+            reconciliation::finish_reconciliation,
             accounts::create_account,
+            accounts::update_account,
             accounts::list_accounts,
             incomes::create_income,
             incomes::list_incomes,

@@ -19,7 +19,7 @@ test('installments reject invalid dates, terms and overflowing totals', () => {
 
 test('12-month matrix totals each item and includes payments beyond the visible year', async () => {
   const { installmentYearSummary } = await import('../src/lib/installments')
-  const base = { id: 'a', name: 'Item', account_id: 'bank', account_name: 'Bank', debt_account_id: 'card', debt_account_name: 'Card', debt_account_type: 'credit_card' as const, monthly_amount: '20000', installment_count: 14, first_due_date: '2026-01-31', interest_rate_bps: null, purchase_kind: 'existing_purchase' as const, purchase_transaction_id: null }
+  const base = { id: 'a', name: 'Item', account_id: 'bank', account_name: 'Bank', debt_account_id: 'card', debt_account_name: 'Card', debt_account_type: 'credit_card' as const, monthly_amount: '20000', installment_count: 14, first_due_date: '2026-01-31', interest_rate_millis: null, purchase_kind: 'existing_purchase' as const, purchase_transaction_id: null }
   const summary = installmentYearSummary([base, { ...base, id: 'b', name: 'Item 2', monthly_amount: '10000', installment_count: 1 }], '2026-01')
   expect(summary.months).toHaveLength(12)
   expect(summary.months[11]).toBe('2026-12')
