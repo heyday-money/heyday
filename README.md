@@ -7,7 +7,7 @@
   </p>
 </p>
 
-[![Build macOS DMG](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml/badge.svg?branch=main)](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml)
+[![Build macOS DMG](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml/badge.svg)](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml)
 
 ## What is?
 
