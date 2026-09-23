@@ -118,7 +118,7 @@ export function plannerItems(data: PlannerData): PlannerItem[] {
     }
     for (const card of data.credit_cards) {
       linked.push({ ...defaults, id: `card:${card.id}`, category_id: 'cards', name: card.name, credit_card: card,
-        description: `Cash and bank repayments/transfers recorded in Transactions, totaled for each payday cycle.${card.is_archived ? ' Archived account; historical payments retained.' : ''} Purchases, refunds and debt-to-debt transfers are excluded. Where payments exist, this recorded total replaces this card's linked installment forecasts for that cycle; no installment split or paid status is inferred.` })
+        description: `Cash, bank, and wallet repayments/transfers recorded in Transactions, totaled for each payday cycle.${card.is_archived ? ' Archived account; historical payments retained.' : ''} Purchases, refunds and debt-to-debt transfers are excluded. Where payments exist, this recorded total replaces this card's linked installment forecasts for that cycle; no installment split or paid status is inferred.` })
     }
     for (const account of data.debt_accounts) {
       const payroll = data.income_deductions.filter(deduction => deduction.debt_account_id === account.id && data.incomes.some(salary => salary.id === deduction.income_id && salary.is_active && !salary.account_archived))
@@ -148,7 +148,7 @@ function boundaryKey(month: string, day: number) {
 }
 function isCardPayment(transaction: PlannerCardTransaction, cardId: string) {
   return (transaction.type === 'repayment' || transaction.type === 'transfer')
-    && (transaction.account_type === 'cash' || transaction.account_type === 'bank')
+    && (transaction.account_type === 'cash' || transaction.account_type === 'bank' || transaction.account_type === 'wallet')
     && transaction.destination_account_id === cardId && transaction.destination_account_type === 'credit_card'
 }
 export function recordedCardPayments(data: PlannerData, cardId: string, from: string, to: string) {

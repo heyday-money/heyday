@@ -104,7 +104,7 @@ export function AppLayout() {
     select: (state) => state.location.pathname,
   });
   const title =
-    navigation.find((item) => item.to === pathname)?.label ?? "Heyday";
+    navigation.find((item) => item.to === pathname)?.label ?? (pathname.startsWith("/accounts/") ? "Account transactions" : "Heyday");
 
   useEffect(() => {
     savePreference("sidebar-collapsed", String(collapsed));

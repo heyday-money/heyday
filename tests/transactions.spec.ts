@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
     Object.defineProperty(window, 'isTauri', { value: true })
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: NewTransaction & SaveTransactionOption; id: string }) => {
       const rows = (): Transaction[] => JSON.parse(localStorage.getItem('transactions') ?? '[]')
-      const accounts = [{ id: 'bank', name: 'Bank', type: 'bank', opening_balance: '10000', current_balance: '10000' }, { id: 'card', name: 'Card', type: 'credit_card', opening_balance: '5000', current_balance: '5000' }].map(account => ({ ...account, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_bps: null }))
+      const accounts = [{ id: 'bank', name: 'Bank', type: 'bank', opening_balance: '10000', current_balance: '10000' }, { id: 'card', name: 'Card', type: 'credit_card', opening_balance: '5000', current_balance: '5000' }].map(account => ({ ...account, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_millis: null }))
       const options = (): TransactionOptions => JSON.parse(localStorage.getItem('spending-options') ?? '{"payees":[],"categories":[]}')
       const enrichedRows = () => rows().map(row => ({ ...row, payee_name: options().payees.find(item => item.id === row.payee_id)?.name ?? null, category_name: options().categories.find(item => item.id === row.category_id)?.name ?? null }))
       switch (command) {

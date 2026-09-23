@@ -19,7 +19,7 @@ test('subscription recurrence anchors month-end, yearly leap days and inclusive 
   expect(() => subscriptionDates(plan({ first_billing_date: '2025-02-29' }), '2024-01-01', '2026-01-01')).toThrow()
 })
 test('Outlook includes each future cash subscription once and excludes paused, ended, card and unavailable charges', () => {
-  const base: Account = { id: 'bank', name: 'Bank', type: 'bank', opening_balance: '100000', current_balance: '100000', loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_bps: null }
+  const base: Account = { id: 'bank', name: 'Bank', type: 'bank', opening_balance: '100000', current_balance: '100000', loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_millis: null }
   const data: FinancialData = { settings: { currency: 'THB', period_start_day: 25 }, accounts: [base, { ...base, id: 'card', type: 'credit_card' }], transactions: [], incomes: [], plans: [], installments: [], categories: [], subscriptions: [plan(), plan({ id: 'paused', is_active: false }), plan({ id: 'card', account_id: 'card', account_type: 'credit_card' }), plan({ id: 'ended', end_date: '2024-01-31' }), plan({ id: 'missing', account_id: 'gone' })] }
   const before = JSON.stringify(data)
   const periods = monthlyOutlook(data, new Date(2024, 1, 15))

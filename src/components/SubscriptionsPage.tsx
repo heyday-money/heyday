@@ -30,7 +30,7 @@ function SubscriptionsTable({ data, today, loading }: { data: FinancialData; tod
   const todayString = dateKey(today)
   const rows = useMemo(() => (data.subscriptions ?? []).map(subscription => {
     const next = nextSubscriptionDate(subscription, todayString)
-    const available = data.accounts.some(account => account.id === subscription.account_id && ['cash', 'bank', 'credit_card'].includes(account.type))
+    const available = data.accounts.some(account => account.id === subscription.account_id && ['cash', 'bank', 'wallet', 'credit_card'].includes(account.type))
     return { ...subscription, next: available ? next : null, status: !subscription.is_active ? 'Paused' : !available ? 'Account unavailable' : !next ? 'Schedule ended' : subscription.first_billing_date > todayString ? 'Scheduled' : 'Active' }
   }), [data.subscriptions, data.accounts, todayString])
   const columns = useMemo<ColumnDef<typeof rows[number]>[]>(() => {
@@ -55,10 +55,10 @@ function SubscriptionsTable({ data, today, loading }: { data: FinancialData; tod
     catch (error) { setError(typeof error === 'string' ? error : 'Could not remove the subscription.') }
     finally { setSaving(false) }
   }
-  const canAdd = data.accounts.some(account => ['cash', 'bank', 'credit_card'].includes(account.type))
+  const canAdd = data.accounts.some(account => ['cash', 'bank', 'wallet', 'credit_card'].includes(account.type))
   return <section className="min-w-0" aria-labelledby="subscriptions-title">
     <div className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h2 id="subscriptions-title" className="text-[25px] font-semibold">Subscription plans</h2><p className="mt-2 text-sm">Keep track of recurring services and their next scheduled charge.</p></div><Button disabled={!canAdd || loading} onClick={() => setEditing({})}><Plus size={16} />Add subscription</Button></div>
-    {!canAdd && <p className="mb-4 text-sm">Add a cash, bank, or credit card account in <Link to="/accounts" className="text-brand">Accounts</Link> to create a subscription.</p>}
+    {!canAdd && <p className="mb-4 text-sm">Add a cash, bank, digital wallet, or credit card account in <Link to="/accounts" className="text-brand">Accounts</Link> to create a subscription.</p>}
     {rows.length ? <DataTable table={table} label="Subscription plans" className="min-w-[1100px]" headerClassName="border-b border-line bg-soft text-xs text-muted" bodyClassName="divide-y divide-line" busy={loading} /> : <p className="rounded-2xl border border-line bg-card p-6">No subscriptions yet. Add your first recurring service.</p>}
     <p className="mt-3 text-xs">These are schedules, not confirmed payments. Record charges separately in Transactions. Pausing or removing a plan here does not cancel the service with its provider.</p>
     {editing && <SubscriptionDialog data={data} subscription={editing.subscription} onClose={() => setEditing(null)} />}

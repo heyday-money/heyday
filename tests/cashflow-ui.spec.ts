@@ -46,7 +46,7 @@ test('cycle amounts, opening cash, explicit completion and item edits survive re
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByLabel('Status 2026-12')).toHaveValue('tracking')
   await page.getByRole('button', { name: 'Set opening cash' }).click()
-  await page.getByLabel('Available cash and bank balance (THB)').fill('0')
+  await page.getByLabel('Available cash, bank, and wallet balance (THB)').fill('0')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   const closing = page.getByRole('row').last()
   await expect(closing).toContainText('Cumulative Closing Cash')

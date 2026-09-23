@@ -19,7 +19,7 @@ export function updateCurrency(currency: string): Promise<Settings> {
   return invoke<Settings>('update_currency', { currency })
 }
 
-export type AccountType = 'cash' | 'bank' | 'credit_card' | 'loan' | 'investment'
+export type AccountType = 'cash' | 'bank' | 'wallet' | 'credit_card' | 'loan' | 'investment'
 export const loanTypes = [
   { value: 'mortgage', label: 'Mortgage' },
   { value: 'auto_loan', label: 'Auto Loan' },
@@ -42,12 +42,18 @@ export interface Account {
   credit_limit: string | null
   statement_day: number | null
   payment_due_day: number | null
-  interest_rate_bps: number | null
+  interest_rate_millis: number | null
 }
 export type NewAccount = Omit<Account, 'id' | 'current_balance'> & { currency: string }
 
 export function listAccounts(): Promise<Account[]> {
   return invoke<Account[]>('list_accounts')
+}
+export type AccountUpdate = Omit<NewAccount, 'opening_balance'> & { id: string }
+export async function updateAccount(input: AccountUpdate): Promise<Account> {
+  const account = await invoke<Account>('update_account', { input })
+  window.dispatchEvent(new Event('accounts-changed'))
+  return account
 }
 export async function createAccount(input: NewAccount): Promise<Account> {
   const account = await invoke<Account>('create_account', { input })
@@ -92,6 +98,7 @@ export async function saveSalaryDeductions(input: { income_id: string; currency:
 
 export type TransactionType = 'income' | 'expense' | 'transfer' | 'repayment'
 export interface Transaction {
+  has_reconciliation_history?: boolean
   id: string
   type: TransactionType
   account_id: string
@@ -106,7 +113,7 @@ export interface Transaction {
   category_id: string | null
   category_name: string | null
 }
-export type NewTransaction = Omit<Transaction, 'id' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name'> & { currency: string }
+export type NewTransaction = Omit<Transaction, 'id' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name' | 'has_reconciliation_history'> & { currency: string; cleared_account_ids?: string[] }
 export function listTransactions(): Promise<Transaction[]> { return invoke('list_transactions') }
 export async function createTransaction(input: NewTransaction): Promise<Transaction> {
   const result = await invoke<Transaction>('create_transaction', { input })
@@ -114,8 +121,9 @@ export async function createTransaction(input: NewTransaction): Promise<Transact
   window.dispatchEvent(new Event('accounts-changed'))
   return result
 }
-export async function deleteTransaction(id: string): Promise<void> {
-  await invoke('delete_transaction', { id })
+export async function deleteTransaction(id: string, confirmReconciled = false): Promise<void> {
+  await invoke('delete_transaction', { id, confirmReconciled })
+  window.dispatchEvent(new Event('transactions-changed'))
   window.dispatchEvent(new Event('accounts-changed'))
 }
 
@@ -175,7 +183,7 @@ export interface Installment {
   debt_account_type: AccountType
   monthly_amount: string
   installment_count: number
-  interest_rate_bps: string | null
+  interest_rate_millis: string | null
   first_due_date: string
   purchase_kind: 'existing_purchase' | 'new_purchase'
   purchase_transaction_id: string | null

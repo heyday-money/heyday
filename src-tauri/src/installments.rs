@@ -12,12 +12,12 @@ pub struct Installment {
     debt_account_type: String,
     monthly_amount: String,
     installment_count: i64,
-    interest_rate_bps: Option<String>,
+    interest_rate_millis: Option<String>,
     first_due_date: String,
     purchase_kind: String,
     purchase_transaction_id: Option<String>,
 }
-pub(crate) const SELECT: &str = "SELECT i.id, i.name, i.account_id, a.name AS account_name, i.debt_account_id, d.name AS debt_account_name, d.type AS debt_account_type, CAST(i.monthly_amount AS TEXT) AS monthly_amount, i.installment_count, CAST(i.interest_rate_bps AS TEXT) AS interest_rate_bps, i.first_due_date, i.purchase_kind, i.purchase_transaction_id FROM installments i JOIN accounts a ON a.id = i.account_id JOIN accounts d ON d.id = i.debt_account_id ORDER BY i.first_due_date, i.created_at, i.id";
+pub(crate) const SELECT: &str = "SELECT i.id, i.name, i.account_id, a.name AS account_name, i.debt_account_id, d.name AS debt_account_name, d.type AS debt_account_type, CAST(i.monthly_amount AS TEXT) AS monthly_amount, i.installment_count, CAST(i.interest_rate_millis AS TEXT) AS interest_rate_millis, i.first_due_date, i.purchase_kind, i.purchase_transaction_id FROM installments i JOIN accounts a ON a.id = i.account_id JOIN accounts d ON d.id = i.debt_account_id ORDER BY i.first_due_date, i.created_at, i.id";
 
 #[derive(Deserialize)]
 pub struct Purchase {
@@ -33,7 +33,7 @@ pub struct SaveInstallment {
     debt_account_id: String,
     monthly_amount: String,
     installment_count: i64,
-    interest_rate_bps: Option<String>,
+    interest_rate_millis: Option<String>,
     first_due_date: String,
     currency: String,
     purchase: Option<Purchase>,
@@ -50,7 +50,7 @@ async fn save(pool: &SqlitePool, input: SaveInstallment) -> Result<(), String> {
         return Err("Choose between 1 and 600 monthly installments.".into());
     }
     let interest = input
-        .interest_rate_bps
+        .interest_rate_millis
         .as_deref()
         .map(|value| {
             value
@@ -100,11 +100,11 @@ async fn save(pool: &SqlitePool, input: SaveInstallment) -> Result<(), String> {
             return Err("The credit card cannot change after recording the purchase. Correct the purchase in Transactions.".into());
         }
     }
-    let source: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND is_archived = 0 AND type IN ('cash', 'bank'))").bind(&input.account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    let source: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND is_archived = 0 AND type IN ('cash', 'bank', 'wallet'))").bind(&input.account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     let debt: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND is_archived = 0 AND type = 'credit_card')").bind(&input.debt_account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     if !source || !debt || input.account_id == input.debt_account_id {
         return Err(
-            "Choose an active cash or bank account and a different active credit card.".into(),
+            "Choose an active cash, bank, or digital wallet account and a different active credit card.".into(),
         );
     }
     let purchase_id = if let Some(purchase) = input.purchase {
@@ -114,6 +114,7 @@ async fn save(pool: &SqlitePool, input: SaveInstallment) -> Result<(), String> {
         let row = crate::transactions::insert_in_connection(
             &mut tx,
             crate::transactions::NewTransaction {
+                cleared_account_ids: vec![],
                 kind: "expense".into(),
                 account_id: input.debt_account_id.clone(),
                 destination_account_id: None,
@@ -131,10 +132,10 @@ async fn save(pool: &SqlitePool, input: SaveInstallment) -> Result<(), String> {
         None
     };
     let result = if let Some(id) = input.id {
-        sqlx::query("UPDATE installments SET name = ?, account_id = ?, debt_account_id = ?, monthly_amount = ?, installment_count = ?, first_due_date = ?, interest_rate_bps = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        sqlx::query("UPDATE installments SET name = ?, account_id = ?, debt_account_id = ?, monthly_amount = ?, installment_count = ?, first_due_date = ?, interest_rate_millis = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
             .bind(name).bind(input.account_id).bind(input.debt_account_id).bind(amount).bind(input.installment_count).bind(input.first_due_date).bind(interest).bind(id).execute(&mut *tx).await
     } else {
-        sqlx::query("INSERT INTO installments (id, name, account_id, debt_account_id, monthly_amount, installment_count, first_due_date, interest_rate_bps, purchase_kind, purchase_transaction_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO installments (id, name, account_id, debt_account_id, monthly_amount, installment_count, first_due_date, interest_rate_millis, purchase_kind, purchase_transaction_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(name).bind(input.account_id).bind(input.debt_account_id).bind(amount).bind(input.installment_count).bind(input.first_due_date).bind(interest).bind(if purchase_id.is_some() { "new_purchase" } else { "existing_purchase" }).bind(purchase_id).execute(&mut *tx).await
     }.map_err(|e| e.to_string())?;
     if result.rows_affected() != 1 {
@@ -188,7 +189,7 @@ mod tests {
             debt_account_id: "card".into(),
             monthly_amount: "1000".into(),
             installment_count: 12,
-            interest_rate_bps: Some("0".into()),
+            interest_rate_millis: Some("0".into()),
             first_due_date: "2024-01-31".into(),
             currency: "THB".into(),
             purchase: None,
@@ -203,6 +204,23 @@ mod tests {
             .await
             .unwrap()
     }
+    #[tokio::test]
+    async fn wallet_can_fund_schedule_without_changing_balances() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        seed(&pool).await;
+        sqlx::query("UPDATE accounts SET type='wallet' WHERE id='bank'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let before = balances(&pool).await;
+        save(&pool, input()).await.unwrap();
+        assert_eq!(balances(&pool).await, before);
+    }
+
     #[tokio::test]
     async fn schedules_persist_without_ledger_effects() {
         let path = std::env::temp_dir().join(format!(
@@ -223,10 +241,10 @@ mod tests {
         save(&pool, input()).await.unwrap();
         let card = records(&pool).await.remove(0);
         assert_eq!(card.name, "Laptop");
-        assert_eq!(card.interest_rate_bps.as_deref(), Some("0"));
+        assert_eq!(card.interest_rate_millis.as_deref(), Some("0"));
         assert_eq!(card.debt_account_name, "Card");
         let mut second = input();
-        second.interest_rate_bps = Some("750".into());
+        second.interest_rate_millis = Some("1195".into());
         second.monthly_amount = "9007199254740993".into();
         save(&pool, second).await.unwrap();
         pool.close().await;
@@ -238,17 +256,17 @@ mod tests {
             .iter()
             .any(|row| row.monthly_amount == "9007199254740993"
                 && row.debt_account_name == "Card"
-                && row.interest_rate_bps.as_deref() == Some("750")));
+                && row.interest_rate_millis.as_deref() == Some("1195")));
         let mut edit = input();
         edit.id = Some(card.id.clone());
         edit.monthly_amount = "2500".into();
         edit.installment_count = 6;
-        edit.interest_rate_bps = Some("1234".into());
+        edit.interest_rate_millis = Some("12345".into());
         save(&reopened, edit).await.unwrap();
         assert!(records(&reopened).await.iter().any(|row| row.id == card.id
             && row.monthly_amount == "2500"
             && row.installment_count == 6
-            && row.interest_rate_bps.as_deref() == Some("1234")));
+            && row.interest_rate_millis.as_deref() == Some("12345")));
         remove(&reopened, &card.id).await.unwrap();
         assert!(remove(&reopened, &card.id).await.is_err());
         assert_eq!(balances(&reopened).await, before);
@@ -411,6 +429,9 @@ mod tests {
             .unwrap();
         for migration in [
             include_str!("../migrations/0001_initial.sql"),
+            include_str!("../migrations/0002_account_details.sql"),
+            include_str!("../migrations/0003_transactions.sql"),
+            include_str!("../migrations/0004_optional_transaction_description.sql"),
             include_str!("../migrations/0008_installments.sql"),
         ] {
             sqlx::raw_sql(migration).execute(&pool).await.unwrap();
@@ -425,20 +446,38 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::query("UPDATE accounts SET interest_rate_bps = 475 WHERE id = 'card'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO installments (id, name, account_id, debt_account_id, monthly_amount, installment_count, first_due_date, interest_rate_bps) VALUES ('rated', 'Rated', 'bank', 'card', 1000, 12, '2025-01-31', 750), ('zero', 'Zero', 'bank', 'card', 1000, 12, '2025-01-31', 0)").execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0019_interest_precision.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        let rate: i64 =
+            sqlx::query_scalar("SELECT interest_rate_millis FROM accounts WHERE id = 'card'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(rate, 4750);
+        let rates: Vec<i64> = sqlx::query_scalar("SELECT interest_rate_millis FROM installments WHERE interest_rate_millis IS NOT NULL ORDER BY interest_rate_millis").fetch_all(&pool).await.unwrap();
+        assert_eq!(rates, vec![0, 7500]);
+
         let row = records(&pool).await.remove(0);
-        assert_eq!(row.interest_rate_bps, None);
+        assert_eq!(row.interest_rate_millis, None);
         assert_eq!(row.monthly_amount, "1000");
         assert_eq!(row.installment_count, 12);
         assert_eq!(row.first_due_date, "2024-01-31");
         assert_eq!(row.debt_account_id, "card");
         assert!(
-            sqlx::query("UPDATE installments SET interest_rate_bps = -1")
+            sqlx::query("UPDATE installments SET interest_rate_millis = -1")
                 .execute(&pool)
                 .await
                 .is_err()
         );
         assert!(
-            sqlx::query("UPDATE installments SET interest_rate_bps = 1.5")
+            sqlx::query("UPDATE installments SET interest_rate_millis = 1.5")
                 .execute(&pool)
                 .await
                 .is_err()
@@ -457,7 +496,7 @@ mod tests {
         let mut cases = vec![];
         for rate in ["-1", "1.5", "bad", "9223372036854775808"] {
             let mut value = input();
-            value.interest_rate_bps = Some(rate.into());
+            value.interest_rate_millis = Some(rate.into());
             cases.push(value);
         }
         for amount in [
@@ -516,7 +555,7 @@ mod tests {
         assert_eq!(balances(&pool).await, before);
         let mut value = input();
         value.first_due_date = "2024-02-29".into();
-        value.interest_rate_bps = None;
+        value.interest_rate_millis = None;
         save(&pool, value).await.unwrap();
         let mut value = input();
         value.first_due_date = "9999-12-31".into();

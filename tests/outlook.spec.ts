@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
       { id: 'bank', name: 'Everyday bank', type: 'bank', opening_balance: '92000', current_balance: '100000' },
       { id: 'card', name: 'Credit card', type: 'credit_card', opening_balance: '20000', current_balance: '20000' },
       { id: 'fund', name: 'Investments', type: 'investment', opening_balance: '500000', current_balance: '500000' },
-    ].map(account => ({ ...account, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_bps: null }))
+    ].map(account => ({ ...account, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_millis: null }))
     const incomes = [{ id: 'salary', name: 'Salary', type: 'salary', destination_account_id: 'bank', destination_account_name: 'Everyday bank', estimated_amount: '30000', recurrence_frequency: 'monthly', recurrence_day_of_month: 25, is_active: true, is_auto_create_transaction: false, created_at: '', updated_at: '' }]
     const transactions = [{ id: 'received', type: 'income', amount: '10000' }, { id: 'spent', type: 'expense', amount: '2000' }].map(row => ({ ...row, account_id: 'bank', account_name: 'Everyday bank', destination_account_id: null, destination_account_name: null, date: '2026-01-10', description: '', payee_id: null, payee_name: null, category_id: 'housing', category_name: 'Housing' }))
     const plans = (): PaymentPlan[] => JSON.parse(localStorage.getItem('test-plans') ?? '[]')
@@ -131,7 +131,7 @@ test('outlook and net worth handle missing prerequisites and retry failed reads'
   await page.evaluate(() => { sessionStorage.removeItem('no-currency'); sessionStorage.setItem('no-accounts', '1') })
   await page.reload()
   await page.getByRole('button', { name: 'Account-Based Outlook', exact: true }).click()
-  await expect(page.getByText(/Add a cash or bank account in/)).toBeVisible()
+  await expect(page.getByText(/Add a cash, bank, or digital wallet account in/)).toBeVisible()
   await page.getByRole('navigation').getByRole('link', { name: 'Net Worth', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'No accounts yet' })).toBeVisible()
 })

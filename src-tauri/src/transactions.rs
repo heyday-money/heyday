@@ -17,8 +17,9 @@ pub struct Transaction {
     payee_name: Option<String>,
     category_id: Option<String>,
     category_name: Option<String>,
+    has_reconciliation_history: bool,
 }
-pub(crate) const SELECT: &str = "SELECT t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, t.category_id, c.name AS category_name FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id";
+pub(crate) const SELECT: &str = "SELECT t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, t.category_id, c.name AS category_name, EXISTS(SELECT 1 FROM reconciliation_entries re WHERE re.transaction_id=t.id) AS has_reconciliation_history FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id";
 
 #[derive(Deserialize)]
 pub struct NewTransaction {
@@ -32,6 +33,8 @@ pub struct NewTransaction {
     pub(crate) currency: String,
     pub(crate) payee_id: Option<String>,
     pub(crate) category_id: Option<String>,
+    #[serde(default)]
+    pub(crate) cleared_account_ids: Vec<String>,
 }
 
 pub(crate) fn valid_date(date: &str) -> bool {
@@ -166,6 +169,23 @@ pub(crate) async fn insert_in_connection(
             }
         }
     }
+    for account in &input.cleared_account_ids {
+        if account != &input.account_id && Some(account) != input.destination_account_id.as_ref() {
+            return Err("Only participating accounts can be cleared.".into());
+        }
+        let supported: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type IN ('bank','wallet','credit_card'))",
+        )
+        .bind(account)
+        .fetch_one(&mut *conn)
+        .await
+        .map_err(|e| e.to_string())?;
+        if !supported {
+            return Err(
+                "Only bank, digital wallet, and credit card accounts support clearing.".into(),
+            );
+        }
+    }
     adjust(
         &mut *conn,
         &input.account_id,
@@ -186,6 +206,10 @@ pub(crate) async fn insert_in_connection(
     let id: String = sqlx::query_scalar("INSERT INTO transactions (id, type, account_id, destination_account_id, amount, date, description, payee_id, category_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id")
         .bind(input.kind).bind(input.account_id).bind(input.destination_account_id).bind(amount).bind(input.date).bind(description).bind(input.payee_id).bind(input.category_id)
         .fetch_one(&mut *conn).await.map_err(|e| e.to_string())?;
+    for account in &input.cleared_account_ids {
+        sqlx::query("UPDATE transaction_verifications SET status='cleared' WHERE transaction_id=? AND account_id=?")
+            .bind(&id).bind(account).execute(&mut *conn).await.map_err(|e| e.to_string())?;
+    }
     let row = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
         .bind(id)
         .fetch_one(&mut *conn)
@@ -201,7 +225,16 @@ async fn insert(pool: &SqlitePool, input: NewTransaction) -> Result<Transaction,
     Ok(row)
 }
 
+#[cfg(test)]
 pub(crate) async fn remove(pool: &SqlitePool, id: &str) -> Result<(), String> {
+    remove_confirmed(pool, id, false).await
+}
+
+pub(crate) async fn remove_confirmed(
+    pool: &SqlitePool,
+    id: &str,
+    confirmed: bool,
+) -> Result<(), String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let row: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
         .bind(id)
@@ -209,6 +242,7 @@ pub(crate) async fn remove(pool: &SqlitePool, id: &str) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?
         .ok_or("Transaction no longer exists. Reload the page.")?;
+    crate::reconciliation::before_delete(&mut tx, id, confirmed).await?;
     let amount = row.amount.parse::<i64>().map_err(|e| e.to_string())?;
     adjust(
         &mut tx,
@@ -243,8 +277,9 @@ pub async fn create_transaction(
 pub async fn delete_transaction(
     pool: tauri::State<'_, SqlitePool>,
     id: String,
+    confirm_reconciled: Option<bool>,
 ) -> Result<(), String> {
-    remove(pool.inner(), &id).await
+    remove_confirmed(pool.inner(), &id, confirm_reconciled.unwrap_or(false)).await
 }
 #[tauri::command]
 pub async fn list_transactions(
@@ -299,6 +334,10 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0022_reconciliation.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
         pool
     }
     fn input(kind: &str, account: &str, destination: Option<&str>, amount: &str) -> NewTransaction {
@@ -312,6 +351,7 @@ mod tests {
             currency: "THB".into(),
             payee_id: None,
             category_id: None,
+            cleared_account_ids: vec![],
         }
     }
     async fn balances(pool: &SqlitePool) -> Vec<(String, i64, i64)> {
@@ -546,6 +586,10 @@ mod tests {
         .await
         .unwrap();
         sqlx::raw_sql(include_str!("../migrations/0005_payees_and_categories.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0022_reconciliation.sql"))
             .execute(&pool)
             .await
             .unwrap();

@@ -5,7 +5,7 @@ import { formatAmount } from '../lib/money'
 import { useFinancialData } from '../lib/useFinancialData'
 import { Button } from './ui/button'
 
-const types = [ ['cash', 'Cash'], ['bank', 'Bank'], ['credit_card', 'Credit cards'], ['loan', 'Loans'], ['investment', 'Investments'] ] as const
+const types = [ ['cash', 'Cash'], ['bank', 'Bank'], ['wallet', 'Wallets'], ['credit_card', 'Credit cards'], ['loan', 'Loans'], ['investment', 'Investments'] ] as const
 export function NetWorthPage() {
   const { data, error, loading, today, reload } = useFinancialData()
   if (!desktopAvailable) return <p className="rounded-xl bg-soft p-5">Open the desktop app to see your net worth.</p>
