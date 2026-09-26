@@ -70,11 +70,13 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
         institution: type === 'cash' ? null : optional('institution'),
         last_four: optional('last_four'),
         notes: optional('notes'),
+        monthly_installment: type === 'loan' && text('monthly_installment') ? decimalToInteger(text('monthly_installment'), digits) : null,
         credit_limit: type === 'credit_card' && text('credit_limit') ? decimalToInteger(text('credit_limit'), digits) : null,
         statement_day: type === 'credit_card' ? day('statement_day') : null,
         payment_due_day: debt ? day('payment_due_day') : null,
-        interest_rate_millis: debt && text('interest') ? Number(decimalToInteger(text('interest'), 3)) : null,
+        interest_rate_ten_thousandths: debt && text('interest') ? Number(decimalToInteger(text('interest'), 4)) : null,
       }
+      if (details.monthly_installment !== null && BigInt(details.monthly_installment) < 0n) throw new Error('Monthly installment cannot be negative.')
       const account = editing
         ? await updateAccount({ ...details, id: editing.id })
         : await createAccount({ ...details, opening_balance: decimalToInteger(text('balance'), digits) })
@@ -101,17 +103,19 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
                 <div className="grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">
                   <Field label="Account type"><NativeSelect disabled={!!editing} value={type} onChange={event => { setType(event.target.value as AccountType); setError(null) }} className={inputStyle}>{accountTypes.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}</NativeSelect></Field>
                   {type === 'loan' && <Field label="Loan type"><NativeSelect name="loan_type" required={!editing || editing.loan_type !== null} defaultValue={editing?.loan_type ?? ''} className={inputStyle}><option value="" disabled={!editing || editing.loan_type !== null}>{editing ? 'Unclassified' : 'Choose a loan type'}</option>{loanTypes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></Field>}
+                  {type === 'loan' && <Field label={`Monthly installment (${currency}, optional)`}><Input name="monthly_installment" defaultValue={editing?.monthly_installment != null ? amountText(editing.monthly_installment, currency) : ''} inputMode="decimal" placeholder="Not set" className={inputStyle} /></Field>}
                   <Field label="Account name"><Input ref={nameRef} name="name" defaultValue={editing?.name ?? ''} required maxLength={100} className={inputStyle} placeholder="e.g. Everyday wallet" /></Field>
                   <Field label={`${editing ? 'Opening balance' : debt ? 'Amount owed' : type === 'investment' ? 'Current value' : 'Opening balance'} (${currency})`}><Input name="balance" inputMode="decimal" readOnly={!!editing} required defaultValue={editing ? amountText(editing.opening_balance, currency) : '0'} className={inputStyle} /></Field>
                 </div>
                 <p className="mt-4 text-[12px]">{editing ? 'Opening balance cannot be edited. Record transactions to update the current balance.' : debt ? 'Enter debt as a positive amount. Use a negative amount for an overpayment or credit.' : 'Enter the balance you own. Use a negative amount for an overdraft.'} {!editing && 'This is a manual starting balance.'}</p>
+                {type === 'loan' && <p className="mt-3 text-xs">Monthly installment includes any lender interest and fees. The THB Outlook planner uses it once per payday cycle, including past cycles; cycle overrides are preserved. Leave blank if unknown; zero means no planned payment. For payroll-linked loans, enter only additional payments outside payroll. It does not change your balance.{currency !== 'THB' && ' This account is excluded from the THB planner; no currency conversion is applied.'}</p>}
                 <details open={editing ? true : undefined} className="mt-5 rounded-xl border border-line p-4">
                   <summary className="cursor-pointer text-[13px] font-semibold">Optional details</summary>
                   <div className="mt-4 grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">
                     {type !== 'cash' && <Field label="Institution (optional)"><Input name="institution" defaultValue={editing?.institution ?? ''} maxLength={100} className={inputStyle} placeholder={type === 'wallet' ? 'Wallet provider, e.g. TrueMoney' : type === 'investment' ? 'Broker or fund provider' : 'Bank or lender'} /></Field>}
                     <Field label="Last four digits (optional)"><Input name="last_four" defaultValue={editing?.last_four ?? ''} inputMode="numeric" pattern="[0-9]{4}" maxLength={4} className={inputStyle} /></Field>
                     {type === 'credit_card' && <><Field label={`Credit limit (${currency}, optional)`}><Input name="credit_limit" defaultValue={editing?.credit_limit != null ? amountText(editing.credit_limit, currency) : ''} inputMode="decimal" className={inputStyle} /></Field><DayField value={editing?.statement_day} name="statement_day" label="Statement day (optional)" /></>}
-                    {debt && <><DayField value={editing?.payment_due_day} name="payment_due_day" label="Payment due day (optional)" /><Field label="Annual interest rate (%, optional)"><Input name="interest" defaultValue={editing?.interest_rate_millis != null ? interestRateText(String(editing.interest_rate_millis)) : ''} type="number" min="0" max="100" step="0.001" className={inputStyle} /></Field></>}
+                    {debt && <><DayField value={editing?.payment_due_day} name="payment_due_day" label="Payment due day (optional)" /><Field label="Annual interest rate (%, optional)"><Input name="interest" defaultValue={editing?.interest_rate_ten_thousandths != null ? interestRateText(String(editing.interest_rate_ten_thousandths), 4) : ''} type="number" min="0" max="100" step="0.0001" className={inputStyle} /></Field></>}
                   </div>
                   {debt && <p className="mt-3 text-[12px]">Scheduled days use month-end if unavailable. Payments and interest are not calculated automatically.</p>}
                   <div className="mt-4"><Field label="Notes (optional)"><Textarea name="notes" defaultValue={editing?.notes ?? ''} maxLength={1000} rows={2} className={inputStyle} /></Field></div>

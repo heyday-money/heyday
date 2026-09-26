@@ -53,6 +53,7 @@ pub struct PlannerIncome {
 }
 #[derive(Serialize, sqlx::FromRow)]
 pub struct PlannerDebtAccount {
+    monthly_installment: Option<String>,
     id: String,
     name: String,
     loan_type: Option<String>,
@@ -114,7 +115,7 @@ async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sqlx::Error> {
         credit_cards: sqlx::query_as("SELECT id,name,is_archived FROM accounts WHERE type='credit_card' ORDER BY name,id").fetch_all(&mut *conn).await?,
         card_transactions: sqlx::query_as("SELECT t.id,t.type AS kind,t.account_id,a.type AS account_type,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id WHERE a.type='credit_card' OR d.type='credit_card' ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
         incomes: sqlx::query_as("SELECT i.id,i.name,CAST(i.estimated_amount AS TEXT) AS estimated_amount,i.recurrence_day_of_month,i.is_active,a.name AS destination_account_name,a.is_archived AS account_archived FROM incomes i JOIN accounts a ON a.id=i.destination_account_id ORDER BY i.created_at,i.id").fetch_all(&mut *conn).await?,
-        debt_accounts: sqlx::query_as("SELECT id,name,loan_type,CAST(current_balance AS TEXT) AS current_balance,notes,is_archived FROM accounts WHERE type='loan' ORDER BY name,id").fetch_all(&mut *conn).await?,
+        debt_accounts: sqlx::query_as("SELECT id,name,loan_type,CAST(current_balance AS TEXT) AS current_balance,CAST(monthly_installment AS TEXT) AS monthly_installment,notes,is_archived FROM accounts WHERE type='loan' ORDER BY name,id").fetch_all(&mut *conn).await?,
         installments: sqlx::query_as("SELECT i.id,i.name,i.debt_account_id,d.name AS debt_account_name,d.type AS debt_account_type,a.name AS account_name,CAST(i.monthly_amount AS TEXT) AS monthly_amount,i.installment_count,i.first_due_date,(a.is_archived=0 AND d.is_archived=0 AND a.type IN ('cash','bank','wallet') AND d.type IN ('credit_card','loan')) AS accounts_available FROM installments i JOIN accounts a ON a.id=i.account_id JOIN accounts d ON d.id=i.debt_account_id ORDER BY i.first_due_date,i.id").fetch_all(&mut *conn).await?,
         source_currency: sqlx::query_scalar("SELECT currency FROM settings WHERE id=1").fetch_one(&mut *conn).await?,
         categories: sqlx::query_as("SELECT id,name,subtotal FROM planner_categories ORDER BY position").fetch_all(&mut *conn).await?,
@@ -583,6 +584,12 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0024_loan_monthly_installment.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let data = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert_eq!(data.period_start_day, 31);
         assert_eq!(
@@ -717,6 +724,12 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0024_loan_monthly_installment.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "income-0"));
         assert!(result
@@ -735,6 +748,10 @@ mod tests {
             .await
             .unwrap();
         sqlx::query("INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('bank','Bank','bank',10000,10000),('loan','Home loan','loan',9007199254740993,9007199254740993),('card','Visa','credit_card',20000,20000)").execute(&pool).await.unwrap();
+        sqlx::query("UPDATE accounts SET monthly_installment=9007199254740993 WHERE id='loan'")
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query("INSERT INTO installments(id,name,account_id,debt_account_id,monthly_amount,installment_count,first_due_date) VALUES('card-plan','Laptop','bank','card',300000,3,'2026-12-25'),('legacy','Legacy loan','bank','loan',100000,2,'2026-12-25')").execute(&pool).await.unwrap();
         let result = apply(
             &pool,
@@ -747,6 +764,10 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(result.debt_accounts.len(), 1);
+        assert_eq!(
+            result.debt_accounts[0].monthly_installment.as_deref(),
+            Some("9007199254740993")
+        );
         assert_eq!(result.debt_accounts[0].current_balance, "9007199254740993");
         assert_eq!(result.installments.len(), 2);
         assert!(result.installments.iter().all(|i| i.accounts_available));
@@ -894,6 +915,12 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0024_loan_monthly_installment.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -981,6 +1008,12 @@ mod tests {
             .unwrap();
         sqlx::raw_sql(include_str!(
             "../migrations/0018_deduction_debt_account.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
@@ -1095,6 +1128,12 @@ mod tests {
             .unwrap();
         sqlx::raw_sql(include_str!(
             "../migrations/0018_deduction_debt_account.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await

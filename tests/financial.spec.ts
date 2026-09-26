@@ -3,7 +3,7 @@ import { dateKey, monthlyOutlook, netWorth } from '../src/lib/financial'
 import type { Account, FinancialData, Income, PaymentPlan, Transaction } from '../src/lib/desktop'
 
 function account(id: string, type: Account['type'], balance: string): Account {
-  return { id, name: id, type, current_balance: balance, opening_balance: balance, loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_millis: null }
+  return { id, name: id, type, current_balance: balance, opening_balance: balance, loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }
 }
 function income(id: string, destination: string, day: number, amount = '1000', active = true): Income {
   return { id, name: id, type: 'salary', destination_account_id: destination, destination_account_name: destination, estimated_amount: amount, deductions_total: '0', recurrence_frequency: 'monthly', recurrence_day_of_month: day, is_active: active, is_auto_create_transaction: false, created_at: '', updated_at: '' }

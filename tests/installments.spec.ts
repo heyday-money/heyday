@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
       { id: 'bank', name: 'Everyday bank', type: 'bank', current_balance: '1000000' },
       { id: 'card', name: 'Credit card', type: 'credit_card', current_balance: '500000' },
       { id: 'loan', name: 'Car loan', type: 'loan', current_balance: '2000000' },
-    ].map(account => ({ ...account, opening_balance: account.current_balance, loan_type: account.type === 'loan' ? 'auto_loan' : null, institution: null, last_four: null, notes: null, credit_limit: account.type === 'credit_card' ? '10000000' : null, statement_day: null, payment_due_day: null, interest_rate_millis: null }))
+    ].map(account => ({ ...account, opening_balance: account.current_balance, loan_type: account.type === 'loan' ? 'auto_loan' : null, institution: null, last_four: null, notes: null, credit_limit: account.type === 'credit_card' ? '10000000' : null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }))
     const plans = (): Installment[] => JSON.parse(localStorage.getItem('installments') ?? '[]')
     Object.defineProperty(window, 'isTauri', { value: true })
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: SaveInstallment; id: string }) => {

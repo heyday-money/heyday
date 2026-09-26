@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { NewAccount, AccountUpdate, Account } from '../src/lib/desktop'
+import { interestRateText } from '../src/lib/installments'
 import { decimalToInteger, formatAmount, fractionDigits } from '../src/lib/money'
 
 test('money conversion respects currency precision without floating point loss', () => {
@@ -11,6 +12,15 @@ test('money conversion respects currency precision without floating point loss',
   expect(() => decimalToInteger('1e3', 2)).toThrow()
   expect(() => decimalToInteger('9223372036854775808', 0)).toThrow()
   expect(formatAmount('9007199254740993', 'USD').replace(/,/g, '')).toContain('90071992547409.93')
+})
+
+test('account interest precision preserves four decimals and rejects excess precision', () => {
+  for (const rate of ['0', '0.0001', '1.1957', '4.3219', '100']) {
+    expect(interestRateText(decimalToInteger(rate, 4), 4)).toBe(rate)
+  }
+  expect(interestRateText('11950', 4)).toBe('1.195')
+  expect(() => decimalToInteger('1.19571', 4)).toThrow('up to 4 decimal places')
+  expect(interestRateText('1195')).toBe('1.195')
 })
 
 test('set currency, create all account types, and preserve them across reload', async ({ page }) => {
@@ -99,7 +109,10 @@ test('set currency, create all account types, and preserve them across reload', 
     }
     if (type === 'loan') await page.getByLabel('Loan type', { exact: true }).selectOption('mortgage')
     else await expect(page.getByLabel('Loan type', { exact: true })).toHaveCount(0)
-    if (type === 'loan') await page.getByLabel('Annual interest rate (%, optional)').fill('1.195')
+    if (type === 'loan') {
+      await page.getByLabel('Annual interest rate (%, optional)').fill('1.1957')
+      await page.getByLabel('Monthly installment (THB, optional)').fill('123.45')
+    }
     if (type === 'cash') {
       await page.evaluate(() => sessionStorage.setItem('fail-account', 'true'))
       await page.getByRole('button', { name: 'Save account', exact: true }).click()
@@ -123,7 +136,8 @@ test('set currency, create all account types, and preserve them across reload', 
   await expect(page.getByRole('tabpanel').getByText(/•••• 0123/)).toHaveCount(6)
   await expect(page.getByRole('tabpanel').getByRole('region')).toHaveCount(6)
   await expect(page.getByText('Credit limit: 50,000.00 THB')).toBeVisible()
-  await expect(page.getByText('Annual interest rate: 1.195%')).toBeVisible()
+  await expect(page.getByText('Annual interest rate: 1.1957%')).toBeVisible()
+  await expect(page.getByText('Monthly installment: 123.45 THB')).toBeVisible()
   await expect(page.getByText('Mortgage · Liability · •••• 0123', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Edit account My loan', exact: true }).click()
   const editDialog = page.getByRole('dialog', { name: 'Edit account', exact: true })
@@ -132,7 +146,10 @@ test('set currency, create all account types, and preserve them across reload', 
   await expect(page.getByLabel('Opening balance (THB)')).toHaveAttribute('readonly', '')
   await expect(page.getByLabel('Account type', { exact: true })).toBeDisabled()
   await expect(page.getByLabel('Last four digits (optional)')).toHaveValue('0123')
-  await expect(page.getByLabel('Annual interest rate (%, optional)')).toHaveValue('1.195')
+  await expect(page.getByLabel('Annual interest rate (%, optional)')).toHaveValue('1.1957')
+  await expect(page.getByLabel('Monthly installment (THB, optional)')).toHaveValue('123.45')
+  await page.getByLabel('Monthly installment (THB, optional)').fill('0')
+  await page.getByLabel('Annual interest rate (%, optional)').fill('4.3219')
   await page.getByLabel('Account name', { exact: true }).fill('Student loan')
   await page.getByLabel('Loan type', { exact: true }).selectOption('student_loan')
   await page.getByLabel('Last four digits (optional)').fill('0099')
@@ -153,6 +170,8 @@ test('set currency, create all account types, and preserve them across reload', 
   await expect(page.getByRole('complementary').getByRole('link', { name: /^Student loan:/ })).toBeVisible()
   await page.reload()
   await page.getByRole('button', { name: 'Edit account Student loan', exact: true }).click()
+  await expect(page.getByLabel('Annual interest rate (%, optional)')).toHaveValue('4.3219')
+  await expect(page.getByLabel('Monthly installment (THB, optional)')).toHaveValue('0.00')
   await expect(page.getByLabel('Opening balance (THB)')).toHaveValue('1234.56')
   await expect(page.getByLabel('Last four digits (optional)')).toHaveValue('0099')
   await expect(page.getByLabel('Loan type', { exact: true })).toHaveValue('student_loan')
@@ -180,4 +199,43 @@ test('set currency, create all account types, and preserve them across reload', 
   await page.getByLabel('Currency', { exact: true }).selectOption('USD')
   await page.getByRole('button', { name: 'Save currency' }).click()
   await expect(page.getByRole('alert')).toContainText('Currency cannot change')
+})
+
+test('type summaries show exact current assets and liabilities and refresh after account changes', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'isTauri', { value: true })
+    const rows = [
+      ['bank', '9007199254740993'], ['bank', '-100'],
+      ['credit_card', '50000'], ['credit_card', '-2500'],
+      ['loan', '10000'], ['wallet', '300'], ['investment', '-200'],
+    ].map(([type, current_balance], index) => ({ id: String(index), name: `Account ${index}`, type, current_balance, opening_balance: '0', loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }))
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {
+      invoke: async (command: string) => {
+        if (command === 'plugin:app|version') return '0.0.1-alpha.3'
+        if (command === 'get_settings') return { currency: 'THB', period_start_day: 1 }
+        if (command === 'list_transaction_options') return { payees: [], categories: [] }
+        if (command === 'list_accounts') return rows.map(row => row.type === 'wallet' && sessionStorage.getItem('updated-wallet') ? { ...row, current_balance: '400' } : row)
+        throw new Error(`Unexpected command: ${command}`)
+      },
+    } })
+  })
+  await page.goto('/#/accounts')
+  const bank = page.getByRole('group', { name: 'Bank summary', exact: true })
+  await expect(bank).toContainText('2 accounts')
+  await expect(bank.locator('dd')).toHaveText(['90,071,992,547,408.93 THB', '90,071,992,547,409.93 THB', '1.00 THB'])
+  await expect(page.getByRole('group', { name: 'Credit cards summary' }).locator('dd')).toHaveText(['−475.00 THB', '25.00 THB', '500.00 THB'])
+  await expect(page.getByRole('group', { name: 'Loans summary' }).locator('dd')).toHaveText(['−100.00 THB', '0.00 THB', '100.00 THB'])
+  await expect(page.getByRole('group', { name: 'Investments summary' }).locator('dd')).toHaveText(['−2.00 THB', '0.00 THB', '2.00 THB'])
+  const cash = page.getByRole('group', { name: 'Cash summary', exact: true })
+  await expect(cash).toContainText('0 accounts')
+  await expect(cash.locator('dd')).toHaveText(['0.00 THB', '0.00 THB', '0.00 THB'])
+  await page.getByRole('tab', { name: 'Bank (2)', exact: true }).click()
+  await expect(page.getByRole('group', { name: 'Credit cards summary' })).toBeVisible()
+  await page.evaluate(() => {
+    sessionStorage.setItem('updated-wallet', 'true')
+    window.dispatchEvent(new Event('accounts-changed'))
+  })
+  await expect(page.getByRole('group', { name: 'Wallets summary' }).locator('dd')).toHaveText(['4.00 THB', '4.00 THB', '0.00 THB'])
+  await page.setViewportSize({ width: 650, height: 700 })
+  expect(await bank.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
 })

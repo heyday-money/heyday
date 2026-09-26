@@ -4,7 +4,7 @@ import type { SaveSubscription, Subscription } from '../src/lib/desktop'
 test.beforeEach(async ({ page }) => {
   await page.clock.install({ time: new Date('2026-01-15T12:00:00') })
   await page.addInitScript(() => {
-    const accounts = [{ id: 'bank', name: 'Everyday bank', type: 'bank', current_balance: '100000' }, { id: 'card', name: 'Credit card', type: 'credit_card', current_balance: '5000' }, { id: 'loan', name: 'Loan', type: 'loan', current_balance: '5000' }].map(account => ({ ...account, opening_balance: account.current_balance, loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_millis: null }))
+    const accounts = [{ id: 'bank', name: 'Everyday bank', type: 'bank', current_balance: '100000' }, { id: 'card', name: 'Credit card', type: 'credit_card', current_balance: '5000' }, { id: 'loan', name: 'Loan', type: 'loan', current_balance: '5000' }].map(account => ({ ...account, opening_balance: account.current_balance, loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }))
     const rows = (): Subscription[] => JSON.parse(localStorage.getItem('subscriptions') ?? '[]')
     const settings = () => ({ currency: sessionStorage.getItem('no-currency') ? null : 'THB', period_start_day: 1 })
     Object.defineProperty(window, 'isTauri', { value: true })

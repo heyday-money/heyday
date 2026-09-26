@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { createTransaction, getSettings, listAccounts, listTransactionOptions, type TransactionOptions, type Account, type TransactionType } from '../lib/desktop'
 import { decimalToInteger, fractionDigits } from '../lib/money'
+import { PayeeCombobox } from './PayeeCombobox'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
@@ -37,7 +38,10 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
   const [dirty, setDirty] = useState(false)
   const [discard, setDiscard] = useState(false)
   const [saveMode, setSaveMode] = useState<'close' | 'another' | null>(null)
-  const saving = saveMode !== null
+  const [creatingPayee, setCreatingPayee] = useState(false)
+  const [unresolvedPayee, setUnresolvedPayee] = useState(false)
+  const creatingPayeeRef = useRef(false)
+  const saving = saveMode !== null || creatingPayee
   const savingRef = useRef(false)
   const focusNextAmount = useRef(false)
   const [amount, setAmount] = useState('')
@@ -72,7 +76,8 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!currency || savingRef.current) return
+    if (!currency || savingRef.current || creatingPayeeRef.current) return
+    if (kind === 'expense' && unresolvedPayee) { setError('Select or create a payee, or choose No payee.'); return }
     const submitter = (event.nativeEvent as SubmitEvent).submitter
     const addAnother = submitter instanceof HTMLButtonElement && submitter.value === 'another'
     const data = new FormData(event.currentTarget)
@@ -85,14 +90,14 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
       await createTransaction({ cleared_account_ids: clearedIds, type: kind, account_id: accountId, destination_account_id: paired ? String(data.get('destination')) : null, amount, currency, date: String(data.get('date')), description: String(data.get('description') ?? '').trim(), payee_id: kind === 'expense' ? payeeId || null : null, category_id: kind === 'expense' ? categoryId || null : null })
       try { localStorage.setItem(rememberedAccountKey, accountId) } catch { /* Saving does not depend on preferences. */ }
       if (addAnother) {
-        setSourceCleared(false); setDestinationCleared(false); setAmount(''); setDescription(''); setPayeeId(''); setCategoryId(''); setDirty(false); setDiscard(false)
+        setSourceCleared(false); setDestinationCleared(false); setAmount(''); setDescription(''); setPayeeId(''); setUnresolvedPayee(false); setCategoryId(''); setDirty(false); setDiscard(false)
         focusNextAmount.current = true
       } else close()
       toast.success('Transaction saved.')
     } catch (error) { setError(error instanceof Error ? error.message : typeof error === 'string' ? error : 'Could not save changes. Please try again.') } finally { savingRef.current = false; setSaveMode(null) }
   }
   return <Dialog open onOpenChange={changeOpen}>
-      <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden border-line bg-card p-0 sm:max-w-[600px]" onCloseAutoFocus={event => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus() }} onOpenAutoFocus={event => { event.preventDefault(); amountRef.current?.focus() }} showCloseButton={!saving} onInteractOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (saving) event.preventDefault() }}>
+      <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden border-line bg-card p-0 sm:max-w-[600px]" onCloseAutoFocus={event => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus() }} onOpenAutoFocus={event => { event.preventDefault(); amountRef.current?.focus() }} showCloseButton={!saving} onInteractOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (saving || (event.target instanceof Element && event.target.matches('[role="combobox"][aria-expanded="true"]'))) event.preventDefault() }}>
         <DialogHeader className="shrink-0 border-b border-line px-6 py-5"><DialogTitle>Add transaction</DialogTitle><DialogDescription>Record a payment, purchase, transfer, or repayment.</DialogDescription></DialogHeader>
         {loading ? <p className="p-6" role="status">Loading accounts…</p>
           : loadError ? <div className="p-6" role="alert">Could not load accounts or spending options. <Button variant="outline" onClick={() => setAttempt(value => value + 1)}>Try again</Button></div>
@@ -102,16 +107,20 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
           <div className="min-h-0 overflow-y-auto px-6 py-5">
             <fieldset disabled={saving} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2"><Field label={`Amount (${currency ?? ''})`}><Input ref={amountRef} className="mt-2 h-14 w-full text-2xl tabular-nums md:text-2xl" name="amount" value={amount} onChange={event => setAmount(event.target.value)} inputMode="decimal" required placeholder="0" /></Field></div>
-              <Field label="Transaction type"><NativeSelect className={control} value={kind} onChange={event => { setKind(event.target.value as TransactionType); setDestinationId(''); setDestinationCleared(false) }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</NativeSelect></Field>
+              <Field label="Transaction type"><NativeSelect className={control} value={kind} onChange={event => { setKind(event.target.value as TransactionType); setUnresolvedPayee(false); setDestinationId(''); setDestinationCleared(false) }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</NativeSelect></Field>
               <Field label="Date"><Input className={control} name="date" type="date" required min="0001-01-01" max={today()} defaultValue={today()} /></Field>
               <Field label={paired ? 'From account' : 'Account'}><NativeSelect className={control} required value={accountId} onChange={event => { setAccountId(event.target.value); setSourceCleared(false); setDestinationId(''); setDestinationCleared(false) }}><option value="">Choose account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</NativeSelect></Field>
               {paired && <Field label="To account"><NativeSelect key={`${kind}-${accountId}`} className={control} name="destination" required value={destinationId} onChange={event => { setDestinationId(event.target.value); setDestinationCleared(false) }}><option value="">Choose destination</option>{accounts.filter(a => a.id !== accountId && (kind !== 'repayment' || ['credit_card', 'loan'].includes(a.type))).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</NativeSelect></Field>}
               {accounts.some(account => account.id === accountId && ['bank', 'wallet', 'credit_card'].includes(account.type)) && <label className="flex items-center gap-2 text-sm"><Input type="checkbox" className="size-4 p-0" checked={sourceCleared} onChange={event => setSourceCleared(event.target.checked)} />{paired ? 'Cleared in from account' : 'Cleared'}</label>}
               {paired && accounts.some(account => account.id === destinationId && ['bank', 'wallet', 'credit_card'].includes(account.type)) && <label className="flex items-center gap-2 text-sm"><Input type="checkbox" className="size-4 p-0" checked={destinationCleared} onChange={event => setDestinationCleared(event.target.checked)} />Cleared in to account</label>}
               {kind === 'expense' && <>
-                <Field label="Payee (optional)"><NativeSelect className={control} value={payeeId} onChange={event => setPayeeId(event.target.value)}><option value="">No payee</option>{options.payees.filter(item => !item.is_archived).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></Field>
+                <Field label="Payee (optional)"><PayeeCombobox value={payeeId} options={options.payees}
+                  onChange={id => { setPayeeId(id); setDirty(true); setError(null) }}
+                  onCreated={payee => setOptions(current => ({ ...current, payees: [...current.payees, payee] }))}
+                  onBusyChange={busy => { creatingPayeeRef.current = busy; setCreatingPayee(busy) }}
+                  onUnresolvedChange={setUnresolvedPayee} /></Field>
                 <Field label="Category (optional)"><NativeSelect className={control} value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">Uncategorized</option>{options.categories.filter(item => !item.is_archived).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></Field>
-                <p className="text-xs sm:col-span-2">Add or manage payees and spending categories in Settings.</p>
+                <p className="text-xs sm:col-span-2">Search or create a payee above. Manage payees and spending categories in Settings.</p>
               </>}
               <Field label="Description (optional)"><Input className={control} name="description" value={description} onChange={event => setDescription(event.target.value)} maxLength={200} placeholder="e.g. Groceries" /></Field>
             </fieldset>
