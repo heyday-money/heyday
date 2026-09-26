@@ -11,7 +11,7 @@ export interface PlannerIncome {
   is_active: boolean; destination_account_name: string; account_archived: boolean
 }
 export interface PlannerDebtAccount {
-  id: string; name: string; loan_type: string | null; current_balance: string; notes: string | null; is_archived: boolean
+  id: string; name: string; loan_type: string | null; current_balance: string; monthly_installment: string | null; notes: string | null; is_archived: boolean
 }
 export interface PlannerInstallment {
   id: string; name: string; debt_account_id: string; debt_account_name: string; debt_account_type: 'credit_card' | 'loan'
@@ -124,7 +124,7 @@ export function plannerItems(data: PlannerData): PlannerItem[] {
       const payroll = data.income_deductions.filter(deduction => deduction.debt_account_id === account.id && data.incomes.some(salary => salary.id === deduction.income_id && salary.is_active && !salary.account_archived))
       const legacy = data.installments.some(plan => plan.debt_account_type === 'loan' && plan.debt_account_id === account.id)
       linked.push({ ...defaults, id: `debt:${account.id}`, category_id: 'debt', name: payroll.length ? `${account.name} · Additional Payments` : account.name, debt_account: account,
-        description: `${payroll.length ? `Payroll repayments (${payroll.map(deduction => deduction.name).join(', ')}) are entered on the salary and included under Income Deductions. This row is for additional payments outside payroll. Existing entered amounts and schedules are retained; review them for duplicates. ` : ''}${account.loan_type?.replaceAll('_', ' ') ?? 'Loan'} · Balance: ${plannerMoney(BigInt(account.current_balance))} THB (positive means owed, negative means credit). ${account.notes ?? ''} ${account.is_archived ? 'Archived account. ' : ''}${legacy ? 'Legacy loan schedules are included once in this row. Entering a cycle amount replaces their combined payment.' : 'Enter the payment for each cycle; the balance is not a payment.'} Exclude payments already deducted through payroll.` })
+        description: `${payroll.length ? `Payroll repayments (${payroll.map(deduction => deduction.name).join(', ')}) are entered on the salary and included under Income Deductions. This row is for additional payments outside payroll. Existing entered amounts and schedules are retained; review them for duplicates. ` : ''}${account.loan_type?.replaceAll('_', ' ') ?? 'Loan'} · Balance: ${plannerMoney(BigInt(account.current_balance))} THB (positive means owed, negative means credit). ${account.notes ?? ''} ${account.is_archived ? 'Archived account. ' : ''}${account.monthly_installment != null ? `Monthly installment: ${plannerMoney(BigInt(account.monthly_installment))} THB per payday cycle. Replaces legacy loan schedules in this row. Current settings apply to past and future cycles; entered cycle amounts are preserved.` : legacy ? 'Legacy loan schedules are included once in this row. Entering a cycle amount replaces their combined payment.' : 'Enter the payment for each cycle; the balance is not a payment.'} Exclude payments already deducted through payroll.` })
     }
     for (const plan of data.installments.filter(plan => plan.debt_account_type === 'credit_card')) {
       linked.push({ ...defaults, id: `installment:${plan.id}`, category_id: 'installments', name: plan.name, card_name: plan.debt_account_name, installment: plan,
@@ -168,6 +168,9 @@ function usesRecordedCardTotal(data: PlannerData, item: PlannerItem, month: stri
 }
 function linkedPaymentsBetween(data: PlannerData, item: PlannerItem, from: string, to: string): bigint | null {
   if (item.debt_account?.is_archived) return null
+  if (item.debt_account?.monthly_installment != null) {
+    return BigInt(monthIndex(to) - monthIndex(from)) * BigInt(item.debt_account.monthly_installment)
+  }
   const plans = item.installment ? [item.installment] : data.installments.filter(plan => plan.debt_account_type === 'loan' && plan.debt_account_id === item.debt_account?.id)
   const available = plans.filter(plan => plan.accounts_available)
   if (!available.length) return null

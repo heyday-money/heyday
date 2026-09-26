@@ -101,7 +101,7 @@ function linkedPlan(id: string, overrides: Partial<PlannerInstallment> = {}): Pl
 
 test('loan accounts supply payment rows without treating debt balances as outflows', () => {
   const input = data()
-  input.debt_accounts = [{ id: 'loan', name: 'Mortgage', loan_type: 'mortgage', current_balance: '9007199254740993', notes: null, is_archived: false }]
+  input.debt_accounts = [{ id: 'loan', name: 'Mortgage', loan_type: 'mortgage', current_balance: '9007199254740993', monthly_installment: null, notes: null, is_archived: false }]
   expect(plannerItems(input)).toHaveLength(1)
   expect(itemAmount(input, plannerItems(input)[0], '2026-12').value).toBeNull()
   expect(cycleTotals(input, '2026-12').expenses).toBe(0n)
@@ -131,7 +131,7 @@ test('linked card installments follow payday dates, end on time, and overrides r
 
 test('legacy loan schedules appear once under debt and unavailable or non-THB schedules are excluded', () => {
   const input = data()
-  input.debt_accounts = [{ id: 'loan', name: 'Old loan', loan_type: null, current_balance: '99999999', notes: '', is_archived: false }]
+  input.debt_accounts = [{ id: 'loan', name: 'Old loan', loan_type: null, current_balance: '99999999', monthly_installment: null, notes: '', is_archived: false }]
   input.installments = [linkedPlan('legacy', { debt_account_id: 'loan', debt_account_type: 'loan' }), linkedPlan('unavailable', { accounts_available: false })]
   const rows = plannerItems(input)
   expect(rows.filter(row => row.category_id === 'debt')).toHaveLength(1)
@@ -243,7 +243,7 @@ test('linked loan identifies additional payments and preserves separate cycle en
   const input = data()
   input.incomes = [{ id: 'salary', name: 'Salary', estimated_amount: '5000000', recurrence_day_of_month: 25, is_active: true, destination_account_name: 'Bank', account_archived: false }]
   input.income_deductions = [{ id: 'student', income_id: 'salary', name: 'Education Debt', description: '', amount: '200000', debt_account_id: 'loan', debt_account_name: 'Student Loan' }]
-  input.debt_accounts = [{ id: 'loan', name: 'Student Loan', loan_type: 'student_loan', current_balance: '10000000', notes: null, is_archived: false }]
+  input.debt_accounts = [{ id: 'loan', name: 'Student Loan', loan_type: 'student_loan', current_balance: '10000000', monthly_installment: null, notes: null, is_archived: false }]
   input.amounts = [{ item_id: 'debt:loan', month: '2026-12', amount: '50000' }]
   expect(plannerItems(input).find(item => item.id === 'debt:loan')?.name).toBe('Student Loan · Additional Payments')
   expect(cycleTotals(input, '2026-12')).toMatchObject({ netIncome: 4800000n, expenses: 50000n, surplus: 4750000n })
@@ -251,4 +251,35 @@ test('linked loan identifies additional payments and preserves separate cycle en
   input.incomes[0].is_active = false
   expect(plannerItems(input).find(item => item.id === 'debt:loan')?.name).toBe('Student Loan')
   expect(cycleTotals(input, '2026-12').buckets.debt).toBe(50000n)
+})
+
+test('loan monthly installments populate every cycle exactly and overrides replace estimates', () => {
+  const input = data()
+  input.debt_accounts = [{ id: 'loan', name: 'Mortgage', loan_type: 'mortgage', current_balance: '10000000', monthly_installment: '9007199254740993', notes: null, is_archived: false }]
+  input.opening = { month: '2024-01', amount: '0' }
+  input.installments = [linkedPlan('legacy', { debt_account_id: 'loan', debt_account_type: 'loan' })]
+  for (const day of [1, 25, 29, 30, 31]) {
+    input.period_start_day = day
+    expect(plannerCycles(input, '2024-01').map(cycle => cycle.buckets.debt)).toEqual(Array(7).fill(9007199254740993n))
+    expect(openingForCycle(input, '2025-01')).toBe(-108086391056891916n)
+  }
+  input.amounts = [{ item_id: 'debt:loan', month: '2024-02', amount: '0' }]
+  expect(cycleTotals(input, '2024-02').buckets.debt).toBe(0n)
+  expect(openingForCycle(input, '2024-04')).toBe(-18014398509481986n)
+  input.debt_accounts[0].monthly_installment = '100'
+  expect(cycleTotals(input, '2024-02').buckets.debt).toBe(0n)
+  expect(openingForCycle(input, '2024-04')).toBe(-200n)
+  input.amounts = []
+  expect(cycleTotals(input, '2024-02').buckets.debt).toBe(100n)
+  input.debt_accounts[0].monthly_installment = '0'
+  expect(cycleTotals(input, '2026-12').buckets.debt).toBe(0n)
+  input.debt_accounts[0].monthly_installment = null
+  expect(cycleTotals(input, '2026-12').buckets.debt).toBe(300000n)
+  input.debt_accounts[0].monthly_installment = '100'
+  input.debt_accounts[0].is_archived = true
+  expect(itemAmount(input, plannerItems(input)[0], '2026-12').value).toBeNull()
+  input.amounts = [{ item_id: 'debt:loan', month: '2026-12', amount: '50' }]
+  expect(cycleTotals(input, '2026-12').buckets.debt).toBe(50n)
+  input.source_currency = 'USD'
+  expect(cycleTotals(input, '2026-12').buckets.debt).toBe(0n)
 })

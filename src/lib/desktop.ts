@@ -42,7 +42,8 @@ export interface Account {
   credit_limit: string | null
   statement_day: number | null
   payment_due_day: number | null
-  interest_rate_millis: number | null
+  interest_rate_ten_thousandths: number | null
+  monthly_installment: string | null
 }
 export type NewAccount = Omit<Account, 'id' | 'current_balance'> & { currency: string }
 

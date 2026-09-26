@@ -171,14 +171,14 @@ test('loan accounts and saved card installments populate linked rows with persis
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.evaluate(() => {
     const data = JSON.parse(localStorage.getItem('planner-test')!)
-    data.debt_accounts = [{ id: 'loan', name: 'Home mortgage', loan_type: 'mortgage', current_balance: '250000000', notes: null, is_archived: false }]
+    data.debt_accounts = [{ id: 'loan', name: 'Home mortgage', loan_type: 'mortgage', current_balance: '250000000', monthly_installment: '1100000', notes: null, is_archived: false }]
     data.installments = [{ id: 'laptop', name: 'Work laptop', debt_account_id: 'card', debt_account_name: 'Visa', debt_account_type: 'credit_card', account_name: 'Bank', monthly_amount: '300000', installment_count: 2, first_due_date: '2026-12-25', accounts_available: true }]
     localStorage.setItem('planner-test', JSON.stringify(data))
   })
   await page.reload()
   await expect(page.getByRole('link', { name: 'Home mortgage', exact: true })).toHaveAttribute('href', /accounts/)
   await expect(page.getByRole('link', { name: 'Visa · Work laptop', exact: true })).toHaveAttribute('href', /installments/)
-  await expect(page.getByRole('button', { name: 'Edit Home mortgage 2026-12 amount', exact: true })).toContainText('Enter amount')
+  await expect(page.getByRole('button', { name: 'Edit Home mortgage 2026-12 amount', exact: true })).toContainText('11,000.00')
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2026-12 amount', exact: true })).toContainText('3,000.00')
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2027-01 amount', exact: true })).toContainText('3,000.00')
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2027-02 amount', exact: true })).toContainText('0.00')
@@ -190,6 +190,7 @@ test('loan accounts and saved card installments populate linked rows with persis
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.reload()
   await expect(page.getByRole('button', { name: 'Edit Home mortgage 2026-12 amount', exact: true })).toContainText('12,000.00')
+  await expect(page.getByRole('button', { name: 'Edit Home mortgage 2027-01 amount', exact: true })).toContainText('11,000.00')
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2026-12 amount', exact: true })).toContainText('0.00')
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2027-01 amount', exact: true })).toContainText('3,000.00')
   await expect(page.getByRole('button', { name: 'Add item to Debt Payments', exact: true })).toBeVisible()

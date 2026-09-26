@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { Pencil, Plus } from 'lucide-react'
 import { desktopAvailable, getSettings, listAccounts, loanTypes, type Account, type AccountType, type Settings } from '../lib/desktop'
 import { formatAmount } from '../lib/money'
+import { netWorth } from '../lib/financial'
 import { interestRateText } from '../lib/installments'
 import { AccountFormDialog, accountTypes as types } from './AccountFormDialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
@@ -45,7 +46,28 @@ export function AccountsPage() {
       : loadError ? <div role="alert"><p>Could not load accounts.</p><button className="mt-3 text-brand" onClick={() => setAttempt(value => value + 1)}>Try again</button></div>
       : !currency ? <div className="rounded-[22px] border border-line bg-card p-7"><h3 className="font-semibold">Choose your currency first</h3><p className="mt-2">Set the currency for all your accounts before adding a balance.</p><Link to="/settings" className="mt-4 inline-block text-brand">Go to Settings →</Link></div>
       : <>
-
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold">Summary by account type</h3>
+          <p className="mt-1 text-xs text-muted">Current balances for active accounts. Overdrafts count as liabilities; card and loan credits count as assets.</p>
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {types.map(type => {
+              const group = accounts.filter(account => account.type === type.value)
+              const totals = netWorth(group)
+              const Icon = type.icon
+              return <div key={type.value} role="group" aria-label={`${type.groupLabel} summary`} className="min-w-0 rounded-[22px] border border-line bg-card p-5">
+                <div className="flex items-center gap-2"><Icon size={18} className="shrink-0 text-brand" /><h4 className="font-semibold">{type.groupLabel}</h4><span className="ml-auto text-xs text-muted">{group.length} {group.length === 1 ? 'account' : 'accounts'}</span></div>
+                <dl className="mt-4">
+                  <dt className="text-xs text-muted">Net balance</dt>
+                  <dd className={`mt-1 break-words text-xl font-semibold tabular-nums ${totals.total < 0n ? 'text-red-700 dark:text-red-400' : totals.total > 0n ? 'text-green-700 dark:text-green-400' : 'text-ink'}`}>{formatAmount(totals.total.toString(), currency)}</dd>
+                  <div className="mt-3 grid grid-cols-2 gap-3 border-t border-line pt-3">
+                    <div className="min-w-0"><dt className="text-xs text-muted">Assets</dt><dd className="mt-1 break-words text-sm tabular-nums">{formatAmount(totals.assets.toString(), currency)}</dd></div>
+                    <div className="min-w-0"><dt className="text-xs text-muted">Liabilities</dt><dd className="mt-1 break-words text-sm tabular-nums">{formatAmount(totals.liabilities.toString(), currency)}</dd></div>
+                  </div>
+                </dl>
+              </div>
+            })}
+          </div>
+        </div>
         <Tabs value={selectedType} onValueChange={value => setSelectedType(value as AccountType | 'all')}>
           <div className="min-w-0 overflow-x-auto p-1">
             <TabsList aria-label="Account types" className="w-max min-w-full">
@@ -70,10 +92,11 @@ export function AccountsPage() {
               {account.institution && <p className="mt-1 break-words text-[13px]">{account.institution}</p>}
               <p className="mt-4 break-words text-[23px] font-semibold text-ink">{formatAmount(account.current_balance ?? account.opening_balance, currency)}</p>
               <p className="mt-1 text-[12px]">{liability ? 'Current amount owed' : 'Current balance'}</p>
+              {account.type === 'loan' && <p className="mt-2 text-[13px]">Monthly installment: {account.monthly_installment != null ? formatAmount(account.monthly_installment, currency) : 'Not set'}</p>}
               {account.credit_limit !== null && <p className="mt-3 text-[13px]">Credit limit: {formatAmount(account.credit_limit, currency)}</p>}
               {account.statement_day !== null && <p className="mt-2 text-[13px]">Statement day: {account.statement_day}</p>}
               {account.payment_due_day !== null && <p className="mt-2 text-[13px]">Payment due day: {account.payment_due_day}</p>}
-              {account.interest_rate_millis !== null && <p className="mt-2 text-[13px]">Annual interest rate: {interestRateText(String(account.interest_rate_millis))}%</p>}
+              {account.interest_rate_ten_thousandths !== null && <p className="mt-2 text-[13px]">Annual interest rate: {interestRateText(String(account.interest_rate_ten_thousandths), 4)}%</p>}
               {['bank', 'wallet', 'credit_card'].includes(account.type) && <Link className="mt-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId" params={{ accountId: account.id }}>Transactions & reconciliation</Link>}
               {account.notes && <p className="mt-3 break-words whitespace-pre-wrap text-[13px]">{account.notes}</p>}
             </li>
