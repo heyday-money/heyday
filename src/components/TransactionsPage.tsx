@@ -1,3 +1,4 @@
+import { CategoryIcon } from './CategoryIcon'
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { DataTable } from './ui/data-table'
 import { useEffect, useMemo, useState } from 'react'
@@ -54,7 +55,7 @@ export function TransactionsPage() {
     setSaving(true); setError(null)
     try {
       await deleteTransaction(deleting.id, confirmReconciled)
-      setRecords(rows => rows.filter(row => row.id !== deleting.id)); setDeleting(null)
+      setRecords(await listTransactions()); setDeleting(null)
       toast.success('Transaction deleted. Balances updated.')
     } catch (error) { setError(message(error)); if (message(error).includes('reconciliation history')) setNeedsConfirmation(true) } finally { setSaving(false) }
   }
@@ -76,11 +77,11 @@ export function TransactionsPage() {
   }
   const columns = useMemo<ColumnDef<Transaction>[]>(() => [
     { id: 'date', header: 'Date', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'whitespace-nowrap px-3 py-1.5 align-middle tabular-nums' }, cell: ({ row: { original: row } }) => <><time dateTime={row.date}>{row.date}</time></> },
-    { id: 'description', header: 'Description', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-40 max-w-72 break-words px-3 py-1.5 align-middle font-medium text-ink', rowHeader: true }, cell: ({ row: { original: row } }) => <>{row.description || labels[row.type]}</> },
+    { id: 'description', header: 'Description', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-40 max-w-72 break-words px-3 py-1.5 align-middle font-medium text-ink', rowHeader: true }, cell: ({ row: { original: row } }) => <>{row.description || labels[row.type]}{row.type === 'income' && row.income_source_name && <span className="block text-xs font-normal text-muted">{row.income_source_name}</span>}</> },
     { id: 'type', header: 'Type', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <><TransactionFlow row={row} accountFilter={filter} /></> },
     { id: 'account', header: 'Account', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-36 max-w-60 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <>{row.account_name}{row.destination_account_name && <><span aria-hidden="true"> → </span><span className="sr-only"> to </span>{row.destination_account_name}</>}</> },
     { id: 'payee', header: 'Payee', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-28 max-w-48 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <>{row.type === 'expense' ? row.payee_name || 'No payee' : '—'}</> },
-    { id: 'category', header: 'Category', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-28 max-w-48 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <>{row.type === 'expense' ? row.category_name || 'Uncategorized' : '—'}</> },
+    { id: 'category', header: 'Category', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-28 max-w-48 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <>{row.type === 'expense' ? <span className="inline-flex items-center gap-2"><CategoryIcon name={row.category_icon} />{row.category_name || 'Uncategorized'}</span> : '—'}</> },
     { id: 'amount', header: 'Amount', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap text-right', cellClassName: 'whitespace-nowrap px-3 py-1.5 text-right align-middle font-semibold tabular-nums text-ink' }, cell: ({ row: { original: row } }) => <>{row.type === 'income' ? '+' : row.type === 'expense' ? '−' : ''}{currency ? formatAmount(row.amount, currency) : '—'}</> },
     { id: 'actions', header: 'Actions', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap text-right', cellClassName: 'px-3 py-1.5 text-right align-middle' }, cell: ({ row: { original: row } }) => <><Button size="xs" variant="outline" aria-label={`Delete ${row.description || labels[row.type]}`} onClick={() => { setError(null); setConfirmReconciled(false); setNeedsConfirmation(!!row.has_reconciliation_history); setDeleting(row) }}>Delete</Button></> },
   ], [currency, filter])
@@ -113,7 +114,7 @@ export function TransactionsPage() {
             : <DataTable table={table} label="Transaction history" className="min-w-[960px] text-[13px]" headerClassName="border-b border-line bg-soft text-xs text-muted" bodyClassName="divide-y divide-line" rowClassName="hover:bg-soft/40" />}
         </>}
     <Dialog open={!!deleting} onOpenChange={next => { if (!next && !saving) { setDeleting(null); setError(null) } }}>
-      <DialogContent showCloseButton={!saving} onInteractOutside={event => event.preventDefault()}><DialogHeader><DialogTitle>Delete transaction?</DialogTitle><DialogDescription>Delete “{deleting && (deleting.description || labels[deleting.type])}” and reverse its effect on account balances. This cannot be undone.{needsConfirmation && ' This transaction has reconciliation history. Affected reconciliations in either account will be marked as needing review.'}</DialogDescription></DialogHeader>{needsConfirmation && <label className="flex items-start gap-2 text-sm"><Input type="checkbox" className="size-4 shrink-0 p-0" checked={confirmReconciled} onChange={event => setConfirmReconciled(event.target.checked)} disabled={saving} />I confirm deleting this reconciled entry and marking affected history as needing review.</label>}{error && <p role="alert">{error}</p>}<DialogFooter><Button variant="outline" disabled={saving} onClick={() => setDeleting(null)}>Cancel</Button><Button variant="destructive" disabled={saving || (needsConfirmation && !confirmReconciled)} onClick={remove}>{saving ? 'Deleting…' : 'Delete transaction'}</Button></DialogFooter></DialogContent>
+      <DialogContent showCloseButton={!saving} onInteractOutside={event => event.preventDefault()}><DialogHeader><DialogTitle>Delete transaction?</DialogTitle><DialogDescription>Delete “{deleting && (deleting.description || labels[deleting.type])}” and reverse its effect on account balances. For a linked loan payment, all principal, interest and fee components are reversed together. This cannot be undone.{needsConfirmation && ' This transaction has reconciliation history. Affected reconciliations in either account will be marked as needing review.'}</DialogDescription></DialogHeader>{needsConfirmation && <label className="flex items-start gap-2 text-sm"><Input type="checkbox" className="size-4 shrink-0 p-0" checked={confirmReconciled} onChange={event => setConfirmReconciled(event.target.checked)} disabled={saving} />I confirm deleting this reconciled entry and marking affected history as needing review.</label>}{error && <p role="alert">{error}</p>}<DialogFooter><Button variant="outline" disabled={saving} onClick={() => setDeleting(null)}>Cancel</Button><Button variant="destructive" disabled={saving || (needsConfirmation && !confirmReconciled)} onClick={remove}>{saving ? 'Deleting…' : 'Delete transaction'}</Button></DialogFooter></DialogContent>
     </Dialog>
   </>
 }

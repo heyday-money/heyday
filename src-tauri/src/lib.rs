@@ -2,10 +2,12 @@ use serde::Serialize;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
+mod card_billing;
 mod cashflow;
 mod income_deductions;
 mod incomes;
 mod installments;
+mod loans;
 mod planning;
 mod reconciliation;
 mod reset;
@@ -96,6 +98,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
+            card_billing::get_card_billing,
+            card_billing::save_card_statement,
+            card_billing::save_card_payment_plan,
+            card_billing::record_card_payment,
+            card_billing::remove_card_billing_record,
             updates::check_app_update,
             updates::install_app_update,
             reset::clear_all_data,
@@ -104,6 +111,11 @@ pub fn run() {
             planning::get_financial_data,
             subscriptions::save_subscription,
             subscriptions::delete_subscription,
+            loans::get_loan_account,
+            loans::save_loan_facility,
+            loans::save_loan_contract,
+            loans::record_loan_repayment,
+            loans::delete_loan_contract,
             installments::save_installment,
             installments::delete_installment,
             planning::save_payment_plan,
@@ -122,6 +134,7 @@ pub fn run() {
             income_deductions::save_salary_deductions,
             transactions::create_transaction,
             transactions::list_transactions,
+            transactions::get_expense_report,
             transactions::delete_transaction,
             transaction_options::list_transaction_options,
             transaction_options::save_transaction_option

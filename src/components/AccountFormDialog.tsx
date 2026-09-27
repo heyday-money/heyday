@@ -38,6 +38,7 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
   account?: Account; initialType: AccountType; currency: string; onClose: () => void; onSaved: (account: Account) => void
 }) {
   const [type, setType] = useState<AccountType>(editing?.type ?? initialType)
+  const [revolving, setRevolving] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -62,7 +63,7 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
     setError(null); setSaving(true)
     try {
       const digits = fractionDigits(currency)
-      const loanType = type === 'loan' ? text('loan_type') : null
+      const loanType = type === 'loan' ? revolving && !editing ? 'personal_loan' : text('loan_type') : null
       if (type === 'loan' && !(editing?.type === 'loan' && editing.loan_type === null && !loanType) && !loanTypes.some(item => item.value === loanType)) throw new Error('Choose a loan type.')
       const details = {
         loan_type: (loanType || null) as LoanType | null,
@@ -71,15 +72,17 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
         last_four: optional('last_four'),
         notes: optional('notes'),
         monthly_installment: type === 'loan' && text('monthly_installment') ? decimalToInteger(text('monthly_installment'), digits) : null,
+        initial_loan_amount: type === 'loan' && text('initial_loan_amount') ? decimalToInteger(text('initial_loan_amount'), digits) : null,
         credit_limit: type === 'credit_card' && text('credit_limit') ? decimalToInteger(text('credit_limit'), digits) : null,
         statement_day: type === 'credit_card' ? day('statement_day') : null,
         payment_due_day: debt ? day('payment_due_day') : null,
         interest_rate_ten_thousandths: debt && text('interest') ? Number(decimalToInteger(text('interest'), 4)) : null,
       }
+      if (details.initial_loan_amount !== null && BigInt(details.initial_loan_amount) < 0n) throw new Error('Initial loan amount cannot be negative.')
       if (details.monthly_installment !== null && BigInt(details.monthly_installment) < 0n) throw new Error('Monthly installment cannot be negative.')
       const account = editing
         ? await updateAccount({ ...details, id: editing.id })
-        : await createAccount({ ...details, opening_balance: decimalToInteger(text('balance'), digits) })
+        : await createAccount({ ...details, opening_balance: decimalToInteger(text('balance'), digits), revolving_credit_limit: type === 'loan' && revolving ? decimalToInteger(text('revolving_limit'), digits) : null })
       onSaved(account)
       close(); toast.success(editing ? 'Account updated.' : 'Account added.', { id: 'account-saved' })
     } catch (error) {
@@ -102,12 +105,15 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
               <fieldset disabled={saving}>
                 <div className="grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">
                   <Field label="Account type"><NativeSelect disabled={!!editing} value={type} onChange={event => { setType(event.target.value as AccountType); setError(null) }} className={inputStyle}>{accountTypes.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}</NativeSelect></Field>
-                  {type === 'loan' && <Field label="Loan type"><NativeSelect name="loan_type" required={!editing || editing.loan_type !== null} defaultValue={editing?.loan_type ?? ''} className={inputStyle}><option value="" disabled={!editing || editing.loan_type !== null}>{editing ? 'Unclassified' : 'Choose a loan type'}</option>{loanTypes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></Field>}
-                  {type === 'loan' && <Field label={`Monthly installment (${currency}, optional)`}><Input name="monthly_installment" defaultValue={editing?.monthly_installment != null ? amountText(editing.monthly_installment, currency) : ''} inputMode="decimal" placeholder="Not set" className={inputStyle} /></Field>}
+                  {type === 'loan' && !revolving && <Field label="Loan type"><NativeSelect name="loan_type" required={!editing || editing.loan_type !== null} defaultValue={editing?.loan_type ?? ''} className={inputStyle}><option value="" disabled={!editing || editing.loan_type !== null}>{editing ? 'Unclassified' : 'Choose a loan type'}</option>{loanTypes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></Field>}
+                  {type === 'loan' && !editing && <><Field label="Loan structure"><NativeSelect value={revolving ? 'revolving' : 'single'} onChange={e => setRevolving(e.target.value === 'revolving')}><option value="single">Single loan</option><option value="revolving">Revolving credit / cash card (Personal Loan)</option></NativeSelect></Field>{revolving && <Field label={`Shared credit limit (${currency})`}><Input name="revolving_limit" required inputMode="decimal" /></Field>}</>}
+                  {type === 'loan' && !revolving && <Field label={`Monthly installment (${currency}, optional)`}><Input name="monthly_installment" defaultValue={editing?.monthly_installment != null ? amountText(editing.monthly_installment, currency) : ''} inputMode="decimal" placeholder="Not set" className={inputStyle} /></Field>}
+                  {type === 'loan' && !revolving && <Field label={`Initial Loan Amount (${currency}, optional)`}><Input name="initial_loan_amount" defaultValue={editing?.initial_loan_amount != null ? amountText(editing.initial_loan_amount, currency) : ''} inputMode="decimal" placeholder="Not set" className={inputStyle} /></Field>}
                   <Field label="Account name"><Input ref={nameRef} name="name" defaultValue={editing?.name ?? ''} required maxLength={100} className={inputStyle} placeholder="e.g. Everyday wallet" /></Field>
                   <Field label={`${editing ? 'Opening balance' : debt ? 'Amount owed' : type === 'investment' ? 'Current value' : 'Opening balance'} (${currency})`}><Input name="balance" inputMode="decimal" readOnly={!!editing} required defaultValue={editing ? amountText(editing.opening_balance, currency) : '0'} className={inputStyle} /></Field>
                 </div>
                 <p className="mt-4 text-[12px]">{editing ? 'Opening balance cannot be edited. Record transactions to update the current balance.' : debt ? 'Enter debt as a positive amount. Use a negative amount for an overpayment or credit.' : 'Enter the balance you own. Use a negative amount for an overdraft.'} {!editing && 'This is a manual starting balance.'}</p>
+                {type === 'loan' && <p className="mt-3 text-xs">Initial Loan Amount is the original borrowed principal, separate from the remaining debt entered as Amount owed. It is for reference only and does not change balances. For revolving cash cards, manage the approved Credit Limit in the loan overview.</p>}
                 {type === 'loan' && <p className="mt-3 text-xs">Monthly installment includes any lender interest and fees. The THB Outlook planner uses it once per payday cycle, including past cycles; cycle overrides are preserved. Leave blank if unknown; zero means no planned payment. For payroll-linked loans, enter only additional payments outside payroll. It does not change your balance.{currency !== 'THB' && ' This account is excluded from the THB planner; no currency conversion is applied.'}</p>}
                 <details open={editing ? true : undefined} className="mt-5 rounded-xl border border-line p-4">
                   <summary className="cursor-pointer text-[13px] font-semibold">Optional details</summary>

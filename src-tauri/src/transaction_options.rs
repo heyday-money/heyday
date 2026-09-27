@@ -21,6 +21,8 @@ pub struct TransactionOption {
     pub id: String,
     pub name: String,
     pub is_archived: bool,
+    #[sqlx(default)]
+    pub icon: Option<String>,
 }
 #[derive(Serialize)]
 pub struct TransactionOptions {
@@ -33,6 +35,7 @@ pub struct SaveOption {
     pub id: Option<String>,
     pub name: String,
     pub is_archived: bool,
+    pub icon: Option<String>,
 }
 
 pub async fn save(pool: &SqlitePool, input: SaveOption) -> Result<TransactionOption, String> {
@@ -43,7 +46,21 @@ pub async fn save(pool: &SqlitePool, input: SaveOption) -> Result<TransactionOpt
     let key = name.to_lowercase();
     // Table names come only from the enum; all user-supplied values are bound.
     let table = input.kind.table();
-    let result = if let Some(id) = input.id {
+    let category = matches!(input.kind, OptionKind::Category);
+    if let Some(icon) = input.icon.as_deref() {
+        if !category || !["tag","utensils","coffee","shopping-cart","bus","fuel","house","plug-zap","heart-pulse","shopping-bag","clapperboard","graduation-cap","plane","gift","paw-print","baby","shirt","dumbbell","smartphone","wifi","shield-check","wrench","scissors","hand-heart"].contains(&icon) {
+            return Err("Choose a supported category icon.".into());
+        }
+    }
+    let result = if category {
+        if let Some(id) = input.id {
+            sqlx::query_as::<_, TransactionOption>("UPDATE categories SET name=?,name_key=?,is_archived=?,icon=COALESCE(?,icon) WHERE id=? RETURNING id,name,is_archived,icon")
+                .bind(name).bind(key).bind(input.is_archived).bind(input.icon).bind(id).fetch_optional(pool).await
+        } else {
+            sqlx::query_as::<_, TransactionOption>("INSERT INTO categories(id,name,name_key,is_archived,icon) VALUES(lower(hex(randomblob(16))),?,?,?,COALESCE(?,'tag')) RETURNING id,name,is_archived,icon")
+                .bind(name).bind(key).bind(input.is_archived).bind(input.icon).fetch_optional(pool).await
+        }
+    } else if let Some(id) = input.id {
         sqlx::query_as::<_, TransactionOption>(&format!("UPDATE {table} SET name = ?, name_key = ?, is_archived = ? WHERE id = ? RETURNING id, name, is_archived"))
             .bind(name).bind(key).bind(input.is_archived).bind(id).fetch_optional(pool).await
     } else {
@@ -74,6 +91,30 @@ pub async fn list_transaction_options(
     .fetch_all(pool.inner())
     .await
     .map_err(|e| e.to_string())?;
-    let categories = sqlx::query_as("SELECT id, name, is_archived FROM categories ORDER BY is_archived, name COLLATE NOCASE, id").fetch_all(pool.inner()).await.map_err(|e| e.to_string())?;
+    let categories = sqlx::query_as("SELECT id, name, is_archived, icon FROM categories ORDER BY is_archived, name COLLATE NOCASE, id").fetch_all(pool.inner()).await.map_err(|e| e.to_string())?;
     Ok(TransactionOptions { payees, categories })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn icons_validate_default_and_survive_rename_and_archive() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let input = |id, icon, archived| SaveOption { kind: OptionKind::Category, id, name: "Food".into(), icon, is_archived: archived };
+        let initial = save(&pool,input(None,None,false)).await.unwrap();
+        assert_eq!(initial.icon.as_deref(),Some("tag"));
+        assert!(save(&pool,input(Some(initial.id.clone()),Some("invalid".into()),false)).await.is_err());
+        let selected = save(&pool,input(Some(initial.id.clone()),Some("utensils".into()),false)).await.unwrap();
+        assert_eq!(selected.icon.as_deref(),Some("utensils"));
+        let archived = save(&pool,SaveOption {name:"Dining".into(),..input(Some(initial.id.clone()),None,true)}).await.unwrap();
+        assert_eq!(archived.icon.as_deref(),Some("utensils"));
+        assert_eq!(archived.name,"Dining");
+        assert!(archived.is_archived);
+        let restored = save(&pool,input(Some(initial.id),None,false)).await.unwrap();
+        assert_eq!(restored.icon.as_deref(),Some("utensils"));
+        assert!(save(&pool,SaveOption {kind:OptionKind::Payee,..input(None,Some("tag".into()),false)}).await.is_err());
+    }
 }

@@ -35,23 +35,22 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/#/outlook')
 })
 
-test('cycle amounts, opening cash, explicit completion and item edits survive reload and window changes', async ({ page }) => {
-  await expect(page.getByRole('columnheader')).toHaveCount(8)
+test('cycle amounts, opening cash, comparison columns and item edits survive reload and window changes', async ({ page }) => {
+  await expect(page.getByRole('columnheader')).toHaveCount(17)
   await expect(page.getByLabel('First visible cycle')).toHaveValue('2026-12')
   await expect(page.getByRole('columnheader').nth(1)).toContainText('25 Dec 2026 – 24 Jan 2027')
-  await expect(page.getByRole('columnheader').last()).toContainText('Jun 2027')
+  await expect(page.getByRole('columnheader', { name: /^Jun 2027/ })).toBeVisible()
   await expect(page.getByText('Enter opening cash and its initial cycle')).toBeVisible()
   await page.getByRole('button', { name: 'Edit Salary 2026-12 amount', exact: true }).click()
   await page.getByLabel('Cycle amount (THB)').fill('50000')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByLabel('Status 2026-12')).toHaveValue('tracking')
+  await expect(page.getByRole('columnheader', { name: /Dec 2026/ })).toHaveAttribute('colspan', '2')
   await page.getByRole('button', { name: 'Set opening cash' }).click()
   await page.getByLabel('Available cash, bank, and wallet balance (THB)').fill('0')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   const closing = page.getByRole('row').last()
   await expect(closing).toContainText('Cumulative Closing Cash')
   await expect(closing.getByRole('cell').first()).toHaveText('50,000.00')
-  await page.getByLabel('Status 2026-12').selectOption('complete')
   await page.getByRole('button', { name: 'Edit Salary', exact: true }).click()
   await page.getByLabel('Item name', { exact: true }).fill('Main salary')
   await page.getByLabel('Description (optional)').fill('Before payroll deductions')
@@ -61,11 +60,13 @@ test('cycle amounts, opening cash, explicit completion and item edits survive re
   await page.getByLabel('First visible cycle').fill('2026-12')
   await page.reload()
   await expect(page.getByRole('button', { name: 'Edit Main salary 2026-12 amount', exact: true })).toContainText('50,000.00')
-  await page.getByRole('button', { name: 'Help: Main salary', exact: true }).focus()
+  await page.getByRole('button', { name: 'Help: Main salary', exact: true }).scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Help: Main salary', exact: true }).hover()
   await expect(page.getByRole('tooltip')).toContainText('Before payroll deductions')
   const content = page.locator('[data-slot="tooltip-content"]').first()
   await expect(content).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await page.evaluate(() => document.documentElement.dataset.theme = 'dark')
+  await page.getByRole('button', { name: 'Help: Main salary', exact: true }).hover()
   await expect(content).toHaveCSS('background-color', 'rgb(43, 46, 51)')
   await expect(content).toHaveCSS('color', 'rgb(246, 245, 239)')
   await page.evaluate(() => document.documentElement.dataset.theme = 'light')
@@ -73,7 +74,6 @@ test('cycle amounts, opening cash, explicit completion and item edits survive re
   await expect(page.getByRole('tooltip')).toHaveCount(0)
   await page.evaluate(() => document.documentElement.dataset.theme = 'dark')
   for (const control of [
-    page.getByRole('button', { name: 'Account-Based Outlook', exact: true }),
     page.getByRole('button', { name: 'Add item to Gross Income', exact: true }),
     page.getByRole('link', { name: 'Manage salary deductions in Income', exact: true }),
   ]) {
@@ -81,7 +81,7 @@ test('cycle amounts, opening cash, explicit completion and item edits survive re
     await expect(control).toHaveCSS('color', 'rgb(246, 245, 239)')
   }
   await page.evaluate(() => document.documentElement.dataset.theme = 'light')
-  await expect(page.getByLabel('Status 2026-12')).toHaveValue('complete')
+  await expect(page.getByLabel('Status 2026-12')).toHaveCount(0)
 })
 
 test('installments end on time, zero overrides persist, failed saves preserve drafts and deletion is explicit', async ({ page }) => {
@@ -210,7 +210,7 @@ test('recorded card payments refresh by account and cycle without adding install
     localStorage.setItem('planner-test', JSON.stringify(data))
     window.dispatchEvent(new Event('transactions-changed'))
   })
-  await expect(page.getByRole('link', { name: 'Visa', exact: true })).toHaveAttribute('href', /transactions/)
+  await expect(page.getByRole('link', { name: 'Visa · Billing', exact: true })).toHaveAttribute('href', /accounts\/card\/billing/)
   await expect(page.getByRole('button', { name: 'Visa 2026-12: Recorded payments', exact: true })).toContainText('2,000.00')
   await expect(page.getByRole('button', { name: 'Work laptop 2026-12: Using recorded card total', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2027-01 amount', exact: true })).toContainText('3,000.00')

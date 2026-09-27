@@ -1,3 +1,4 @@
+import type { CardBillingData } from './card-billing'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 
 export interface Settings {
@@ -44,8 +45,10 @@ export interface Account {
   payment_due_day: number | null
   interest_rate_ten_thousandths: number | null
   monthly_installment: string | null
+  initial_loan_amount?: string | null
 }
-export type NewAccount = Omit<Account, 'id' | 'current_balance'> & { currency: string }
+import type { LoanContract, LoanFacility } from './loans'
+export type NewAccount = Omit<Account, 'id' | 'current_balance'> & { currency: string; revolving_credit_limit?: string | null }
 
 export function listAccounts(): Promise<Account[]> {
   return invoke<Account[]>('list_accounts')
@@ -99,6 +102,8 @@ export async function saveSalaryDeductions(input: { income_id: string; currency:
 
 export type TransactionType = 'income' | 'expense' | 'transfer' | 'repayment'
 export interface Transaction {
+  income_source_id?: string | null
+  income_source_name?: string | null
   has_reconciliation_history?: boolean
   id: string
   type: TransactionType
@@ -112,9 +117,10 @@ export interface Transaction {
   payee_id: string | null
   payee_name: string | null
   category_id: string | null
+  category_icon?: string | null
   category_name: string | null
 }
-export type NewTransaction = Omit<Transaction, 'id' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name' | 'has_reconciliation_history'> & { currency: string; cleared_account_ids?: string[] }
+export type NewTransaction = Omit<Transaction, 'category_icon' | 'id' | 'income_source_name' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name' | 'has_reconciliation_history'> & { currency: string; cleared_account_ids?: string[] }
 export function listTransactions(): Promise<Transaction[]> { return invoke('list_transactions') }
 export async function createTransaction(input: NewTransaction): Promise<Transaction> {
   const result = await invoke<Transaction>('create_transaction', { input })
@@ -129,9 +135,9 @@ export async function deleteTransaction(id: string, confirmReconciled = false): 
 }
 
 export type TransactionOptionKind = 'payee' | 'category'
-export interface TransactionOption { id: string; name: string; is_archived: boolean }
+export interface TransactionOption { icon?: string | null; id: string; name: string; is_archived: boolean }
 export interface TransactionOptions { payees: TransactionOption[]; categories: TransactionOption[] }
-export interface SaveTransactionOption { kind: TransactionOptionKind; id: string | null; name: string; is_archived: boolean }
+export interface SaveTransactionOption { icon?: string | null; kind: TransactionOptionKind; id: string | null; name: string; is_archived: boolean }
 export function listTransactionOptions(): Promise<TransactionOptions> { return invoke('list_transaction_options') }
 export async function saveTransactionOption(input: SaveTransactionOption): Promise<TransactionOption> {
   const option = await invoke<TransactionOption>('save_transaction_option', { input })
@@ -154,6 +160,9 @@ export interface PaymentPlan {
 }
 export type SavePaymentPlan = Omit<PaymentPlan, 'id' | 'account_name' | 'destination_account_name' | 'category_name'> & { id: string | null; currency: string }
 export interface FinancialData {
+  card_billing?: CardBillingData
+  loan_contracts?: LoanContract[]
+  loan_facilities?: LoanFacility[]
   settings: Settings
   accounts: Account[]
   incomes: Income[]

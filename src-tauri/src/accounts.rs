@@ -19,12 +19,14 @@ pub struct Account {
     payment_due_day: Option<i64>,
     interest_rate_ten_thousandths: Option<i64>,
     monthly_installment: Option<String>,
+    initial_loan_amount: Option<String>,
 }
 
-pub(crate) const COLUMNS: &str = "id, name, type AS account_type, loan_type, CAST(opening_balance AS TEXT) AS opening_balance, CAST(current_balance AS TEXT) AS current_balance, institution, last_four, notes, CAST(credit_limit AS TEXT) AS credit_limit, statement_day, payment_due_day, interest_rate_ten_thousandths, CAST(monthly_installment AS TEXT) AS monthly_installment";
+pub(crate) const COLUMNS: &str = "id, name, type AS account_type, loan_type, CAST(opening_balance AS TEXT) AS opening_balance, CAST(current_balance AS TEXT) AS current_balance, institution, last_four, notes, CAST(credit_limit AS TEXT) AS credit_limit, statement_day, payment_due_day, interest_rate_ten_thousandths, CAST(monthly_installment AS TEXT) AS monthly_installment, CAST(initial_loan_amount AS TEXT) AS initial_loan_amount";
 
 #[derive(Deserialize)]
 pub struct NewAccount {
+    revolving_credit_limit: Option<String>,
     name: String,
     #[serde(rename = "type")]
     account_type: String,
@@ -39,6 +41,7 @@ pub struct NewAccount {
     payment_due_day: Option<i64>,
     interest_rate_ten_thousandths: Option<i64>,
     monthly_installment: Option<String>,
+    initial_loan_amount: Option<String>,
 }
 
 fn optional_text(value: Option<String>, limit: usize) -> Result<Option<String>, String> {
@@ -112,6 +115,13 @@ fn validate_account(mut input: NewAccount, allow_unclassified: bool) -> Result<N
             );
         }
     }
+    if let Some(value) = input.initial_loan_amount.as_deref() {
+        if kind != "loan" || amount(value)? < 0 {
+            return Err(
+                "Initial loan amount must be a non-negative amount on a loan account.".into(),
+            );
+        }
+    }
     let debt = ["credit_card", "loan"].contains(&kind);
     if !debt && (input.payment_due_day.is_some() || input.interest_rate_ten_thousandths.is_some()) {
         return Err(
@@ -140,6 +150,20 @@ fn validate_account(mut input: NewAccount, allow_unclassified: bool) -> Result<N
 
 pub async fn insert_account(pool: &SqlitePool, input: NewAccount) -> Result<Account, String> {
     let input = validate_account(input, false)?;
+    let revolving_limit = input
+        .revolving_credit_limit
+        .as_deref()
+        .map(amount)
+        .transpose()?;
+    if revolving_limit.is_some_and(|v| v < 0)
+        || (revolving_limit.is_some()
+            && (input.account_type != "loan"
+                || input.loan_type.as_deref() != Some("personal_loan")))
+    {
+        return Err(
+            "Revolving credit requires a Personal Loan and non-negative credit limit.".into(),
+        );
+    }
     let balance = amount(&input.opening_balance)?;
     let limit = input.credit_limit.as_deref().map(amount).transpose()?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
@@ -152,7 +176,7 @@ pub async fn insert_account(pool: &SqlitePool, input: NewAccount) -> Result<Acco
             "Choose the app currency in Settings, then reload accounts before saving.".into(),
         );
     }
-    let query = format!("INSERT INTO accounts (id, name, type, opening_balance, current_balance, institution, last_four, notes, credit_limit, statement_day, payment_due_day, interest_rate_ten_thousandths, loan_type, monthly_installment) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING {COLUMNS}");
+    let query = format!("INSERT INTO accounts (id, name, type, opening_balance, current_balance, institution, last_four, notes, credit_limit, statement_day, payment_due_day, interest_rate_ten_thousandths, loan_type, monthly_installment, initial_loan_amount) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING {COLUMNS}");
     let account = sqlx::query_as::<_, Account>(&query)
         .bind(input.name)
         .bind(input.account_type)
@@ -173,9 +197,24 @@ pub async fn insert_account(pool: &SqlitePool, input: NewAccount) -> Result<Acco
                 .map(amount)
                 .transpose()?,
         )
+        .bind(
+            input
+                .initial_loan_amount
+                .as_deref()
+                .map(amount)
+                .transpose()?,
+        )
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
+    if let Some(limit) = revolving_limit {
+        sqlx::query("INSERT INTO loan_facilities(account_id,credit_limit) VALUES (?,?)")
+            .bind(&account.id)
+            .bind(limit)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(account)
 }
@@ -197,6 +236,7 @@ pub struct AccountUpdate {
     payment_due_day: Option<i64>,
     interest_rate_ten_thousandths: Option<i64>,
     monthly_installment: Option<String>,
+    initial_loan_amount: Option<String>,
 }
 
 async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, String> {
@@ -221,6 +261,7 @@ async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, Stri
     }
     let details = validate_account(
         NewAccount {
+            revolving_credit_limit: None,
             name: input.name,
             account_type: input.account_type,
             loan_type: input.loan_type,
@@ -234,11 +275,12 @@ async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, Stri
             payment_due_day: input.payment_due_day,
             interest_rate_ten_thousandths: input.interest_rate_ten_thousandths,
             monthly_installment: input.monthly_installment,
+            initial_loan_amount: input.initial_loan_amount,
         },
         saved.loan_type.is_none(),
     )?;
     // Neither opening nor current balance is accepted in the update payload or written here.
-    let query = format!("UPDATE accounts SET name = ?, loan_type = ?, institution = ?, last_four = ?, notes = ?, credit_limit = ?, statement_day = ?, payment_due_day = ?, interest_rate_ten_thousandths = ?, monthly_installment = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING {COLUMNS}");
+    let query = format!("UPDATE accounts SET name = ?, loan_type = ?, institution = ?, last_four = ?, notes = ?, credit_limit = ?, statement_day = ?, payment_due_day = ?, interest_rate_ten_thousandths = ?, monthly_installment = ?, initial_loan_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING {COLUMNS}");
     let account = sqlx::query_as(&query)
         .bind(details.name)
         .bind(details.loan_type)
@@ -252,6 +294,13 @@ async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, Stri
         .bind(
             details
                 .monthly_installment
+                .as_deref()
+                .map(amount)
+                .transpose()?,
+        )
+        .bind(
+            details
+                .initial_loan_amount
                 .as_deref()
                 .map(amount)
                 .transpose()?,
@@ -310,6 +359,7 @@ mod tests {
     }
     fn input(kind: &str) -> NewAccount {
         NewAccount {
+            revolving_credit_limit: None,
             name: " Test account ".into(),
             account_type: kind.into(),
             loan_type: (kind == "loan").then(|| "other_debt".into()),
@@ -323,6 +373,7 @@ mod tests {
             payment_due_day: None,
             interest_rate_ten_thousandths: None,
             monthly_installment: None,
+            initial_loan_amount: None,
         }
     }
     fn edit_input(account: &Account) -> AccountUpdate {
@@ -489,6 +540,10 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0026_initial_loan_amount.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
         for kind in ["credit_card", "loan"] {
             for rate in [None, Some(0), Some(1), Some(11957), Some(1000000)] {
                 let mut value = input(kind);
@@ -535,6 +590,10 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0026_initial_loan_amount.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
         let old: (i64,i64,i64,Option<i64>,String) = sqlx::query_as("SELECT opening_balance,current_balance,is_archived,monthly_installment,i.destination_account_id FROM accounts a JOIN incomes i ON i.destination_account_id=a.id").fetch_one(&pool).await.unwrap();
         assert_eq!(old, (1200, 1000, 1, None, "old".into()));
         for rate in [
@@ -652,6 +711,10 @@ mod tests {
         let stored: Account = sqlx::query_as(&format!(
             "SELECT {} FROM accounts WHERE id = 'old'",
             COLUMNS
+                .replace(
+                    "CAST(initial_loan_amount AS TEXT) AS initial_loan_amount",
+                    "NULL AS initial_loan_amount"
+                )
                 .replace(
                     "CAST(monthly_installment AS TEXT) AS monthly_installment",
                     "NULL AS monthly_installment"
@@ -917,6 +980,10 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0026_initial_loan_amount.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
         let wallet = insert_account(&pool, input("wallet")).await.unwrap();
         assert_eq!(wallet.account_type, "wallet");
         assert_eq!(wallet.current_balance, "9007199254740993");
@@ -947,5 +1014,73 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+    #[tokio::test]
+    async fn initial_loan_amount_is_independent_exact_optional_and_migrates_without_guessing() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for migration in sqlx::migrate!("./migrations")
+            .iter()
+            .filter(|m| m.version < 26)
+        {
+            sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
+        }
+        sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,loan_type,opening_balance,current_balance) VALUES('old','Old loan','loan','personal_loan',5000000,2000000);").execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0026_initial_loan_amount.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        let old: Account =
+            sqlx::query_as(&format!("SELECT {COLUMNS} FROM accounts WHERE id='old'"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(old.initial_loan_amount.is_none());
+        let mut edit = edit_input(&old);
+        edit.initial_loan_amount = Some("10000000".into());
+        let saved = update(&pool, edit).await.unwrap();
+        assert_eq!(saved.initial_loan_amount.as_deref(), Some("10000000"));
+        assert_eq!(saved.current_balance, "2000000");
+        assert_eq!(saved.opening_balance, "5000000");
+        for value in [
+            None,
+            Some("0"),
+            Some("9007199254740993"),
+            Some("9223372036854775807"),
+        ] {
+            let mut create = input("loan");
+            create.initial_loan_amount = value.map(str::to_owned);
+            let account = insert_account(&pool, create).await.unwrap();
+            assert_eq!(account.initial_loan_amount.as_deref(), value);
+            let mut edit = edit_input(&saved);
+            edit.initial_loan_amount = value.map(str::to_owned);
+            let result = update(&pool, edit).await.unwrap();
+            assert_eq!(result.initial_loan_amount.as_deref(), value);
+            assert_eq!(result.current_balance, "2000000");
+        }
+        for value in ["-1", "1.5", "9223372036854775808"] {
+            let mut create = input("loan");
+            create.initial_loan_amount = Some(value.into());
+            assert!(insert_account(&pool, create).await.is_err());
+        }
+        for kind in ["cash", "bank", "wallet", "credit_card", "investment"] {
+            let mut create = input(kind);
+            create.initial_loan_amount = Some("100".into());
+            assert!(insert_account(&pool, create).await.is_err());
+        }
+        assert!(
+            sqlx::query("UPDATE accounts SET initial_loan_amount=1.5 WHERE id='old'")
+                .execute(&pool)
+                .await
+                .is_err()
+        );
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM transactions")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
     }
 }

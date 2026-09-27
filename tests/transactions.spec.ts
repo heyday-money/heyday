@@ -16,6 +16,7 @@ test.beforeEach(async ({ page }) => {
           if (sessionStorage.getItem('fail-accounts')) throw 'Load failed'
           return sessionStorage.getItem('no-accounts') ? [] : accounts.filter(a => !sessionStorage.getItem('hide-card') || a.id !== 'card')
         case 'get_financial_data': return { settings: { currency: 'THB', period_start_day: 1 }, accounts, transactions: enrichedRows(), incomes: [], plans: [], categories: options().categories }
+        case 'list_incomes': return [{id:'salary',name:'Company salary',type:'salary',is_active:true,destination_account_id:'bank'}]
         case 'list_transaction_options': return options()
         case 'save_transaction_option': {
           if (sessionStorage.getItem('hold-option')) await new Promise<void>(resolve => window.addEventListener('release-option', () => resolve(), { once: true }))
@@ -24,7 +25,7 @@ test.beforeEach(async ({ page }) => {
           const key = args.input.kind === 'payee' ? 'payees' : 'categories'
           const name = args.input.name.trim().replace(/\s+/g, ' ')
           if (lists[key].some(item => item.id !== args.input.id && item.name.toLowerCase() === name.toLowerCase())) throw 'That name already exists.'
-          const value = { id: args.input.id ?? crypto.randomUUID(), name, is_archived: args.input.is_archived }
+          const value = { id: args.input.id ?? crypto.randomUUID(), name, icon: args.input.icon ?? lists[key].find(item => item.id === args.input.id)?.icon ?? 'tag', is_archived: args.input.is_archived }
           lists[key] = [...lists[key].filter(item => item.id !== value.id), value]
           localStorage.setItem('spending-options', JSON.stringify(lists))
           return value
@@ -274,7 +275,7 @@ test('manage payees and categories, record expenses, and preserve archived histo
   await page.getByRole('tab', { name: 'Payees', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Rename Corner Shop' })).toBeVisible()
   await page.getByRole('tab', { name: 'Categories', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Rename Groceries' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit Groceries' })).toBeVisible()
   await page.getByRole('tab', { name: 'Payees', exact: true }).click()
   await page.getByRole('button', { name: 'Add payee', exact: true }).click()
   await page.getByLabel('Payee name', { exact: true }).fill('Corner Shop')
@@ -383,4 +384,50 @@ test('search and create payees inline, preserve drafts on failure, and clear aft
   await expect(page.getByRole('option', { name: 'New Cafe', exact: true })).toBeVisible()
   await page.getByRole('option', { name: 'No payee', exact: true }).click()
   await expect(payee).toBeEmpty()
+})
+
+
+test('income source links salary receipts, preserves failures and clears for another entry', async ({page}) => {
+  await page.goto('/#/transactions')
+  await page.getByRole('button', {name:'Add transaction',exact:true}).click()
+  await page.getByLabel('Transaction type',{exact:true}).selectOption('income')
+  await page.getByLabel('Income source (optional)',{exact:true}).selectOption('salary')
+  await page.getByLabel('Amount (THB)',{exact:true}).fill('45000')
+  await page.screenshot({path:'/tmp/heyday-income-source.png',animations:'disabled'})
+  await page.evaluate(()=>sessionStorage.setItem('fail','1'))
+  await page.getByRole('button',{name:'Save transaction',exact:true}).click()
+  await expect(page.getByRole('alert')).toContainText('Save failed')
+  await expect(page.getByLabel('Income source (optional)',{exact:true})).toHaveValue('salary')
+  await page.evaluate(()=>sessionStorage.removeItem('fail'))
+  await page.getByRole('button',{name:'Save & add another',exact:true}).click()
+  await expect(page.getByLabel('Income source (optional)',{exact:true})).toHaveValue('')
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('transactions')!)[0])).toMatchObject({type:'income',income_source_id:'salary',amount:'4500000',category_id:null})
+  await page.getByLabel('Transaction type',{exact:true}).selectOption('expense')
+  await expect(page.getByLabel('Income source (optional)',{exact:true})).toHaveCount(0)
+})
+
+
+test('category icons persist across edit, rename and archive with protected drafts',async({page})=>{
+ await page.goto('/#/settings')
+ await page.getByRole('tab',{name:'Categories',exact:true}).click()
+ await page.getByRole('button',{name:'Add category',exact:true}).click()
+ await page.getByLabel('Category name',{exact:true}).fill('Dining')
+ await page.getByRole('button',{name:'Icon: Food',exact:true}).click()
+ await expect(page.getByRole('button',{name:'Icon: Food',exact:true})).toHaveAttribute('aria-pressed','true')
+ await page.screenshot({path:'/tmp/heyday-category-icons.png',animations:'disabled'})
+ await page.getByRole('button',{name:'Save',exact:true}).click()
+ await page.reload()
+ await page.getByRole('tab',{name:'Categories',exact:true}).click()
+ await page.getByRole('button',{name:'Edit Dining',exact:true}).click()
+ await expect(page.getByRole('button',{name:'Icon: Food',exact:true})).toHaveAttribute('aria-pressed','true')
+ await page.getByRole('button',{name:'Icon: Drinks',exact:true}).click()
+ await page.keyboard.press('Escape')
+ await expect(page.getByRole('alert')).toContainText('Discard your unsaved changes')
+ await page.getByRole('button',{name:'Keep editing'}).click()
+ await page.getByLabel('Category name',{exact:true}).fill('Cafe')
+ await page.getByRole('button',{name:'Save',exact:true}).click()
+ await page.getByRole('button',{name:'Archive Cafe',exact:true}).click()
+ await page.getByRole('button',{name:'Restore Cafe',exact:true}).click()
+ await page.getByRole('button',{name:'Edit Cafe',exact:true}).click()
+ await expect(page.getByRole('button',{name:'Icon: Drinks',exact:true})).toHaveAttribute('aria-pressed','true')
 })

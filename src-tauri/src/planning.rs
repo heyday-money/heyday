@@ -139,6 +139,9 @@ pub async fn delete_payment_plan(
 
 #[derive(Serialize)]
 pub struct FinancialData {
+    card_billing: crate::card_billing::BillingData,
+    loan_contracts: Vec<crate::loans::Contract>,
+    loan_facilities: Vec<crate::loans::Facility>,
     settings: crate::Settings,
     accounts: Vec<crate::accounts::Account>,
     incomes: Vec<crate::incomes::Income>,
@@ -187,8 +190,18 @@ async fn snapshot(pool: &SqlitePool) -> Result<FinancialData, String> {
             .fetch_all(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+    let loan_contracts = crate::loans::contracts(&mut tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    let loan_facilities = crate::loans::facilities(&mut tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    let card_billing = crate::card_billing::snapshot(&mut tx).await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(FinancialData {
+        card_billing,
+        loan_contracts,
+        loan_facilities,
         settings,
         accounts,
         incomes,

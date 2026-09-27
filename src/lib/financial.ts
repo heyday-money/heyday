@@ -1,3 +1,5 @@
+import { cardForecasts, installmentCovered } from './card-billing'
+import { loanSchedule } from './loans'
 import { subscriptionDates } from './subscriptions'
 import { installmentSchedule } from './installments'
 import type { Account, FinancialData } from './desktop'
@@ -42,8 +44,9 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
   const debt = new Set(data.accounts.filter(isDebt).map(account => account.id))
   const hasDebt = data.accounts.some(account => isDebt(account) && accountValue(account) < 0n)
   const currentCash = data.accounts.filter(isCash).reduce((total, account) => total + accountValue(account), 0n)
-  const scheduledRepayments = (data.installments ?? []).filter(plan => cash.has(plan.account_id) && debt.has(plan.debt_account_id))
-    .flatMap(plan => installmentSchedule(plan).map(payment => ({ ...payment, debtId: plan.debt_account_id, debtName: plan.debt_account_name })))
+  const scheduledRepayments = (data.installments ?? []).filter(plan => cash.has(plan.account_id) && debt.has(plan.debt_account_id) && !data.loan_facilities?.some(f => f.account_id === plan.debt_account_id))
+    .flatMap(plan => installmentSchedule(plan).filter(p => !installmentCovered(data.card_billing,plan.id,p.date)).map(payment => ({ ...payment, debtId: plan.debt_account_id, debtName: plan.debt_account_name })))
+  scheduledRepayments.push(...(data.loan_contracts ?? []).filter(c => cash.has(c.payment_account_id) && debt.has(c.account_id)).flatMap(c => loanSchedule(c).map(p => ({ ...p, debtId: c.account_id, debtName: data.accounts.find(a => a.id === c.account_id)?.name ?? 'Loan' }))))
   let previousClosing = currentCash
   let partial = false
   return Array.from({ length: 7 }, (_, index) => {
@@ -81,6 +84,9 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
       if (!inside(plan.date) || plan.date <= todayString || !cash.has(plan.account_id)) continue
       if (plan.type === 'expense') add(buckets.expenses, plan.category_id ?? 'uncategorized', plan.category_name ?? 'Uncategorized', 'forecast', BigInt(plan.amount))
       else if (plan.destination_account_id && debt.has(plan.destination_account_id)) add(buckets.repayments, plan.destination_account_id, plan.destination_account_name ?? 'Debt account', 'forecast', BigInt(plan.amount))
+    }
+    for (const payment of cardForecasts(data.card_billing,todayString)) {
+      if (inside(payment.date) && cash.has(payment.account_id) && debt.has(payment.card_id)) add(buckets.repayments,payment.card_id,data.accounts.find(a=>a.id===payment.card_id)?.name??'Credit card','forecast',payment.amount)
     }
     for (const payment of scheduledRepayments) {
       if (inside(payment.date) && payment.date > todayString) add(buckets.repayments, payment.debtId, payment.debtName, 'forecast', BigInt(payment.amount))

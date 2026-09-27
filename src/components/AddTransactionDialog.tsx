@@ -1,7 +1,8 @@
+import { CategorySelect } from './CategoryIcon'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { createTransaction, getSettings, listAccounts, listTransactionOptions, type TransactionOptions, type Account, type TransactionType } from '../lib/desktop'
+import { createTransaction, listIncomes, type Income, getSettings, listAccounts, listTransactionOptions, type TransactionOptions, type Account, type TransactionType } from '../lib/desktop'
 import { decimalToInteger, fractionDigits } from '../lib/money'
 import { PayeeCombobox } from './PayeeCombobox'
 import { Button } from './ui/button'
@@ -47,6 +48,10 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [payeeId, setPayeeId] = useState('')
+  const [incomeSourceId, setIncomeSourceId] = useState('')
+  const [incomes, setIncomes] = useState<Income[]>([])
+  const [incomeLoad, setIncomeLoad] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [incomeAttempt, setIncomeAttempt] = useState(0)
   const [categoryId, setCategoryId] = useState('')
   const [options, setOptions] = useState<TransactionOptions>({ payees: [], categories: [] })
   const [error, setError] = useState<string | null>(null)
@@ -67,6 +72,13 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
       amountRef.current?.focus()
     }
   }, [saving])
+  useEffect(() => {
+    if (kind !== 'income') return
+    let active = true
+    setIncomeLoad('loading')
+    listIncomes().then(rows => { if (active) { setIncomes(rows); setIncomeLoad('ready') } }).catch(() => { if (active) setIncomeLoad('error') })
+    return () => { active = false }
+  }, [kind, incomeAttempt])
   const paired = kind === 'transfer' || kind === 'repayment'
   const close = onClose
   function changeOpen(next: boolean) {
@@ -87,10 +99,10 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
       const amount = decimalToInteger(String(data.get('amount')), fractionDigits(currency))
       if (BigInt(amount) <= 0n) throw new Error('Amount must be greater than zero.')
       const clearedIds = [sourceCleared ? accountId : '', paired && destinationCleared ? destinationId : ''].filter(id => accounts.some(account => account.id === id && ['bank', 'wallet', 'credit_card'].includes(account.type)))
-      await createTransaction({ cleared_account_ids: clearedIds, type: kind, account_id: accountId, destination_account_id: paired ? String(data.get('destination')) : null, amount, currency, date: String(data.get('date')), description: String(data.get('description') ?? '').trim(), payee_id: kind === 'expense' ? payeeId || null : null, category_id: kind === 'expense' ? categoryId || null : null })
+      await createTransaction({ income_source_id: kind === 'income' ? incomeSourceId || null : null, cleared_account_ids: clearedIds, type: kind, account_id: accountId, destination_account_id: paired ? String(data.get('destination')) : null, amount, currency, date: String(data.get('date')), description: String(data.get('description') ?? '').trim(), payee_id: kind === 'expense' ? payeeId || null : null, category_id: kind === 'expense' ? categoryId || null : null })
       try { localStorage.setItem(rememberedAccountKey, accountId) } catch { /* Saving does not depend on preferences. */ }
       if (addAnother) {
-        setSourceCleared(false); setDestinationCleared(false); setAmount(''); setDescription(''); setPayeeId(''); setUnresolvedPayee(false); setCategoryId(''); setDirty(false); setDiscard(false)
+        setSourceCleared(false); setDestinationCleared(false); setAmount(''); setDescription(''); setPayeeId(''); setUnresolvedPayee(false); setCategoryId(''); setIncomeSourceId(''); setDirty(false); setDiscard(false)
         focusNextAmount.current = true
       } else close()
       toast.success('Transaction saved.')
@@ -107,19 +119,23 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
           <div className="min-h-0 overflow-y-auto px-6 py-5">
             <fieldset disabled={saving} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2"><Field label={`Amount (${currency ?? ''})`}><Input ref={amountRef} className="mt-2 h-14 w-full text-2xl tabular-nums md:text-2xl" name="amount" value={amount} onChange={event => setAmount(event.target.value)} inputMode="decimal" required placeholder="0" /></Field></div>
-              <Field label="Transaction type"><NativeSelect className={control} value={kind} onChange={event => { setKind(event.target.value as TransactionType); setUnresolvedPayee(false); setDestinationId(''); setDestinationCleared(false) }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</NativeSelect></Field>
+              <Field label="Transaction type"><NativeSelect className={control} value={kind} onChange={event => { setKind(event.target.value as TransactionType); setIncomeSourceId(''); setUnresolvedPayee(false); setDestinationId(''); setDestinationCleared(false) }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</NativeSelect></Field>
               <Field label="Date"><Input className={control} name="date" type="date" required min="0001-01-01" max={today()} defaultValue={today()} /></Field>
               <Field label={paired ? 'From account' : 'Account'}><NativeSelect className={control} required value={accountId} onChange={event => { setAccountId(event.target.value); setSourceCleared(false); setDestinationId(''); setDestinationCleared(false) }}><option value="">Choose account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</NativeSelect></Field>
               {paired && <Field label="To account"><NativeSelect key={`${kind}-${accountId}`} className={control} name="destination" required value={destinationId} onChange={event => { setDestinationId(event.target.value); setDestinationCleared(false) }}><option value="">Choose destination</option>{accounts.filter(a => a.id !== accountId && (kind !== 'repayment' || ['credit_card', 'loan'].includes(a.type))).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</NativeSelect></Field>}
               {accounts.some(account => account.id === accountId && ['bank', 'wallet', 'credit_card'].includes(account.type)) && <label className="flex items-center gap-2 text-sm"><Input type="checkbox" className="size-4 p-0" checked={sourceCleared} onChange={event => setSourceCleared(event.target.checked)} />{paired ? 'Cleared in from account' : 'Cleared'}</label>}
               {paired && accounts.some(account => account.id === destinationId && ['bank', 'wallet', 'credit_card'].includes(account.type)) && <label className="flex items-center gap-2 text-sm"><Input type="checkbox" className="size-4 p-0" checked={destinationCleared} onChange={event => setDestinationCleared(event.target.checked)} />Cleared in to account</label>}
+              {kind === 'income' && <div className="sm:col-span-2">
+                <Field label="Income source (optional)"><NativeSelect className={control} value={incomeSourceId} disabled={incomeLoad !== 'ready'} onChange={event => setIncomeSourceId(event.target.value)}><option value="">Other income / Unassigned</option>{incomes.filter(i => i.is_active && accounts.some(a => a.id === i.destination_account_id)).map(i => <option key={i.id} value={i.id}>{i.name} · {i.type === 'salary' ? 'Salary' : i.type}</option>)}</NativeSelect></Field>
+                {incomeLoad === 'loading' ? <p className="mt-2 text-xs" role="status">Loading income sources…</p> : incomeLoad === 'error' ? <p className="mt-2 text-xs" role="alert">Could not load income sources. <Button type="button" variant="outline" size="xs" onClick={() => setIncomeAttempt(n => n + 1)}>Retry income sources</Button></p> : <p className="mt-2 text-xs">Choose your salary or another source created in Income. Enter the net amount actually received; payroll deductions are not subtracted again. <Link to="/income" className="text-brand" onClick={event => { if (dirty) { event.preventDefault(); setDiscard(true) } else close() }}>Manage income sources</Link></p>}
+              </div>}
               {kind === 'expense' && <>
                 <Field label="Payee (optional)"><PayeeCombobox value={payeeId} options={options.payees}
                   onChange={id => { setPayeeId(id); setDirty(true); setError(null) }}
                   onCreated={payee => setOptions(current => ({ ...current, payees: [...current.payees, payee] }))}
                   onBusyChange={busy => { creatingPayeeRef.current = busy; setCreatingPayee(busy) }}
                   onUnresolvedChange={setUnresolvedPayee} /></Field>
-                <Field label="Category (optional)"><NativeSelect className={control} value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">Uncategorized</option>{options.categories.filter(item => !item.is_archived).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></Field>
+                <Field label="Category (optional)"><CategorySelect iconName={options.categories.find(item => item.id === categoryId)?.icon} className="w-full" value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">Uncategorized</option>{options.categories.filter(item => !item.is_archived).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</CategorySelect></Field>
                 <p className="text-xs sm:col-span-2">Search or create a payee above. Manage payees and spending categories in Settings.</p>
               </>}
               <Field label="Description (optional)"><Input className={control} name="description" value={description} onChange={event => setDescription(event.target.value)} maxLength={200} placeholder="e.g. Groceries" /></Field>
