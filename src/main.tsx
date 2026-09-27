@@ -1,3 +1,5 @@
+import { CardBillingPage } from './components/CardBillingPage'
+import { LoanAccountPage } from './components/LoanAccountPage'
 import { AccountTransactionsPage } from './components/AccountTransactionsPage'
 import { SubscriptionsPage } from './components/SubscriptionsPage'
 import { InstallmentsPage } from './components/InstallmentsPage'
@@ -15,6 +17,8 @@ const rootRoute = createRootRoute({
   notFoundComponent: () => <section className="rounded-[22px] border border-line bg-card p-[27px]"><h2>Page not found</h2><a href="#/">Return home</a></section>,
 })
 const routeTree = rootRoute.addChildren([
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/billing', component: CardBillingPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/loans', component: LoanAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/outlook', component: MonthlyOutlook }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: NetWorthPage }),

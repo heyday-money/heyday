@@ -314,6 +314,7 @@ mod tests {
                 currency: "THB".into(),
                 payee_id: None,
                 category_id: None,
+                income_source_id: None,
                 cleared_account_ids: cleared.iter().map(|id| (*id).into()).collect(),
             },
         )

@@ -112,6 +112,7 @@ test('set currency, create all account types, and preserve them across reload', 
     if (type === 'loan') {
       await page.getByLabel('Annual interest rate (%, optional)').fill('1.1957')
       await page.getByLabel('Monthly installment (THB, optional)').fill('123.45')
+      await page.getByLabel('Initial Loan Amount (THB, optional)').fill('100000')
     }
     if (type === 'cash') {
       await page.evaluate(() => sessionStorage.setItem('fail-account', 'true'))
@@ -135,6 +136,7 @@ test('set currency, create all account types, and preserve them across reload', 
   await expect(page.getByRole('tabpanel').getByRole('listitem')).toHaveCount(6)
   await expect(page.getByRole('tabpanel').getByText(/•••• 0123/)).toHaveCount(6)
   await expect(page.getByRole('tabpanel').getByRole('region')).toHaveCount(6)
+  await expect(page.getByText('Initial Loan Amount: 100,000.00 THB')).toBeVisible()
   await expect(page.getByText('Credit limit: 50,000.00 THB')).toBeVisible()
   await expect(page.getByText('Annual interest rate: 1.1957%')).toBeVisible()
   await expect(page.getByText('Monthly installment: 123.45 THB')).toBeVisible()
@@ -148,6 +150,8 @@ test('set currency, create all account types, and preserve them across reload', 
   await expect(page.getByLabel('Last four digits (optional)')).toHaveValue('0123')
   await expect(page.getByLabel('Annual interest rate (%, optional)')).toHaveValue('1.1957')
   await expect(page.getByLabel('Monthly installment (THB, optional)')).toHaveValue('123.45')
+  await expect(page.getByLabel('Initial Loan Amount (THB, optional)')).toHaveValue('100000.00')
+  await page.getByLabel('Initial Loan Amount (THB, optional)').fill('90071992547409.93')
   await page.getByLabel('Monthly installment (THB, optional)').fill('0')
   await page.getByLabel('Annual interest rate (%, optional)').fill('4.3219')
   await page.getByLabel('Account name', { exact: true }).fill('Student loan')
@@ -171,6 +175,7 @@ test('set currency, create all account types, and preserve them across reload', 
   await page.reload()
   await page.getByRole('button', { name: 'Edit account Student loan', exact: true }).click()
   await expect(page.getByLabel('Annual interest rate (%, optional)')).toHaveValue('4.3219')
+  await expect(page.getByLabel('Initial Loan Amount (THB, optional)')).toHaveValue('90071992547409.93')
   await expect(page.getByLabel('Monthly installment (THB, optional)')).toHaveValue('0.00')
   await expect(page.getByLabel('Opening balance (THB)')).toHaveValue('1234.56')
   await expect(page.getByLabel('Last four digits (optional)')).toHaveValue('0099')

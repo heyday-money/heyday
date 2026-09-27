@@ -124,6 +124,7 @@ async fn save(pool: &SqlitePool, input: SaveInstallment) -> Result<(), String> {
                 currency: input.currency.clone(),
                 payee_id: None,
                 category_id: None,
+                income_source_id: None,
             },
         )
         .await?;

@@ -17,9 +17,43 @@ pub struct Transaction {
     payee_name: Option<String>,
     category_id: Option<String>,
     category_name: Option<String>,
+    category_icon: Option<String>,
+    income_source_id: Option<String>,
+    income_source_name: Option<String>,
     has_reconciliation_history: bool,
 }
-pub(crate) const SELECT: &str = "SELECT t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, t.category_id, c.name AS category_name, EXISTS(SELECT 1 FROM reconciliation_entries re WHERE re.transaction_id=t.id) AS has_reconciliation_history FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id";
+pub(crate) const SELECT: &str = "SELECT t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, t.category_id, c.name AS category_name, c.icon AS category_icon, t.income_source_id, (SELECT name FROM incomes WHERE id=t.income_source_id) AS income_source_name, EXISTS(SELECT 1 FROM reconciliation_entries re WHERE re.transaction_id=t.id) AS has_reconciliation_history FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id";
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct ExpenseAccount {
+    id: String,
+    name: String,
+    #[serde(rename = "type")]
+    kind: String,
+    is_archived: bool,
+}
+#[derive(Serialize)]
+pub struct ExpenseReport {
+    settings: crate::Settings,
+    accounts: Vec<ExpenseAccount>,
+    transactions: Vec<Transaction>,
+}
+async fn expense_snapshot(pool: &SqlitePool) -> Result<ExpenseReport, String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let settings = sqlx::query_as("SELECT currency,period_start_day FROM settings WHERE id=1")
+        .fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    // Retain account types for archived history so payment-method filters stay accurate.
+    let accounts = sqlx::query_as("SELECT id,name,type AS kind,is_archived FROM accounts ORDER BY name,id")
+        .fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
+    let transactions = sqlx::query_as(&format!("{SELECT} WHERE t.type='expense' ORDER BY t.date DESC,t.id"))
+        .fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(ExpenseReport { settings, accounts, transactions })
+}
+#[tauri::command]
+pub async fn get_expense_report(pool: tauri::State<'_, SqlitePool>) -> Result<ExpenseReport, String> {
+    expense_snapshot(pool.inner()).await
+}
 
 #[derive(Deserialize)]
 pub struct NewTransaction {
@@ -33,6 +67,7 @@ pub struct NewTransaction {
     pub(crate) currency: String,
     pub(crate) payee_id: Option<String>,
     pub(crate) category_id: Option<String>,
+    pub(crate) income_source_id: Option<String>,
     #[serde(default)]
     pub(crate) cleared_account_ids: Vec<String>,
 }
@@ -152,6 +187,12 @@ pub(crate) async fn insert_in_connection(
     if input.kind != "expense" && (input.payee_id.is_some() || input.category_id.is_some()) {
         return Err("Payee and spending category apply only to expenses.".into());
     }
+    if let Some(id) = &input.income_source_id {
+        if input.kind != "income" { return Err("Income source applies only to money received.".into()); }
+        let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM incomes i JOIN accounts a ON a.id=i.destination_account_id WHERE i.id=? AND i.is_active=1 AND a.is_archived=0)")
+            .bind(id).fetch_one(&mut *conn).await.map_err(|e| e.to_string())?;
+        if !active { return Err("Choose an existing, active income source.".into()); }
+    }
     for (table, id, label) in [
         ("payees", &input.payee_id, "payee"),
         ("categories", &input.category_id, "category"),
@@ -203,8 +244,8 @@ pub(crate) async fn insert_in_connection(
             return Err("Repayments must go to a credit card or loan.".into());
         }
     }
-    let id: String = sqlx::query_scalar("INSERT INTO transactions (id, type, account_id, destination_account_id, amount, date, description, payee_id, category_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id")
-        .bind(input.kind).bind(input.account_id).bind(input.destination_account_id).bind(amount).bind(input.date).bind(description).bind(input.payee_id).bind(input.category_id)
+    let id: String = sqlx::query_scalar("INSERT INTO transactions (id, type, account_id, destination_account_id, amount, date, description, payee_id, category_id, income_source_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id")
+        .bind(input.kind).bind(input.account_id).bind(input.destination_account_id).bind(amount).bind(input.date).bind(description).bind(input.payee_id).bind(input.category_id).bind(input.income_source_id)
         .fetch_one(&mut *conn).await.map_err(|e| e.to_string())?;
     for account in &input.cleared_account_ids {
         sqlx::query("UPDATE transaction_verifications SET status='cleared' WHERE transaction_id=? AND account_id=?")
@@ -218,9 +259,13 @@ pub(crate) async fn insert_in_connection(
     Ok(row)
 }
 
-async fn insert(pool: &SqlitePool, input: NewTransaction) -> Result<Transaction, String> {
+pub(crate) async fn insert(
+    pool: &SqlitePool,
+    input: NewTransaction,
+) -> Result<Transaction, String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let row = insert_in_connection(&mut tx, input).await?;
+    crate::loans::validate_allocations(&mut tx).await?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(row)
 }
@@ -236,33 +281,38 @@ pub(crate) async fn remove_confirmed(
     confirmed: bool,
 ) -> Result<(), String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    let row: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("Transaction no longer exists. Reload the page.")?;
-    crate::reconciliation::before_delete(&mut tx, id, confirmed).await?;
-    let amount = row.amount.parse::<i64>().map_err(|e| e.to_string())?;
-    adjust(
-        &mut tx,
-        &row.account_id,
-        if row.kind == "income" {
-            -amount
-        } else {
-            amount
-        },
-        false,
-    )
-    .await?;
-    if let Some(destination) = row.destination_account_id {
-        adjust(&mut tx, &destination, -amount, false).await?;
+    let ids = crate::loans::deletion_ids(&mut tx, id).await?;
+    for id in &ids {
+        crate::loans::before_delete(&mut tx, id).await?;
+        let row: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("Transaction no longer exists. Reload the page.")?;
+        crate::reconciliation::before_delete(&mut tx, id, confirmed).await?;
+        let amount = row.amount.parse::<i64>().map_err(|e| e.to_string())?;
+        adjust(
+            &mut tx,
+            &row.account_id,
+            if row.kind == "income" {
+                -amount
+            } else {
+                amount
+            },
+            false,
+        )
+        .await?;
+        if let Some(destination) = row.destination_account_id {
+            adjust(&mut tx, &destination, -amount, false).await?;
+        }
+        sqlx::query("DELETE FROM transactions WHERE id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
     }
-    sqlx::query("DELETE FROM transactions WHERE id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
+    crate::loans::validate_allocations(&mut tx).await?;
     tx.commit().await.map_err(|e| e.to_string())
 }
 
@@ -338,8 +388,61 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
         pool
     }
+    #[tokio::test]
+    async fn expense_report_preserves_archived_history_and_excludes_payments() {
+        let pool = database().await;
+        let card = insert(&pool, input("expense", "card", None, "9007199254740993")).await.unwrap();
+        insert(&pool, input("expense", "bank", None, "100")).await.unwrap();
+        insert(&pool, input("repayment", "bank", Some("card"), "200")).await.unwrap();
+        insert(&pool, input("transfer", "bank", Some("cash"), "100")).await.unwrap();
+        insert(&pool, input("income", "bank", None, "500")).await.unwrap();
+        sqlx::query("UPDATE accounts SET is_archived=1 WHERE id='card'").execute(&pool).await.unwrap();
+        let before = balances(&pool).await;
+        let report = expense_snapshot(&pool).await.unwrap();
+        assert_eq!(report.transactions.len(), 2);
+        assert!(report.transactions.iter().all(|t|t.kind=="expense"));
+        assert_eq!(report.transactions.iter().find(|t|t.id==card.id).unwrap().amount,"9007199254740993");
+        let account=report.accounts.iter().find(|a|a.id=="card").unwrap();
+        assert_eq!(account.kind,"credit_card");assert!(account.is_archived);
+        assert_eq!(report.settings.currency.as_deref(),Some("THB"));
+        assert_eq!(balances(&pool).await,before);
+    }
+
+    #[tokio::test]
+    async fn income_sources_validate_and_preserve_actual_net_receipts() {
+        let pool = database().await;
+        sqlx::query("INSERT INTO incomes(id,name,destination_account_id,type,estimated_amount,recurrence_day_of_month) VALUES('salary','Company salary','bank','salary',5000000,1)").execute(&pool).await.unwrap();
+        let before = balances(&pool).await;
+        let mut value = input("income", "bank", None, "4500000");
+        value.income_source_id = Some("missing".into());
+        assert!(insert(&pool,value).await.is_err());
+        let mut wrong = input("expense", "bank", None, "10");
+        wrong.income_source_id = Some("salary".into());
+        assert!(insert(&pool,wrong).await.is_err());
+        assert_eq!(balances(&pool).await,before);
+        let mut receipt = input("income", "bank", None, "4500000");
+        receipt.income_source_id = Some("salary".into());
+        let saved = insert(&pool,receipt).await.unwrap();
+        assert_eq!(saved.income_source_name.as_deref(),Some("Company salary"));
+        assert_eq!(saved.amount,"4500000");
+        let balance: i64 = sqlx::query_scalar("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&pool).await.unwrap();
+        assert_eq!(balance,4510000);
+        sqlx::query("UPDATE incomes SET is_active=0 WHERE id='salary'").execute(&pool).await.unwrap();
+        let mut disabled = input("income", "bank", None, "1");
+        disabled.income_source_id = Some("salary".into());
+        assert!(insert(&pool,disabled).await.is_err());
+        let history: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id=?")).bind(&saved.id).fetch_one(&pool).await.unwrap();
+        assert_eq!(history.income_source_id.as_deref(),Some("salary"));
+    }
+
     fn input(kind: &str, account: &str, destination: Option<&str>, amount: &str) -> NewTransaction {
         NewTransaction {
             kind: kind.into(),
@@ -351,6 +454,7 @@ mod tests {
             currency: "THB".into(),
             payee_id: None,
             category_id: None,
+            income_source_id: None,
             cleared_account_ids: vec![],
         }
     }
@@ -593,6 +697,12 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
         let stored: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
             .bind("old")
             .fetch_one(&pool)
@@ -621,6 +731,7 @@ mod tests {
         crate::transaction_options::save(
             pool,
             crate::transaction_options::SaveOption {
+                icon: None,
                 kind,
                 id,
                 name: name.into(),
@@ -643,6 +754,7 @@ mod tests {
                 assert!(save(
                     &pool,
                     SaveOption {
+                icon: None,
                         kind,
                         id: None,
                         name,
@@ -656,6 +768,7 @@ mod tests {
         assert!(save(
             &pool,
             SaveOption {
+                icon: None,
                 kind: OptionKind::Payee,
                 id: None,
                 name: "corner shop".into(),
@@ -667,6 +780,7 @@ mod tests {
         assert!(save(
             &pool,
             SaveOption {
+                icon: None,
                 kind: OptionKind::Category,
                 id: Some("missing".into()),
                 name: "New name".into(),

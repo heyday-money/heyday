@@ -91,12 +91,15 @@ export function AccountsPage() {
               <p className="mt-3 text-[12px]">{account.type === 'loan' ? loanTypes.find(item => item.value === account.loan_type)?.label ?? 'Loan (unclassified)' : definition.label} · {liability ? 'Liability' : 'Asset'}{account.last_four ? ` · •••• ${account.last_four}` : ''}</p>
               {account.institution && <p className="mt-1 break-words text-[13px]">{account.institution}</p>}
               <p className="mt-4 break-words text-[23px] font-semibold text-ink">{formatAmount(account.current_balance ?? account.opening_balance, currency)}</p>
-              <p className="mt-1 text-[12px]">{liability ? 'Current amount owed' : 'Current balance'}</p>
+              <p className="mt-1 text-[12px]">{liability ? 'Outstanding Balance' : 'Current balance'}</p>
+              {account.type === 'loan' && <p className="mt-2 text-[13px]">Initial Loan Amount: {account.initial_loan_amount != null ? formatAmount(account.initial_loan_amount, currency) : 'Not set'}</p>}
               {account.type === 'loan' && <p className="mt-2 text-[13px]">Monthly installment: {account.monthly_installment != null ? formatAmount(account.monthly_installment, currency) : 'Not set'}</p>}
               {account.credit_limit !== null && <p className="mt-3 text-[13px]">Credit limit: {formatAmount(account.credit_limit, currency)}</p>}
               {account.statement_day !== null && <p className="mt-2 text-[13px]">Statement day: {account.statement_day}</p>}
               {account.payment_due_day !== null && <p className="mt-2 text-[13px]">Payment due day: {account.payment_due_day}</p>}
               {account.interest_rate_ten_thousandths !== null && <p className="mt-2 text-[13px]">Annual interest rate: {interestRateText(String(account.interest_rate_ten_thousandths), 4)}%</p>}
+              {account.type === 'loan' && <Link className="mt-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId/loans" params={{ accountId: account.id }}>Overview, contracts & transactions</Link>}
+              {account.type === 'credit_card' && <Link className="mt-4 mr-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId/billing" params={{accountId:account.id}}>Billing & payments</Link>}
               {['bank', 'wallet', 'credit_card'].includes(account.type) && <Link className="mt-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId" params={{ accountId: account.id }}>Transactions & reconciliation</Link>}
               {account.notes && <p className="mt-3 break-words whitespace-pre-wrap text-[13px]">{account.notes}</p>}
             </li>

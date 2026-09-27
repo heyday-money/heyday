@@ -2,6 +2,14 @@ use sqlx::SqlitePool;
 
 // Child-first order preserves foreign-key enforcement throughout the reset.
 const DATA_TABLES: &[&str] = &[
+    "card_statement_installments",
+    "card_payment_allocations",
+    "card_payment_plans",
+    "card_statement_entries",
+    "card_statements",
+    "loan_payment_parts",
+    "loan_contracts",
+    "loan_facilities",
     "transaction_verifications",
     "reconciliation_entries",
     "reconciliations",
@@ -76,6 +84,12 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql("INSERT INTO accounts(id,name,type) VALUES('card','Visa','credit_card');
+        INSERT INTO card_statements(id,account_id,start_date,end_date,due_date,amount,minimum) VALUES('bill','card','2024-01-01','2024-01-31','2024-02-10',1000,100);
+        INSERT INTO card_payment_plans VALUES('bill','bank','2024-02-10','full',1000);
+        INSERT INTO transactions(id,type,account_id,destination_account_id,amount,date,description) VALUES('payment','repayment','bank','card',100,'2024-02-01','');
+        INSERT INTO card_payment_allocations VALUES('payment','bill');
+        INSERT INTO card_statement_entries VALUES('bill','evidence');").execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO incomes(id,name,destination_account_id,type,estimated_amount,recurrence_day_of_month) VALUES ('salary','Salary','bank','salary',50000,25)").execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO planner_amounts VALUES ('expenses-0','2026-09',100)")
             .execute(&pool)

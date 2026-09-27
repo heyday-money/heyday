@@ -87,6 +87,11 @@ pub struct PlannerCardTransaction {
     kind: String,
     account_id: String,
     account_type: String,
+    category_name: Option<String>,
+    income_source_id: Option<String>,
+    income_source_name: Option<String>,
+    category_id: Option<String>,
+    account_name: String,
     destination_account_id: Option<String>,
     destination_account_type: Option<String>,
     amount: String,
@@ -94,6 +99,10 @@ pub struct PlannerCardTransaction {
 }
 #[derive(Serialize)]
 pub struct Planner {
+    ledger_transactions: Vec<PlannerCardTransaction>,
+    card_billing: crate::card_billing::BillingData,
+    loan_contracts: Vec<crate::loans::Contract>,
+    loan_facilities: Vec<crate::loans::Facility>,
     categories: Vec<Category>,
     incomes: Vec<PlannerIncome>,
     income_deductions: Vec<crate::income_deductions::IncomeDeduction>,
@@ -111,9 +120,13 @@ pub struct Planner {
 }
 async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sqlx::Error> {
     Ok(Planner {
+        ledger_transactions: sqlx::query_as("SELECT t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
+        card_billing: crate::card_billing::snapshot(conn).await?,
+        loan_contracts: crate::loans::contracts(conn).await?,
+        loan_facilities: crate::loans::facilities(conn).await?,
         income_deductions: sqlx::query_as(&format!("{} ORDER BY rowid",crate::income_deductions::SELECT)).fetch_all(&mut *conn).await?,
         credit_cards: sqlx::query_as("SELECT id,name,is_archived FROM accounts WHERE type='credit_card' ORDER BY name,id").fetch_all(&mut *conn).await?,
-        card_transactions: sqlx::query_as("SELECT t.id,t.type AS kind,t.account_id,a.type AS account_type,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id WHERE a.type='credit_card' OR d.type='credit_card' ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
+        card_transactions: sqlx::query_as("SELECT t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id WHERE a.type='credit_card' OR d.type='credit_card' ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
         incomes: sqlx::query_as("SELECT i.id,i.name,CAST(i.estimated_amount AS TEXT) AS estimated_amount,i.recurrence_day_of_month,i.is_active,a.name AS destination_account_name,a.is_archived AS account_archived FROM incomes i JOIN accounts a ON a.id=i.destination_account_id ORDER BY i.created_at,i.id").fetch_all(&mut *conn).await?,
         debt_accounts: sqlx::query_as("SELECT id,name,loan_type,CAST(current_balance AS TEXT) AS current_balance,CAST(monthly_installment AS TEXT) AS monthly_installment,notes,is_archived FROM accounts WHERE type='loan' ORDER BY name,id").fetch_all(&mut *conn).await?,
         installments: sqlx::query_as("SELECT i.id,i.name,i.debt_account_id,d.name AS debt_account_name,d.type AS debt_account_type,a.name AS account_name,CAST(i.monthly_amount AS TEXT) AS monthly_amount,i.installment_count,i.first_due_date,(a.is_archived=0 AND d.is_archived=0 AND a.type IN ('cash','bank','wallet') AND d.type IN ('credit_card','loan')) AS accounts_available FROM installments i JOIN accounts a ON a.id=i.account_id JOIN accounts d ON d.id=i.debt_account_id ORDER BY i.first_due_date,i.id").fetch_all(&mut *conn).await?,
@@ -590,6 +603,19 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         let data = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert_eq!(data.period_start_day, 31);
         assert_eq!(
@@ -730,6 +756,19 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "income-0"));
         assert!(result
@@ -921,6 +960,19 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -947,6 +999,14 @@ mod tests {
         assert_eq!(result.credit_cards.len(), 1);
         assert!(result.credit_cards[0].is_archived);
         assert_eq!(result.card_transactions.len(), 2);
+        assert_eq!(result.ledger_transactions.len(), 2);
+        assert_eq!(result.ledger_transactions.iter().find(|t|t.id=="bill").unwrap().account_name,"Bank");
+        // Non-card expenses must be part of the same snapshot, including archived accounts.
+        sqlx::query("INSERT INTO transactions(id,type,account_id,amount,date,description) VALUES('food','expense','bank',500,'2026-12-26','Lunch')").execute(&pool).await.unwrap();
+        let refreshed = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
+        assert_eq!(refreshed.ledger_transactions.len(),3);
+        assert_eq!(refreshed.card_transactions.len(),2);
+        assert_eq!(refreshed.ledger_transactions.iter().find(|t|t.id=="food").unwrap().amount,"500");
         let bill = result
             .card_transactions
             .iter()
@@ -1018,6 +1078,19 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -1138,6 +1211,19 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "deductions-0"));
         assert!(result.items.iter().any(|i| i.name == "My social security"));
