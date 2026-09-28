@@ -1,3 +1,6 @@
+import { InstitutionCombobox } from "./InstitutionCombobox"
+import { useInstitutions } from "./InstitutionProvider"
+import { sharedCredit, useCardLimits } from '../lib/card-limits'
 import { useRef, useState, type FormEvent } from 'react'
 import { Banknote, Building2, CreditCard, Landmark, TrendingUp, Wallet } from 'lucide-react'
 import { createAccount, updateAccount, loanTypes, type LoanType, type Account, type AccountType } from '../lib/desktop'
@@ -19,7 +22,7 @@ export const accountTypes = [
   { value: 'loan', label: 'Loan', groupLabel: 'Loans', icon: Landmark },
   { value: 'investment', label: 'Investment', groupLabel: 'Investments', icon: TrendingUp },
 ] as const
-const inputStyle = 'mt-2 w-full rounded-[10px] border border-line bg-page px-3 py-2.5 text-[14px] text-ink focus-visible:outline-2 focus-visible:outline-brand'
+const inputStyle = 'mt-2 w-full rounded-[10px] border border-line bg-page text-[14px] text-ink focus-visible:outline-2 focus-visible:outline-brand'
 function DayField({ name, label, value }: { name: string; label: string; value?: number | null }) {
   return <Field label={label}><NativeSelect name={name} className={inputStyle} defaultValue={value ?? ''}>
     <option value="">Not set</option>
@@ -37,6 +40,14 @@ function amountText(value: string, currency: string) {
 export function AccountFormDialog({ account: editing, initialType, currency, onClose, onSaved }: {
   account?: Account; initialType: AccountType; currency: string; onClose: () => void; onSaved: (account: Account) => void
 }) {
+  const directory = useInstitutions()
+  const limits = useCardLimits()
+  const sharedLimit = editing ? sharedCredit(limits.data, editing.id) : null
+  const preserveIndividualLimit = !!editing && (!!sharedLimit || limits.loading || limits.error)
+  const [chosenInstitution, setChosenInstitution] = useState<{ id: string; name: string | null } | null>(null)
+  const [unresolvedInstitution, setUnresolvedInstitution] = useState(false)
+  const institutionId = chosenInstitution?.id ?? directory.accounts.find(a => a.id === editing?.id)?.institution_id ?? directory.institutions.find(i => i.name === editing?.institution)?.id ?? ''
+  const draftInstitution = chosenInstitution ? chosenInstitution.name : institutionId ? null : editing?.institution ?? null
   const [type, setType] = useState<AccountType>(editing?.type ?? initialType)
   const [revolving, setRevolving] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -56,6 +67,7 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!currency || saving) return
+    if (type !== 'cash' && (unresolvedInstitution || directory.loading || directory.error)) { setError('Select or add an institution, or choose No institution. If loading failed, retry first.'); return }
     const data = new FormData(event.currentTarget)
     const text = (key: string) => String(data.get(key) ?? '').trim()
     const optional = (key: string) => text(key) || null
@@ -68,12 +80,13 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
       const details = {
         loan_type: (loanType || null) as LoanType | null,
         name: text('name'), type, currency,
-        institution: type === 'cash' ? null : optional('institution'),
+        institution: type === 'cash' ? null : draftInstitution,
+        institution_id: type === 'cash' ? null : institutionId || null,
         last_four: optional('last_four'),
         notes: optional('notes'),
         monthly_installment: type === 'loan' && text('monthly_installment') ? decimalToInteger(text('monthly_installment'), digits) : null,
         initial_loan_amount: type === 'loan' && text('initial_loan_amount') ? decimalToInteger(text('initial_loan_amount'), digits) : null,
-        credit_limit: type === 'credit_card' && text('credit_limit') ? decimalToInteger(text('credit_limit'), digits) : null,
+        credit_limit: type === 'credit_card' ? preserveIndividualLimit ? editing!.credit_limit : text('credit_limit') ? decimalToInteger(text('credit_limit'), digits) : null : null,
         statement_day: type === 'credit_card' ? day('statement_day') : null,
         payment_due_day: debt ? day('payment_due_day') : null,
         interest_rate_ten_thousandths: debt && text('interest') ? Number(decimalToInteger(text('interest'), 4)) : null,
@@ -118,9 +131,16 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
                 <details open={editing ? true : undefined} className="mt-5 rounded-xl border border-line p-4">
                   <summary className="cursor-pointer text-[13px] font-semibold">Optional details</summary>
                   <div className="mt-4 grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">
-                    {type !== 'cash' && <Field label="Institution (optional)"><Input name="institution" defaultValue={editing?.institution ?? ''} maxLength={100} className={inputStyle} placeholder={type === 'wallet' ? 'Wallet provider, e.g. TrueMoney' : type === 'investment' ? 'Broker or fund provider' : 'Bank or lender'} /></Field>}
+                    {type !== 'cash' && <Field label="Institution (optional)"><InstitutionCombobox disabled={saving} value={institutionId} draftName={draftInstitution} onChange={(id, name) => { setChosenInstitution({ id, name }); setDirty(true); setError(null) }} onUnresolvedChange={setUnresolvedInstitution} /></Field>}
                     <Field label="Last four digits (optional)"><Input name="last_four" defaultValue={editing?.last_four ?? ''} inputMode="numeric" pattern="[0-9]{4}" maxLength={4} className={inputStyle} /></Field>
-                    {type === 'credit_card' && <><Field label={`Credit limit (${currency}, optional)`}><Input name="credit_limit" defaultValue={editing?.credit_limit != null ? amountText(editing.credit_limit, currency) : ''} inputMode="decimal" className={inputStyle} /></Field><DayField value={editing?.statement_day} name="statement_day" label="Statement day (optional)" /></>}
+                    {type === 'credit_card' && <>
+                      {editing && limits.loading ? <p role="status" className="text-sm">Loading credit limit…</p> : editing && limits.error ? <div role="alert" className="text-sm">Could not load credit limit. <Button type="button" variant="outline" onClick={() => void limits.reload()}>Retry</Button></div> : sharedLimit ? <div className="col-span-full rounded-xl bg-soft p-3">
+                        <Field label={`Shared credit limit (${currency})`}><Input readOnly value={amountText(sharedLimit.credit_limit, currency)} className={inputStyle} /></Field>
+                        <p className="mt-2 text-sm font-medium">Shared group: {sharedLimit.name}</p>
+                        <p className="mt-1 text-xs">This limit is shared by all cards in the group. To change it, edit the shared group under Accounts → Credit cards.</p>
+                      </div> : <Field label={`Credit limit (${currency}, optional)`}><Input name="credit_limit" defaultValue={editing?.credit_limit != null ? amountText(editing.credit_limit, currency) : ''} inputMode="decimal" className={inputStyle} /></Field>}
+                      <DayField value={editing?.statement_day} name="statement_day" label="Statement day (optional)" />
+                    </>}
                     {debt && <><DayField value={editing?.payment_due_day} name="payment_due_day" label="Payment due day (optional)" /><Field label="Annual interest rate (%, optional)"><Input name="interest" defaultValue={editing?.interest_rate_ten_thousandths != null ? interestRateText(String(editing.interest_rate_ten_thousandths), 4) : ''} type="number" min="0" max="100" step="0.0001" className={inputStyle} /></Field></>}
                   </div>
                   {debt && <p className="mt-3 text-[12px]">Scheduled days use month-end if unavailable. Payments and interest are not calculated automatically.</p>}

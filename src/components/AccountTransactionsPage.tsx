@@ -1,3 +1,4 @@
+import { AccountLabel } from './InstitutionLogo'
 import { AccountFormDialog } from './AccountFormDialog'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearch } from '@tanstack/react-router'
@@ -125,7 +126,7 @@ function AccountTransactions({ accountId, startReconcile }: { accountId: string;
   if (!desktopAvailable) return <p>Open the desktop app to reconcile accounts.</p>
   return <>
     <Link to="/accounts" className="text-sm text-brand">← Accounts</Link>
-    <div className="my-5 flex flex-wrap items-center justify-between gap-4"><div><h2 className="text-2xl font-semibold">{data?.name ?? 'Account transactions'}</h2><p className="mt-1 text-sm">Verify posted activity against your {provider}. Pending entries stay Uncleared.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={disabled || loadingEditor} onClick={() => void editAccount()}>{loadingEditor ? 'Loading details…' : 'Edit account'}</Button><Button variant="outline" disabled={disabled} onClick={() => setAdding(true)}>Record missing entry</Button><Button disabled={disabled || reconciling} onClick={() => { setReconciling(true); setError(null) }}>Reconcile</Button></div></div>
+    <div className="my-5 flex flex-wrap items-center justify-between gap-4"><div><h2 className="text-2xl font-semibold"><AccountLabel id={accountId} name={data?.name ?? 'Account transactions'} /></h2><p className="mt-1 text-sm">Verify posted activity against your {provider}. Pending entries stay Uncleared.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={disabled || loadingEditor} onClick={() => void editAccount()}>{loadingEditor ? 'Loading details…' : 'Edit account'}</Button><Button variant="outline" disabled={disabled} onClick={() => setAdding(true)}>Record missing entry</Button><Button disabled={disabled || reconciling} onClick={() => { setReconciling(true); setError(null) }}>Reconcile</Button></div></div>
     {isCard && <nav aria-label="Card account views" className="mb-5 flex gap-3 border-b border-line pb-3"><span aria-current="page" className="font-semibold">Transactions & reconciliation</span><Link to="/accounts/$accountId/billing" params={{accountId}} className="text-brand">Billing</Link></nav>}
     {loadError && <p role="alert" className="mb-4">{loadError} <Button variant="outline" onClick={() => void refresh()}>Refresh</Button></p>}
     {refreshing && <p role="status" className="mb-3 text-sm">Refreshing account…</p>}

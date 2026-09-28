@@ -1,3 +1,6 @@
+import { AccountLabel } from './InstitutionLogo'
+import { useCardLimits } from '../lib/card-limits'
+import { SharedCreditLimits, CardCredit } from './SharedCreditLimits'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Pencil, Plus } from 'lucide-react'
@@ -10,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
 import { Button } from './ui/button'
 
 export function AccountsPage() {
+  const limits = useCardLimits()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loading, setLoading] = useState(desktopAvailable)
@@ -41,6 +45,7 @@ export function AccountsPage() {
       <div><h2 className="text-[25px] font-[650]">A place for every account.</h2><p className="mt-2 text-[14px]">Your cash, savings, investments, and debts.</p></div>
       <Button onClick={() => setEditor({ type: selectedType === 'all' ? 'cash' : selectedType })} type="button" disabled={!currency || loading || loadError} size="lg"><Plus size={17} />Add account</Button>
     </div>
+    {currency && (selectedType === 'all' || selectedType === 'credit_card') && <SharedCreditLimits currency={currency} limits={limits} />}
     {!desktopAvailable ? <p className="rounded-xl bg-soft p-5">Open the desktop app to manage your local accounts.</p>
       : loading ? <p role="status">Loading accounts…</p>
       : loadError ? <div role="alert"><p>Could not load accounts.</p><button className="mt-3 text-brand" onClick={() => setAttempt(value => value + 1)}>Try again</button></div>
@@ -84,17 +89,16 @@ export function AccountsPage() {
                   <h3 className="mb-3 text-sm font-semibold">{group.groupLabel} ({accounts.filter(account => account.type === group.value).length})</h3>
                   <ul className="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1" aria-label={`${group.groupLabel} accounts`}>{accounts.filter(account => account.type === group.value).map(account => {
             const definition = types.find(item => item.value === account.type)!
-            const Icon = definition.icon
             const liability = ['credit_card', 'loan'].includes(account.type)
             return <li key={account.id} className="min-w-0 rounded-[22px] border border-line bg-card p-6">
-              <div className="flex items-center gap-3"><Icon className="shrink-0 text-brand" size={22} /><h4 className="min-w-0 flex-1 break-words font-semibold">{account.name}</h4><Button type="button" variant="ghost" size="icon" aria-label={`Edit account ${account.name}`} onClick={() => setEditor({ account, type: account.type })}><Pencil size={16} /></Button></div>
+              <div className="flex items-center gap-3"><h4 className="min-w-0 flex-1 break-words font-semibold"><AccountLabel id={account.id} name={account.name} /></h4><Button type="button" variant="ghost" size="icon" aria-label={`Edit account ${account.name}`} onClick={() => setEditor({ account, type: account.type })}><Pencil size={16} /></Button></div>
               <p className="mt-3 text-[12px]">{account.type === 'loan' ? loanTypes.find(item => item.value === account.loan_type)?.label ?? 'Loan (unclassified)' : definition.label} · {liability ? 'Liability' : 'Asset'}{account.last_four ? ` · •••• ${account.last_four}` : ''}</p>
-              {account.institution && <p className="mt-1 break-words text-[13px]">{account.institution}</p>}
+
               <p className="mt-4 break-words text-[23px] font-semibold text-ink">{formatAmount(account.current_balance ?? account.opening_balance, currency)}</p>
               <p className="mt-1 text-[12px]">{liability ? 'Outstanding Balance' : 'Current balance'}</p>
               {account.type === 'loan' && <p className="mt-2 text-[13px]">Initial Loan Amount: {account.initial_loan_amount != null ? formatAmount(account.initial_loan_amount, currency) : 'Not set'}</p>}
               {account.type === 'loan' && <p className="mt-2 text-[13px]">Monthly installment: {account.monthly_installment != null ? formatAmount(account.monthly_installment, currency) : 'Not set'}</p>}
-              {account.credit_limit !== null && <p className="mt-3 text-[13px]">Credit limit: {formatAmount(account.credit_limit, currency)}</p>}
+              {account.type === 'credit_card' && <CardCredit id={account.id} individualLimit={account.credit_limit} balance={account.current_balance ?? account.opening_balance} currency={currency} limits={limits} />}
               {account.statement_day !== null && <p className="mt-2 text-[13px]">Statement day: {account.statement_day}</p>}
               {account.payment_due_day !== null && <p className="mt-2 text-[13px]">Payment due day: {account.payment_due_day}</p>}
               {account.interest_rate_ten_thousandths !== null && <p className="mt-2 text-[13px]">Annual interest rate: {interestRateText(String(account.interest_rate_ten_thousandths), 4)}%</p>}

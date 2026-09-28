@@ -1,3 +1,4 @@
+import { AccountLabel } from './InstitutionLogo'
 import { useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
@@ -39,7 +40,7 @@ function SubscriptionsTable({ data, today, loading }: { data: FinancialData; tod
       { id: 'name', header: 'Subscription', meta: { ...meta, rowHeader: true, cellClassName: `${meta.cellClassName} min-w-40 max-w-60 break-words font-medium` }, cell: ({ row }) => row.original.name },
       { id: 'amount', header: 'Amount per charge', meta: { headerClassName: `${meta.headerClassName} text-right`, cellClassName: `${meta.cellClassName} text-right whitespace-nowrap tabular-nums font-semibold` }, cell: ({ row }) => formatAmount(row.original.amount, currency) },
       { id: 'frequency', header: 'Frequency', meta, cell: ({ row }) => row.original.frequency === 'monthly' ? 'Monthly' : 'Yearly' },
-      { id: 'account', header: 'Pay from', meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-32 max-w-52 break-words` }, cell: ({ row }) => <>{row.original.account_name}{row.original.account_type === 'credit_card' && <span className="mt-1 block text-xs text-muted">Credit card · excluded from cash forecast</span>}</> },
+      { id: 'account', header: 'Pay from', meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-32 max-w-52 break-words` }, cell: ({ row }) => <><AccountLabel id={row.original.account_id} name={row.original.account_name} />{row.original.account_type === 'credit_card' && <span className="mt-1 block text-xs text-muted">Credit card · excluded from cash forecast</span>}</> },
       { id: 'next', header: 'Next scheduled charge', meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap tabular-nums` }, cell: ({ row }) => row.original.next ?? '—' },
       { id: 'dates', header: 'Schedule', meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap text-xs tabular-nums` }, cell: ({ row }) => <>{row.original.first_billing_date}<span className="block">{row.original.end_date ? `Through ${row.original.end_date}` : 'No end date'}</span></> },
       { id: 'category', header: 'Category', meta, cell: ({ row }) => row.original.category_name ?? 'Uncategorized' },

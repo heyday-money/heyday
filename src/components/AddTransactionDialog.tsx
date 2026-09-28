@@ -1,9 +1,11 @@
+import { AccountSelect } from './AccountSelect'
+import { sharedCreditAfter, useCardLimits } from '../lib/card-limits'
 import { CategorySelect } from './CategoryIcon'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { createTransaction, listIncomes, type Income, getSettings, listAccounts, listTransactionOptions, type TransactionOptions, type Account, type TransactionType } from '../lib/desktop'
-import { decimalToInteger, fractionDigits } from '../lib/money'
+import { decimalToInteger, fractionDigits, formatAmount } from '../lib/money'
 import { PayeeCombobox } from './PayeeCombobox'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -26,6 +28,7 @@ function today() {
 
 // Mounted for each entry so defaults and active accounts are refreshed each time.
 export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: () => void; initialAccountId?: string }) {
+  const limits = useCardLimits()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [currency, setCurrency] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -80,6 +83,9 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
     return () => { active = false }
   }, [kind, incomeAttempt])
   const paired = kind === 'transfer' || kind === 'repayment'
+  const affectedGroups = limits.data.groups.filter(g => limits.data.cards.some(c => c.group_id === g.id && (c.id === accountId || (paired && c.id === destinationId))))
+  let previewAmount: bigint | null = null
+  try { if (currency) { const value = BigInt(decimalToInteger(amount, fractionDigits(currency))); if (value > 0n) previewAmount = value } } catch { /* Incomplete amount. */ }
   const close = onClose
   function changeOpen(next: boolean) {
     if (next || saving) return
@@ -121,8 +127,8 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
               <div className="sm:col-span-2"><Field label={`Amount (${currency ?? ''})`}><Input ref={amountRef} className="mt-2 h-14 w-full text-2xl tabular-nums md:text-2xl" name="amount" value={amount} onChange={event => setAmount(event.target.value)} inputMode="decimal" required placeholder="0" /></Field></div>
               <Field label="Transaction type"><NativeSelect className={control} value={kind} onChange={event => { setKind(event.target.value as TransactionType); setIncomeSourceId(''); setUnresolvedPayee(false); setDestinationId(''); setDestinationCleared(false) }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</NativeSelect></Field>
               <Field label="Date"><Input className={control} name="date" type="date" required min="0001-01-01" max={today()} defaultValue={today()} /></Field>
-              <Field label={paired ? 'From account' : 'Account'}><NativeSelect className={control} required value={accountId} onChange={event => { setAccountId(event.target.value); setSourceCleared(false); setDestinationId(''); setDestinationCleared(false) }}><option value="">Choose account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</NativeSelect></Field>
-              {paired && <Field label="To account"><NativeSelect key={`${kind}-${accountId}`} className={control} name="destination" required value={destinationId} onChange={event => { setDestinationId(event.target.value); setDestinationCleared(false) }}><option value="">Choose destination</option>{accounts.filter(a => a.id !== accountId && (kind !== 'repayment' || ['credit_card', 'loan'].includes(a.type))).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</NativeSelect></Field>}
+              <Field label={paired ? 'From account' : 'Account'}><AccountSelect className={control} required value={accountId} onChange={event => { setAccountId(event.target.value); setSourceCleared(false); setDestinationId(''); setDestinationCleared(false) }}><option value="">Choose account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</AccountSelect></Field>
+              {paired && <Field label="To account"><AccountSelect key={`${kind}-${accountId}`} className={control} name="destination" required value={destinationId} onChange={event => { setDestinationId(event.target.value); setDestinationCleared(false) }}><option value="">Choose destination</option>{accounts.filter(a => a.id !== accountId && (kind !== 'repayment' || ['credit_card', 'loan'].includes(a.type))).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</AccountSelect></Field>}
               {accounts.some(account => account.id === accountId && ['bank', 'wallet', 'credit_card'].includes(account.type)) && <label className="flex items-center gap-2 text-sm"><Input type="checkbox" className="size-4 p-0" checked={sourceCleared} onChange={event => setSourceCleared(event.target.checked)} />{paired ? 'Cleared in from account' : 'Cleared'}</label>}
               {paired && accounts.some(account => account.id === destinationId && ['bank', 'wallet', 'credit_card'].includes(account.type)) && <label className="flex items-center gap-2 text-sm"><Input type="checkbox" className="size-4 p-0" checked={destinationCleared} onChange={event => setDestinationCleared(event.target.checked)} />Cleared in to account</label>}
               {kind === 'income' && <div className="sm:col-span-2">
@@ -140,6 +146,7 @@ export function AddTransactionDialog({ onClose, initialAccountId }: { onClose: (
               </>}
               <Field label="Description (optional)"><Input className={control} name="description" value={description} onChange={event => setDescription(event.target.value)} maxLength={200} placeholder="e.g. Groceries" /></Field>
             </fieldset>
+            {!limits.loading && !limits.error && currency && previewAmount !== null && affectedGroups.map(group => <p key={group.id} className="mt-3 rounded-xl bg-soft p-3 text-sm">{group.name} · Estimated shared available credit after transaction: {formatAmount(sharedCreditAfter(limits.data, group.id, kind, accountId, destinationId, previewAmount!).toString(), currency)}</p>)}
             <p className="mt-4 text-xs">Enter a positive amount. Expenses on credit cards increase debt; repayments reduce it. Opening balances stay unchanged.</p>
             {error && <p className="mt-4 text-sm" role="alert">{error}</p>}
           </div>

@@ -1,3 +1,4 @@
+import type { LogoChange } from './logos'
 import type { CardBillingData } from './card-billing'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 
@@ -48,7 +49,7 @@ export interface Account {
   initial_loan_amount?: string | null
 }
 import type { LoanContract, LoanFacility } from './loans'
-export type NewAccount = Omit<Account, 'id' | 'current_balance'> & { currency: string; revolving_credit_limit?: string | null }
+export type NewAccount = Omit<Account, 'id' | 'current_balance'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null }
 
 export function listAccounts(): Promise<Account[]> {
   return invoke<Account[]>('list_accounts')
@@ -135,9 +136,9 @@ export async function deleteTransaction(id: string, confirmReconciled = false): 
 }
 
 export type TransactionOptionKind = 'payee' | 'category'
-export interface TransactionOption { icon?: string | null; id: string; name: string; is_archived: boolean }
+export interface TransactionOption { logo_asset_id?: string | null; icon?: string | null; id: string; name: string; is_archived: boolean }
 export interface TransactionOptions { payees: TransactionOption[]; categories: TransactionOption[] }
-export interface SaveTransactionOption { icon?: string | null; kind: TransactionOptionKind; id: string | null; name: string; is_archived: boolean }
+export interface SaveTransactionOption { logo_change?: LogoChange; icon?: string | null; kind: TransactionOptionKind; id: string | null; name: string; is_archived: boolean }
 export function listTransactionOptions(): Promise<TransactionOptions> { return invoke('list_transaction_options') }
 export async function saveTransactionOption(input: SaveTransactionOption): Promise<TransactionOption> {
   const option = await invoke<TransactionOption>('save_transaction_option', { input })

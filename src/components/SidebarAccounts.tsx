@@ -1,3 +1,4 @@
+import { AccountLabel } from './InstitutionLogo'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { desktopAvailable, getSettings, listAccounts, type Account } from '../lib/desktop'
@@ -48,7 +49,7 @@ export function SidebarAccounts() {
             return <li key={account.id}>
               <Link to={['bank', 'wallet', 'credit_card'].includes(account.type) ? '/accounts/$accountId' : '/accounts'} params={{ accountId: account.id }} title={`${account.name}: ${amount}`} aria-label={`${account.name}: ${amount}`}
                 className="flex min-w-0 items-center justify-between gap-2 rounded-md px-1 py-1.5 text-[12px] hover:bg-soft">
-                <span className="min-w-0 truncate">{account.name}</span>
+                <span className="min-w-0 flex-1"><AccountLabel id={account.id} name={account.name} compact /></span>
                 <span data-balance-sign={balance > 0n ? 'positive' : balance < 0n ? 'negative' : 'zero'} className={`max-w-[60%] shrink-0 truncate text-right text-[11px] font-medium tabular-nums ${balance > 0n ? 'text-green-700 dark:text-green-400' : balance < 0n ? 'text-red-600 dark:text-red-400' : 'text-muted'}`}>
                   ({amount.replace(` ${currency}`, '')})
                 </span>

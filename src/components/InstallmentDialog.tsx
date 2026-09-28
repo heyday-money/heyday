@@ -1,3 +1,5 @@
+import { AccountSelect } from './AccountSelect'
+import { sharedCredit, useCardLimits } from '../lib/card-limits'
 import { useRef, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { saveInstallment, type FinancialData, type Installment } from '../lib/desktop'
@@ -11,6 +13,7 @@ import { FormField as Field } from './FormField'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog'
 
 export function InstallmentDialog({ data, plan, onClose }: { data: FinancialData; plan?: Installment; onClose: () => void }) {
+  const limits = useCardLimits()
   const returnFocus = useRef(document.activeElement as HTMLElement | null)
   const currency = data.settings.currency!
   const digits = fractionDigits(currency), scale = 10n ** BigInt(digits)
@@ -40,7 +43,9 @@ export function InstallmentDialog({ data, plan, onClose }: { data: FinancialData
     const value = BigInt(decimalToInteger(purchaseAmount, digits))
     if (newPurchase && card && value > 0n) {
       const owed = BigInt(card.current_balance) + value
-      balancePreview = { owed: formatAmount(owed.toString(), currency), available: card.credit_limit == null ? null : formatAmount((BigInt(card.credit_limit) - owed).toString(), currency) }
+      const shared = sharedCredit(limits.data, card.id)
+      const available = limits.loading || limits.error ? null : shared ? shared.available - value : card.credit_limit == null ? null : BigInt(card.credit_limit) - owed
+      balancePreview = { owed: formatAmount(owed.toString(), currency), available: available == null ? null : formatAmount(available.toString(), currency) }
     }
   } catch { /* Show the preview only for a valid purchase amount. */ }
   function changeOpen(open: boolean) {
@@ -77,15 +82,15 @@ export function InstallmentDialog({ data, plan, onClose }: { data: FinancialData
             </div>}
             {newPurchase && <><Field label={`Purchase amount (${currency})`}><Input className="mt-2" inputMode="decimal" required value={purchaseAmount} onChange={event => setPurchaseAmount(event.target.value)} /></Field><Field label="Purchase date"><Input className="mt-2" type="date" min="0001-01-01" max={dateKey(new Date())} required value={purchaseDate} onChange={event => setPurchaseDate(event.target.value)} /></Field></>}
             <Field label="Installment name"><Input className="mt-2" name="name" required maxLength={100} defaultValue={plan?.name ?? ''} placeholder="e.g. Laptop or phone" /></Field>
-            <Field label="Credit card"><NativeSelect className="mt-2" name="debt" required value={cardId} onChange={event => setCardId(event.target.value)} disabled={plan?.purchase_kind === 'new_purchase'}><option value="">Choose account</option>{plan && !data.accounts.some(account => account.id === plan.debt_account_id) && <option disabled value={plan.debt_account_id}>{plan.debt_account_name} (unavailable)</option>}{data.accounts.filter(account => account.type === 'credit_card').map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</NativeSelect></Field>
+            <Field label="Credit card"><AccountSelect className="mt-2" name="debt" required value={cardId} onChange={event => setCardId(event.target.value)} disabled={plan?.purchase_kind === 'new_purchase'}><option value="">Choose account</option>{plan && !data.accounts.some(account => account.id === plan.debt_account_id) && <option disabled value={plan.debt_account_id}>{plan.debt_account_name} (unavailable)</option>}{data.accounts.filter(account => account.type === 'credit_card').map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></Field>
             <Field label={`Monthly payment (${currency})`}><Input className="mt-2" inputMode="decimal" required value={amount} onChange={event => setAmount(event.target.value)} /></Field>
             <Field label="Annual interest rate (%, optional)"><Input className="mt-2" inputMode="decimal" placeholder="e.g. 0 or 1.195" value={interest} onChange={event => setInterest(event.target.value)} /></Field>
             <Field label="Number of installments"><Input className="mt-2" type="number" min={1} max={600} step={1} required value={count} onChange={event => setCount(event.target.value)} /></Field>
             <Field label="First due date"><Input className="mt-2" type="date" min="0001-01-01" max="9999-12-31" required value={date} onChange={event => setDate(event.target.value)} /></Field>
-            <Field label="Pay from"><NativeSelect className="mt-2" name="account" required defaultValue={plan?.account_id ?? data.accounts.find(isCash)?.id ?? ''}><option value="">Choose account</option>{plan && !data.accounts.some(account => account.id === plan.account_id) && <option disabled value={plan.account_id}>{plan.account_name} (unavailable)</option>}{data.accounts.filter(isCash).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</NativeSelect></Field>
+            <Field label="Pay from"><AccountSelect className="mt-2" name="account" required defaultValue={plan?.account_id ?? data.accounts.find(isCash)?.id ?? ''}><option value="">Choose account</option>{plan && !data.accounts.some(account => account.id === plan.account_id) && <option disabled value={plan.account_id}>{plan.account_name} (unavailable)</option>}{data.accounts.filter(isCash).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></Field>
           </fieldset>
           <p className="mt-4 text-xs">Enter the monthly amount charged by your lender, including any interest or fees. The annual interest rate is for reference and does not recalculate the monthly payment. Use up to three decimal places, or leave it blank if unknown. Every installment uses the entered monthly amount. Dates use month-end when needed. An earlier first date lets you enter an existing schedule.</p>
-          {balancePreview && <p className="mt-4 rounded-xl bg-soft p-3 text-sm" aria-label="Card balance after purchase">Amount owed after purchase: {balancePreview.owed}{balancePreview.available !== null && <span className="block">Available credit after purchase: {balancePreview.available}</span>}</p>}
+          {balancePreview && <p className="mt-4 rounded-xl bg-soft p-3 text-sm" aria-label="Card balance after purchase">Amount owed after purchase: {balancePreview.owed}{balancePreview.available !== null && <span className="block">{sharedCredit(limits.data, cardId) ? 'Shared available credit after purchase' : 'Available credit after purchase'}: {balancePreview.available}</span>}</p>}
           {preview && <p className="mt-4 rounded-xl bg-soft p-3 text-sm" role="status">Scheduled total: {preview.total}<span className="block">Last due date: {preview.end}</span></p>}
           <p className="mt-3 text-xs">{plan ? 'Editing changes only the schedule. Correct recorded purchases separately in Transactions.' : newPurchase ? 'The purchase amount is recorded once, separately from future interest and the repayment schedule.' : 'The purchase must already be included in your credit card balance; saving adds only the schedule.'} Payments are not automatically recorded or marked as paid. Upcoming payments are included in Outlook; avoid adding separate payment plans for the same installments.</p>
           {error && <p className="mt-4 text-sm" role="alert">{error}</p>}

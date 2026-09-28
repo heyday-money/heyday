@@ -1,3 +1,4 @@
+import { AccountLabel } from './InstitutionLogo'
 import { Link } from '@tanstack/react-router'
 import { desktopAvailable } from '../lib/desktop'
 import { accountValue, dateKey, netWorth } from '../lib/financial'
@@ -27,7 +28,7 @@ export function NetWorthPage() {
       const total = accounts.reduce((sum, account) => sum + accountValue(account), 0n)
       return <section key={type} aria-label={`${label} breakdown`} className="rounded-2xl border border-line bg-card p-5"><div className="mb-3 flex flex-wrap justify-between gap-3"><h3 className="font-semibold">{label}</h3><span className="font-semibold tabular-nums">{money(total)}</span></div><ul className="divide-y divide-line">{accounts.map(account => {
         const value = accountValue(account)
-        return <li key={account.id} className="flex flex-wrap justify-between gap-3 py-3"><Link to="/accounts" className="min-w-0 break-words hover:text-brand">{account.name}</Link><div className="text-right"><span className={`tabular-nums ${value < 0n ? 'text-red-700 dark:text-red-400' : value > 0n ? 'text-green-700 dark:text-green-400' : ''}`}>{money(value)}</span><span className="ml-2 text-xs text-muted">{value < 0n ? 'Liability' : value > 0n ? 'Asset' : 'Zero balance'}</span></div></li>
+        return <li key={account.id} className="flex flex-wrap justify-between gap-3 py-3"><Link to="/accounts" className="min-w-0 break-words hover:text-brand"><AccountLabel id={account.id} name={account.name} /></Link><div className="text-right"><span className={`tabular-nums ${value < 0n ? 'text-red-700 dark:text-red-400' : value > 0n ? 'text-green-700 dark:text-green-400' : ''}`}>{money(value)}</span><span className="ml-2 text-xs text-muted">{value < 0n ? 'Liability' : value > 0n ? 'Asset' : 'Zero balance'}</span></div></li>
       })}</ul></section>
     })}</div>}
     <p className="mt-5 text-xs">Historical net worth charts will be available when balance snapshots are supported.</p>
