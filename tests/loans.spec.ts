@@ -35,6 +35,7 @@ test('loan account UI creates a draft, preserves failed saves, and supports spli
   Object.defineProperty(window,'isTauri',{value:true})
   Object.defineProperty(window,'__TAURI_INTERNALS__',{value:{invoke:async(command:string,args:any)=>{
    if(command==='plugin:app|version')return '0.0.1-alpha.3'
+   if(command==='list_institutions')return {institutions:[],accounts:[]}
    if(command==='get_settings')return {currency:'THB',period_start_day:1}
    if(command==='list_accounts')return accounts
    if(command==='create_account'){sessionStorage.setItem('created-account',JSON.stringify(args.input));return {...args.input,id:'new',current_balance:args.input.opening_balance}}
@@ -96,6 +97,7 @@ test('Outlook expands reference contracts while an account override replaces the
  await page.addInitScript(({data})=>{
   Object.defineProperty(window,'isTauri',{value:true})
   Object.defineProperty(window,'__TAURI_INTERNALS__',{value:{invoke:async(command:string)=>{
+   if(command==='list_institutions')return {institutions:[],accounts:[]}
    if(command==='get_settings')return {currency:'THB',period_start_day:31}
    if(command==='list_accounts')return []
    if(command==='get_cashflow_planner')return data

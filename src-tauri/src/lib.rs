@@ -2,6 +2,9 @@ use serde::Serialize;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
+mod card_limits;
+mod institutions;
+mod logos;
 mod card_billing;
 mod cashflow;
 mod income_deductions;
@@ -98,6 +101,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
+            institutions::list_institutions,
+            institutions::save_institution,
+            institutions::delete_institution,
+            card_limits::list_card_limit_groups,
+            card_limits::save_card_limit_group,
+            card_limits::delete_card_limit_group,
+            logos::get_logo_asset,
             card_billing::get_card_billing,
             card_billing::save_card_statement,
             card_billing::save_card_payment_plan,

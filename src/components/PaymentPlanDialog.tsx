@@ -1,3 +1,4 @@
+import { AccountSelect } from './AccountSelect'
 import { useRef, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { savePaymentPlan, type FinancialData, type PaymentPlan } from '../lib/desktop'
@@ -52,8 +53,8 @@ export function PaymentPlanDialog({ data, date, plan, onClose }: { data: Financi
             <Field label="Plan name"><Input className="mt-2" name="name" maxLength={100} required defaultValue={plan?.name ?? ''} placeholder="e.g. Rent" /></Field>
             <Field label="Plan type"><NativeSelect className="mt-2" value={kind} onChange={event => setKind(event.target.value as 'expense' | 'repayment')}><option value="expense">Expense</option><option value="repayment">Debt repayment</option></NativeSelect></Field>
             <Field label="Planned date"><Input className="mt-2" type="date" name="date" min={tomorrow} max="9999-12-31" required defaultValue={date} /></Field>
-            <Field label="Pay from"><NativeSelect className="mt-2" name="account" defaultValue={plan?.account_id ?? data.accounts.find(isCash)?.id ?? ''} required><option value="">Choose account</option>{data.accounts.filter(isCash).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</NativeSelect></Field>
-            {kind === 'repayment' ? <Field label="Debt account"><NativeSelect className="mt-2" name="destination" defaultValue={plan?.destination_account_id ?? ''} required><option value="">Choose account</option>{data.accounts.filter(isDebt).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</NativeSelect></Field> : <Field label="Planned category"><NativeSelect className="mt-2" name="category" defaultValue={plan?.category_id ?? ''}><option value="">Uncategorized</option>{data.categories.map(category => <option key={category.id} value={category.id} disabled={category.is_archived}>{category.name}{category.is_archived ? ' (archived)' : ''}</option>)}</NativeSelect></Field>}
+            <Field label="Pay from"><AccountSelect className="mt-2" name="account" defaultValue={plan?.account_id ?? data.accounts.find(isCash)?.id ?? ''} required><option value="">Choose account</option>{data.accounts.filter(isCash).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></Field>
+            {kind === 'repayment' ? <Field label="Debt account"><AccountSelect className="mt-2" name="destination" defaultValue={plan?.destination_account_id ?? ''} required><option value="">Choose account</option>{data.accounts.filter(isDebt).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></Field> : <Field label="Planned category"><NativeSelect className="mt-2" name="category" defaultValue={plan?.category_id ?? ''}><option value="">Uncategorized</option>{data.categories.map(category => <option key={category.id} value={category.id} disabled={category.is_archived}>{category.name}{category.is_archived ? ' (archived)' : ''}</option>)}</NativeSelect></Field>}
           </fieldset>
           {error && <p className="mt-4 text-sm" role="alert">{error}</p>}
         </div>

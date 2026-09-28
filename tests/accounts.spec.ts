@@ -32,11 +32,13 @@ test('set currency, create all account types, and preserve them across reload', 
         const accounts = (): Account[] => JSON.parse(localStorage.getItem('test-accounts') ?? '[]')
         switch (command) {
           case 'plugin:app|version': return '0.1.0'
+          case 'list_institutions': return { institutions: [], accounts: [] }
           case 'get_settings': return settings()
           case 'update_currency':
             if (accounts().length) throw 'Currency cannot change after accounts or income have been created.'
             localStorage.setItem('test-currency', args.currency!); return settings()
           case 'list_transaction_options': return { payees: [], categories: [] }
+          case 'list_card_limit_groups': return { groups: [], cards: [] }
           case 'list_accounts': return accounts()
           case 'update_account': {
             if (sessionStorage.getItem('fail-account')) throw 'Could not save account. Please try again.'
@@ -217,6 +219,7 @@ test('type summaries show exact current assets and liabilities and refresh after
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {
       invoke: async (command: string) => {
         if (command === 'plugin:app|version') return '0.0.1-alpha.3'
+        if (command === 'list_institutions') return { institutions: [], accounts: [] }
         if (command === 'get_settings') return { currency: 'THB', period_start_day: 1 }
         if (command === 'list_transaction_options') return { payees: [], categories: [] }
         if (command === 'list_accounts') return rows.map(row => row.type === 'wallet' && sessionStorage.getItem('updated-wallet') ? { ...row, current_balance: '400' } : row)
@@ -243,4 +246,46 @@ test('type summaries show exact current assets and liabilities and refresh after
   await expect(page.getByRole('group', { name: 'Wallets summary' }).locator('dd')).toHaveText(['4.00 THB', '4.00 THB', '0.00 THB'])
   await page.setViewportSize({ width: 650, height: 700 })
   expect(await bank.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+})
+
+test('long sidebar account lists scroll without moving navigation or Settings', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('sidebar-collapsed', 'false')
+    Object.defineProperty(window, 'isTauri', { value: true })
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {
+      invoke: async (command: string) => {
+        if (command === 'plugin:app|version') return '0.0.1-alpha.5'
+        if (command === 'list_institutions') return { institutions: [], accounts: [] }
+        if (command === 'get_settings') return { currency: 'THB', period_start_day: 1 }
+        if (command === 'list_transaction_options') return { payees: [], categories: [] }
+        if (command === 'list_accounts') return Array.from({ length: 40 }, (_, index) => ({
+          id: String(index), name: `Long account name ${index}`, type: 'cash',
+          current_balance: '10000', opening_balance: '10000', is_archived: false,
+        }))
+        throw new Error(`Unexpected command: ${command}`)
+      },
+    } })
+  })
+  await page.goto('/#/settings')
+  const region = page.getByRole('region', { name: 'Saved accounts' })
+  const nav = page.getByRole('navigation', { name: 'Main navigation' })
+  const home = nav.getByRole('link', { name: 'Home', exact: true })
+  const settings = nav.getByRole('link', { name: 'Settings', exact: true })
+  for (const viewport of [{ width: 1200, height: 800 }, { width: 760, height: 560 }]) {
+    await page.setViewportSize(viewport)
+    await expect(region.getByRole('link')).toHaveCount(40)
+    await region.evaluate(element => { element.scrollTop = 0 })
+    const homeBefore = await home.boundingBox()
+    const settingsBefore = await settings.boundingBox()
+    expect(await region.evaluate(element => element.clientHeight > 0 && element.scrollHeight > element.clientHeight)).toBe(true)
+    expect(await region.evaluate(element => getComputedStyle(element).scrollbarWidth)).toBe('none')
+    await region.focus()
+    await page.keyboard.press('End')
+    await expect.poll(() => region.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+    expect(await home.boundingBox()).toEqual(homeBefore)
+    expect(await settings.boundingBox()).toEqual(settingsBefore)
+    await expect(settings).toBeInViewport()
+    await expect(page.getByRole('button', { name: 'Collapse sidebar' })).toBeInViewport()
+    expect(await region.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
 })

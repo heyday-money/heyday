@@ -56,7 +56,9 @@ test('billing UI confirms statement, plans partial payment, links existing payme
   let statements:any[]=[{id:'s',account_id:'card',start_date:'2024-01-01',end_date:'2024-01-31',due_date:'2024-02-10',amount:'1000000',minimum:'100000',needs_review:false}],plans:any[]=[],allocations:any[]=[]
   Object.defineProperty(window,'isTauri',{value:true});Object.defineProperty(window,'__TAURI_INTERNALS__',{value:{invoke:async(command:string,args:any)=>{
    if(command==='plugin:app|version')return '0.0.1-alpha.3'
+   if(command==='list_institutions')return {institutions:[],accounts:[]}
    if(command==='get_settings')return {currency:'THB',period_start_day:1}
+   if(command==='list_card_limit_groups')return {groups:[],cards:[]}
    if(command==='list_accounts')return accounts
    if(command==='get_card_billing')return {account:accounts[0],currency:'THB',billing:{statements,plans,allocations,installments:[]},transactions:[{id:'purchase',type:'expense',account_id:'card',account_name:'Visa',destination_account_id:null,amount:'10000',date:'2024-01-10',description:'Groceries',category_name:'Food'},{id:'payment',type:'repayment',account_id:'bank',account_name:'Bank',destination_account_id:'card',amount:'150000',date:'2024-02-02',description:''}],entries:[{statement_id:'s',transaction_id:'purchase'}],installments:[]}
    if(command==='save_card_payment_plan'){sessionStorage.setItem(command,JSON.stringify(args.input));if(sessionStorage.getItem('fail-save'))throw 'Save failed. Retry.';plans=[{...args.input,available:true}];return}

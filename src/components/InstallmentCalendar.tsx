@@ -1,3 +1,4 @@
+import { AccountLabel } from './InstitutionLogo'
 import { useMemo, useState } from 'react'
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -30,11 +31,11 @@ export function InstallmentCalendar({ data, today, loading }: { data: FinancialD
     const numberClass = 'min-w-28 whitespace-nowrap px-3 py-2.5 text-right tabular-nums'
     const amountCell = (value: bigint, total: boolean) => <span className={total ? 'font-bold' : ''}>{!total && value === 0n ? '—' : formatAmount(value.toString(), currency, false)}</span>
     return [
-      { id: 'plan', header: 'Item', meta: { rowHeader: true, headerClassName: labelClass, cellClassName: labelClass }, cell: ({ row }) => <><span className={`block break-words ${row.original.total ? 'font-bold' : 'font-medium'}`}>{row.original.name}</span>{!row.original.total && <span className="mt-1 block break-words text-[11px] font-normal text-muted">{row.original.accountName}</span>}</> },
+      { id: 'plan', header: 'Item', meta: { rowHeader: true, headerClassName: labelClass, cellClassName: labelClass }, cell: ({ row }) => <><span className={`block break-words ${row.original.total ? 'font-bold' : 'font-medium'}`}>{row.original.name}</span>{!row.original.total && <span className="mt-1 block break-words text-[11px] font-normal text-muted"><AccountLabel id={data.installments?.find(i => i.id === row.original.id)?.debt_account_id} name={row.original.accountName} /></span>}</> },
       ...summary.months.map((key, index): ColumnDef<SummaryRow> => ({ id: key, header: monthLabel(key), meta: { headerClassName: `${numberClass} ${key === currentMonth ? 'bg-soft text-brand' : ''}`, cellClassName: `${numberClass} ${key === currentMonth ? 'bg-soft/50' : ''}` }, cell: ({ row }) => amountCell(row.original.amounts[index], row.original.total) })),
       { id: 'remaining', header: 'Remaining total', meta: { headerClassName: `${numberClass} sticky right-0 z-10 border-l border-line bg-soft`, cellClassName: `${numberClass} sticky right-0 z-10 border-l border-line bg-soft font-semibold` }, cell: ({ row }) => amountCell(row.original.remaining, row.original.total) },
     ]
-  }, [summary.months, currency, currentMonth])
+  }, [summary.months, currency, currentMonth, data.installments])
   const table = useReactTable({ data: rows, columns, getRowId: row => row.id, getCoreRowModel: getCoreRowModel() })
   function move(offset: number) {
     const [year, number] = month.split('-').map(Number)

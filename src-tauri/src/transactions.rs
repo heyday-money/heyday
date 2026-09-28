@@ -390,6 +390,8 @@ mod tests {
             .unwrap();
         sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0031_institutions.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0032_custom_logos.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
@@ -730,7 +732,7 @@ mod tests {
     ) -> crate::transaction_options::TransactionOption {
         crate::transaction_options::save(
             pool,
-            crate::transaction_options::SaveOption {
+            crate::transaction_options::SaveOption { logo_change: None,
                 icon: None,
                 kind,
                 id,
@@ -753,7 +755,7 @@ mod tests {
             for name in [" ".to_string(), "x".repeat(101)] {
                 assert!(save(
                     &pool,
-                    SaveOption {
+                    SaveOption { logo_change: None,
                 icon: None,
                         kind,
                         id: None,
@@ -767,7 +769,7 @@ mod tests {
         }
         assert!(save(
             &pool,
-            SaveOption {
+            SaveOption { logo_change: None,
                 icon: None,
                 kind: OptionKind::Payee,
                 id: None,
@@ -779,7 +781,7 @@ mod tests {
         .is_err());
         assert!(save(
             &pool,
-            SaveOption {
+            SaveOption { logo_change: None,
                 icon: None,
                 kind: OptionKind::Category,
                 id: Some("missing".into()),

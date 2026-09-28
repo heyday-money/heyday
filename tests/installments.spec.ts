@@ -16,7 +16,8 @@ test.beforeEach(async ({ page }) => {
       switch (command) {
         case 'plugin:app|version': return '0.1.0'
         case 'get_settings': return { currency: 'THB', period_start_day: 1 }
-        case 'list_accounts': return active
+        case 'list_card_limit_groups': return { groups: [], cards: [] }
+          case 'list_accounts': return active
         case 'list_incomes': return []
         case 'list_transactions': return JSON.parse(localStorage.getItem('purchase-transactions') ?? '[]')
         case 'get_financial_data': return { settings: { currency: 'THB', period_start_day: 1 }, accounts: active, incomes: [], transactions: JSON.parse(localStorage.getItem('purchase-transactions') ?? '[]'), plans: [], categories: [], installments: plans() }

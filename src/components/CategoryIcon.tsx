@@ -1,6 +1,12 @@
 import type { ComponentProps } from 'react'
 import { NativeSelect } from './ui/native-select'
-import { Tag, Utensils, Coffee, ShoppingCart, Bus, Fuel, House, PlugZap, HeartPulse, ShoppingBag, Clapperboard, GraduationCap, Plane, Gift, PawPrint, Baby, Shirt, Dumbbell, Smartphone, Wifi, ShieldCheck, Wrench, Scissors, HandHeart } from 'lucide-react'
+import { Tag, Utensils, Coffee, ShoppingCart, Bus, Fuel, House, PlugZap, HeartPulse, ShoppingBag, Clapperboard, GraduationCap, Plane, Gift, PawPrint, Baby, Shirt, Dumbbell, Smartphone, Wifi, ShieldCheck, Wrench, Scissors, HandHeart, BriefcaseBusiness, createLucideIcon, Users, SprayCan, ReceiptText } from 'lucide-react'
+
+const Football = createLucideIcon('Football', [
+  ['circle', { cx: '12', cy: '12', r: '10', key: 'outline' }],
+  ['path', { d: 'm12 7 4.8 3.5-1.8 5.6H9l-1.8-5.6L12 7Z', key: 'panel' }],
+  ['path', { d: 'M12 7V2m4.8 8.5 4.7-1.6M15 16.1l2.9 4M9 16.1l-2.9 4M7.2 10.5 2.5 8.9', key: 'seams' }],
+])
 
 export const categoryIcons = [
   { key: 'tag', label: 'Other', icon: Tag },
@@ -27,6 +33,12 @@ export const categoryIcons = [
   { key: 'wrench', label: 'Repairs', icon: Wrench },
   { key: 'scissors', label: 'Personal care', icon: Scissors },
   { key: 'hand-heart', label: 'Donations', icon: HandHeart },
+  { key: 'briefcase-business', label: 'Productivity & tools', icon: BriefcaseBusiness },
+  // Keep the stored key so existing Sports categories use the updated artwork.
+  { key: 'volleyball', label: 'Sports', icon: Football },
+  { key: 'users', label: 'Family', icon: Users },
+  { key: 'spray-can', label: 'Household supplies', icon: SprayCan },
+  { key: 'receipt-text', label: 'Billing', icon: ReceiptText },
 ] as const
 
 export function CategoryIcon({name}: {name?: string | null}) {

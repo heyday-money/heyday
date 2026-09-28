@@ -1,0 +1,22 @@
+-- Extend the bundled catalog without replacing user names, IDs, archive state,
+-- logo modes or custom assets. Exact name matches receive missing metadata only.
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-011','TMBThanachart Bank Public Company Limited','tmbthanachart bank public company limited','TTB','011',NULL,'ttb.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'TTB'),bank_code=COALESCE(bank_code,'011'),logo=COALESCE(logo,'ttb.svg') WHERE name_key='tmbthanachart bank public company limited';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-020','Standard Chartered Bank (Thai) Public Company Limited','standard chartered bank (thai) public company limited','SCBT','020',NULL,'standard-chartred.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'SCBT'),bank_code=COALESCE(bank_code,'020'),logo=COALESCE(logo,'standard-chartred.svg') WHERE name_key='standard chartered bank (thai) public company limited';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-030','Government Savings Bank','government savings bank','GSB','030',NULL,'gsb.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'GSB'),bank_code=COALESCE(bank_code,'030'),logo=COALESCE(logo,'gsb.svg') WHERE name_key='government savings bank';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-031','The Hongkong and Shanghai Banking Corporation Limited','the hongkong and shanghai banking corporation limited','HSBC','031',NULL,'hsbc.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'HSBC'),bank_code=COALESCE(bank_code,'031'),logo=COALESCE(logo,'hsbc.svg') WHERE name_key='the hongkong and shanghai banking corporation limited';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-034','Bank for Agriculture and Agricultural Cooperatives','bank for agriculture and agricultural cooperatives','BAAC','034',NULL,'baac.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'BAAC'),bank_code=COALESCE(bank_code,'034'),logo=COALESCE(logo,'baac.svg') WHERE name_key='bank for agriculture and agricultural cooperatives';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-065','Thanachart Bank Public Company Limited (legacy)','thanachart bank public company limited (legacy)','TBANK','065',NULL,'thanachart.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'TBANK'),bank_code=COALESCE(bank_code,'065'),logo=COALESCE(logo,'thanachart.svg') WHERE name_key='thanachart bank public company limited (legacy)';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-066','Islamic Bank of Thailand','islamic bank of thailand','IBANK','066',NULL,'ibank.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'IBANK'),bank_code=COALESCE(bank_code,'066'),logo=COALESCE(logo,'ibank.svg') WHERE name_key='islamic bank of thailand';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-070','Industrial and Commercial Bank of China (Thai) Public Company Limited','industrial and commercial bank of china (thai) public company limited','ICBC','070',NULL,'icbc.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'ICBC'),bank_code=COALESCE(bank_code,'070'),logo=COALESCE(logo,'icbc.svg') WHERE name_key='industrial and commercial bank of china (thai) public company limited';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('bank-073','Land and Houses Bank Public Company Limited','land and houses bank public company limited','LH Bank','073',NULL,'lh.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'LH Bank'),bank_code=COALESCE(bank_code,'073'),logo=COALESCE(logo,'lh.svg') WHERE name_key='land and houses bank public company limited';
+INSERT INTO institutions(id,name,name_key,short_name,bank_code,swift_code,logo) VALUES('wallet-truemoney','TrueMoney','truemoney','TrueMoney',NULL,NULL,'truemoney.svg') ON CONFLICT DO NOTHING;
+UPDATE institutions SET short_name=COALESCE(short_name,'TrueMoney'),bank_code=COALESCE(bank_code,NULL),logo=COALESCE(logo,'truemoney.svg') WHERE name_key='truemoney';

@@ -1,3 +1,4 @@
+import { AccountLabel } from './InstitutionLogo'
 import { InstallmentCalendar } from './InstallmentCalendar'
 import { useMemo, useState } from 'react'
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
@@ -30,14 +31,14 @@ export function InstallmentsTable({ data, today, loading }: { data: FinancialDat
     const meta = { headerClassName: 'px-4 py-3 font-semibold whitespace-nowrap', cellClassName: 'px-4 py-4 align-top' }
     return [
       { id: 'name', header: 'Installment plan', meta: { ...meta, rowHeader: true, cellClassName: `${meta.cellClassName} min-w-40 max-w-64 break-words font-medium` }, cell: ({ row }) => row.original.name },
-      { id: 'debt', header: 'Credit card', meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-40 max-w-60 break-words` }, cell: ({ row }) => <>{row.original.debt_account_name}{row.original.debt_account_type === 'loan' && <span className="mt-1 block text-xs text-muted">Existing loan schedule</span>}</> },
+      { id: 'debt', header: 'Credit card', meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-40 max-w-60 break-words` }, cell: ({ row }) => <><AccountLabel id={row.original.debt_account_id} name={row.original.debt_account_name} />{row.original.debt_account_type === 'loan' && <span className="mt-1 block text-xs text-muted">Existing loan schedule</span>}</> },
       { id: 'purchase', header: 'Purchase', meta, cell: ({ row }) => row.original.purchase_kind === 'new_purchase' ? row.original.purchase_transaction_id ? 'Purchase recorded' : 'Purchase deleted · review schedule' : 'Already recorded · schedule only' },
       { id: 'monthly', header: 'Monthly payment', meta: { headerClassName: `${meta.headerClassName} text-right`, cellClassName: `${meta.cellClassName} whitespace-nowrap text-right font-semibold tabular-nums` }, cell: ({ row }) => formatAmount(row.original.monthly_amount, currency) },
       { id: 'interest', header: 'Annual interest', meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap tabular-nums` }, cell: ({ row }) => row.original.interest_rate_millis == null ? 'Not set' : `${interestRateText(row.original.interest_rate_millis)}%` },
       { id: 'term', header: 'Installments', meta, cell: ({ row }) => <>{row.original.installment_count} monthly<span className="mt-1 block whitespace-nowrap text-xs text-muted">Total: {formatAmount((BigInt(row.original.monthly_amount) * BigInt(row.original.installment_count)).toString(), currency)}</span></> },
       { id: 'dates', header: 'Schedule', meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap text-xs tabular-nums` }, cell: ({ row }) => <>{row.original.first_due_date}<span className="block">to {row.original.last}</span></> },
       { id: 'next', header: 'Next scheduled date', meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap tabular-nums` }, cell: ({ row }) => row.original.next ?? '—' },
-      { id: 'source', header: 'Pay from', meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-32 max-w-60 break-words` }, cell: ({ row }) => row.original.account_name },
+      { id: 'source', header: 'Pay from', meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-32 max-w-60 break-words` }, cell: ({ row }) => <AccountLabel id={row.original.account_id} name={row.original.account_name} /> },
       { id: 'status', header: 'Schedule status', meta, cell: ({ row }) => row.original.status },
       { id: 'actions', header: 'Actions', meta, cell: ({ row }) => <div className="flex gap-2">{row.original.debt_account_type !== 'loan' && <Button size="sm" variant="outline" disabled={loading} aria-label={`Edit installment ${row.original.name}`} onClick={() => setEditing({ plan: row.original })}>Edit</Button>}<Button size="sm" variant="outline" disabled={loading} aria-label={`Remove installment ${row.original.name}`} onClick={() => { setError(null); setDeleting(row.original) }}>Remove</Button></div> },
     ]

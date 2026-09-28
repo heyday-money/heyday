@@ -1,4 +1,4 @@
-import { NativeSelect } from './ui/native-select'
+import { AccountSelect } from './AccountSelect'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { listAccounts, listIncomeDeductions, saveSalaryDeductions, type Account, type Income, type IncomeDeduction, type IncomeDeductionInput } from '../lib/desktop'
@@ -40,11 +40,11 @@ export function SalaryDeductionFields({ rows, onChange, gross, currency, account
         <Field label={`Deduction ${index + 1} amount per month (${currency})`}><Input inputMode="decimal" placeholder="0.00" value={row.amount} onChange={e => update(row.key, 'amount', e.target.value)} /></Field>
         <Button type="button" variant="ghost" size="sm" aria-label={`Remove deduction ${index + 1}`} onClick={() => onChange(rows.filter(item => item.key !== row.key))}>Remove</Button>
       </div>
-      <Field label={`Deduction ${index + 1} debt account (optional)`}><NativeSelect value={row.debt_account_id ?? ''} onChange={e => update(row.key, 'debt_account_id', e.target.value)}>
+      <Field label={`Deduction ${index + 1} debt account (optional)`}><AccountSelect value={row.debt_account_id ?? ''} onChange={e => update(row.key, 'debt_account_id', e.target.value)}>
         <option value="">No linked debt account</option>
         {row.debt_account_id && !accounts.some(account => account.id === row.debt_account_id) && <option value={row.debt_account_id}>{row.debt_account_name ?? 'Linked debt'} (unavailable)</option>}
         {accounts.filter(account => account.type === 'loan' || account.type === 'credit_card').map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
-      </NativeSelect></Field>
+      </AccountSelect></Field>
       {row.debt_account_id && <p className="text-xs text-muted">Enter the monthly payroll repayment above. The linked account identifies the debt; its balance does not set this amount. Outlook Debt Payments is for additional payments outside payroll. This plan does not change the actual debt balance.</p>}
       <details><summary className="cursor-pointer text-xs text-muted">Description</summary><Input aria-label={`Deduction ${index + 1} description`} className="mt-2" maxLength={2000} value={row.description} onChange={e => update(row.key, 'description', e.target.value)} /></details>
     </div>)}

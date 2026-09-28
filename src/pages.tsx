@@ -1,3 +1,6 @@
+import { PayeeLogoProvider } from "./components/PayeeLogo";
+import { InstitutionProvider } from "./components/InstitutionProvider";
+import { InstitutionsSettings } from "./components/InstitutionsSettings";
 import { AppUpdates } from "./components/AppUpdates";
 import { useLocalDate } from "./lib/useLocalDate";
 import { DangerZone } from "./components/DangerZone";
@@ -116,6 +119,8 @@ export function AppLayout() {
 
   return (
     <ThemeContext.Provider value={{ dark, setDark }}>
+      <InstitutionProvider>
+      <PayeeLogoProvider>
       <TransactionShortcut>
       <div
         className="grid h-dvh w-full grid-cols-[var(--sidebar-width)_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden"
@@ -127,11 +132,11 @@ export function AppLayout() {
       >
         <div className="relative min-h-0 min-w-0">
           <aside
-            className={`flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto border-r border-line bg-card pt-[18px] pb-3 [&>*]:min-w-0 [&>*]:max-w-full ${collapsed ? "px-1" : "px-2.5"}`}
+            className={`flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r border-line bg-card pt-[18px] pb-3 [&>*]:min-w-0 [&>*]:max-w-full ${collapsed ? "px-1" : "px-2.5"}`}
           >
             <Link
               to="/"
-              className={`mb-[26px] flex items-center gap-[9px] text-[16px] font-[750] tracking-[-.8px] whitespace-nowrap max-[650px]:text-[14px] ${collapsed ? "w-full justify-center" : ""}`}
+              className={`mb-[26px] flex shrink-0 items-center gap-[9px] text-[16px] font-[750] tracking-[-.8px] whitespace-nowrap max-[650px]:text-[14px] ${collapsed ? "w-full justify-center" : ""}`}
               aria-label="Heyday Money home"
             >
               <img
@@ -148,7 +153,7 @@ export function AppLayout() {
               )}
             </Link>
             <nav
-              className="flex flex-1 flex-col gap-1.5"
+              className="flex min-h-0 flex-1 flex-col gap-1.5"
               aria-label="Main navigation"
             >
               {navigation.map(({ to, label, icon: Icon }) => (
@@ -157,19 +162,28 @@ export function AppLayout() {
                     to={to}
                     activeOptions={{ exact: true }}
                     activeProps={{ "aria-current": "page" }}
-                    className={`flex min-w-0 max-w-full items-center gap-2.5 rounded-[9px] p-2.5 text-[14px] font-[550] text-muted hover:bg-page hover:text-ink aria-[current=page]:bg-soft aria-[current=page]:text-brand ${to === "/settings" ? "mt-auto" : ""} ${collapsed ? "justify-center" : ""}`}
+                    className={`flex min-w-0 max-w-full shrink-0 items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[14px] font-[550] text-muted hover:bg-page hover:text-ink aria-[current=page]:bg-soft aria-[current=page]:text-brand ${to === "/settings" ? "mt-auto" : ""} ${collapsed ? "justify-center" : ""}`}
                     title={collapsed ? label : undefined}
                     aria-label={label}
                   >
                     <Icon className="shrink-0" size={18} aria-hidden="true" />
                     {!collapsed && <span>{label}</span>}
                   </Link>
-                  {to === "/accounts" && !collapsed && <SidebarAccounts />}
+                  {to === "/accounts" && !collapsed && (
+                    <div
+                      role="region"
+                      aria-label="Saved accounts"
+                      tabIndex={0}
+                      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+                    >
+                      <SidebarAccounts />
+                    </div>
+                  )}
                 </Fragment>
               ))}
             </nav>
             <button
-              className={`mt-3 flex items-center gap-2.5 rounded-[9px] border-0 bg-transparent p-2.5 text-[12px] font-[550] text-muted hover:bg-page hover:text-ink ${collapsed ? "justify-center" : ""}`}
+              className={`mt-3 flex shrink-0 items-center gap-2.5 rounded-[9px] border-0 bg-transparent p-2.5 text-[12px] font-[550] text-muted hover:bg-page hover:text-ink ${collapsed ? "justify-center" : ""}`}
               onClick={() => setCollapsed((value) => !value)}
               aria-expanded={!collapsed}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -210,6 +224,8 @@ export function AppLayout() {
         closeButton
       />
       </TransactionShortcut>
+      </PayeeLogoProvider>
+      </InstitutionProvider>
     </ThemeContext.Provider>
   );
 }
@@ -358,14 +374,16 @@ export function SettingsPage() {
     <>
       <div className="mb-6 max-w-[740px]">
         <h2 className="mb-3 text-[25px] font-[650]">Make Heyday yours.</h2>
-        <p className="text-sm">Manage your preferences, payees, and spending categories.</p>
+        <p className="text-sm">Manage your preferences, institutions, payees, and spending categories.</p>
       </div>
       <Tabs defaultValue="general" className="max-w-[740px]">
         <TabsList aria-label="Settings sections">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="payees">Payees</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
+          <TabsTrigger value="institutions">Institutions</TabsTrigger>
         </TabsList>
+        <TabsContent value="institutions"><InstitutionsSettings /></TabsContent>
         <TabsContent value="general" forceMount>
       <section className="rounded-[22px] border border-line bg-card p-[27px]">
         <h3 className="text-lg font-semibold">General</h3>

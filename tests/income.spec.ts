@@ -134,7 +134,7 @@ test('salary deductions can be created and managed on Income and appear separate
   await expect(page.getByText('Net: 47,250.00 THB', { exact: true })).toBeVisible()
   await page.getByRole('navigation').getByRole('link', { name: 'Outlook', exact: true }).click()
   await expect(page.getByRole('link', { name: 'Monthly Salary · Withholding Tax', exact: true })).toBeVisible()
-  const net = page.getByRole('row', { name: /^Net Income After Deductions/ }).last()
+  const net = page.getByRole('row', { name: /^Net Income \/ Cash Received/ }).last()
   await expect(net.getByRole('cell').first()).toHaveText('47,250.00')
   await page.getByRole('link', { name: 'Manage salary deductions in Income', exact: true }).click()
   await page.getByRole('button', { name: 'Manage deductions for Monthly Salary', exact: true }).click()

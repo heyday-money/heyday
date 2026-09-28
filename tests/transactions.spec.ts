@@ -273,7 +273,7 @@ test('manage payees and categories, record expenses, and preserve archived histo
   }
   await page.reload()
   await page.getByRole('tab', { name: 'Payees', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Rename Corner Shop' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit Corner Shop' })).toBeVisible()
   await page.getByRole('tab', { name: 'Categories', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Edit Groceries' })).toBeVisible()
   await page.getByRole('tab', { name: 'Payees', exact: true }).click()
@@ -293,7 +293,7 @@ test('manage payees and categories, record expenses, and preserve archived histo
   await expect(page.getByLabel('Category (optional)', { exact: true })).toHaveValue('')
   await page.getByLabel('Amount (THB)', { exact: true }).fill('5')
   await page.getByRole('button', { name: 'Save transaction', exact: true }).click()
-  await page.getByRole('button', { name: 'Rename Corner Shop' }).click()
+  await page.getByRole('button', { name: 'Edit Corner Shop' }).click()
   await page.getByLabel('Payee name', { exact: true }).fill('Local Market')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('button', { name: 'Archive Local Market' }).click()

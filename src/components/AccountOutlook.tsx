@@ -1,3 +1,4 @@
+import { AccountLabel } from './InstitutionLogo'
 import { OutlookTable } from './OutlookTable'
 import { useCallback, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
@@ -43,7 +44,7 @@ export function AccountOutlook() {
         <details className="mt-5 rounded-2xl border border-line bg-card p-5">
           <summary className="cursor-pointer font-semibold">Payment plans ({data.plans.length})</summary>
           {!data.plans.length ? <p className="mt-3 text-sm">No payments planned yet. Add dated expenses and debt repayments to build your outlook.</p> : <ul className="mt-3 divide-y divide-line" aria-label="Payment plans">{data.plans.map(plan => <li key={plan.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
-            <div className="min-w-0 flex-1"><h3 className="break-words font-semibold">{plan.name}</h3><p className="mt-1 break-words text-xs">{plan.date} · {plan.account_name}{plan.destination_account_name ? ` → ${plan.destination_account_name}` : ` · ${plan.category_name ?? 'Uncategorized'}`} · {formatAmount(plan.amount, currency)}</p><p className="mt-1 text-xs">{plan.date <= dateKey(today) ? 'Due or past · excluded from forecast; record actual payment separately' : !data.accounts.some(account => account.id === plan.account_id) || (plan.destination_account_id && !data.accounts.some(account => account.id === plan.destination_account_id)) ? 'Account unavailable · excluded from forecast' : 'Planned · balances unchanged'}</p></div>
+            <div className="min-w-0 flex-1"><h3 className="break-words font-semibold">{plan.name}</h3><p className="mt-1 break-words text-xs">{plan.date} · <AccountLabel id={plan.account_id} name={plan.account_name} />{plan.destination_account_name ? <> → <AccountLabel id={plan.destination_account_id} name={plan.destination_account_name} /></> : ` · ${plan.category_name ?? 'Uncategorized'}`} · {formatAmount(plan.amount, currency)}</p><p className="mt-1 text-xs">{plan.date <= dateKey(today) ? 'Due or past · excluded from forecast; record actual payment separately' : !data.accounts.some(account => account.id === plan.account_id) || (plan.destination_account_id && !data.accounts.some(account => account.id === plan.destination_account_id)) ? 'Account unavailable · excluded from forecast' : 'Planned · balances unchanged'}</p></div>
             <Button variant="outline" aria-label={`Edit plan ${plan.name}`} onClick={() => setEditing({ plan, date: plan.date })}>Edit</Button><Button variant="outline" aria-label={`Remove plan ${plan.name}`} onClick={() => { setDeleting(plan); setSaveError(null) }}>Remove</Button>
           </li>)}</ul>}
         </details>

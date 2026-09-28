@@ -28,6 +28,7 @@ test.beforeEach(async ({ page }) => {
       const accountId = String(input.account_id ?? args?.accountId ?? '')
       switch (command) {
         case 'plugin:app|version': return '0.1.0'
+        case 'list_institutions': return { institutions: [], accounts: [] }
         case 'get_settings': return { currency: 'THB', period_start_day: 1 }
         case 'list_accounts': return state.accounts
         case 'update_account': {
@@ -270,6 +271,7 @@ test('account page edits account details in place and preserves the reconciliati
   await dialog.getByLabel('Account name', { exact: true }).fill('Main bank')
   await dialog.getByLabel('Last four digits (optional)').fill('0019')
   await dialog.getByLabel('Institution (optional)').fill('My bank')
+  await dialog.getByRole('option', { name: 'Add “My bank”', exact: true }).click()
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(dialog.getByText('Discard your unsaved account?')).toBeVisible()
   await dialog.getByRole('button', { name: 'Keep editing', exact: true }).click()
