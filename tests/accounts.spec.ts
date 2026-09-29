@@ -67,6 +67,8 @@ test('set currency, create all account types, and preserve them across reload', 
   await page.getByRole('button', { name: 'Save currency' }).click()
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Currency saved.' })).toBeVisible()
   await page.getByRole('navigation').getByRole('link', { name: 'Accounts', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Table', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Cards', exact: true }).click()
   await page.getByRole('button', { name: 'Expand sidebar' }).click()
   await page.getByRole('button', { name: 'Add account', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Add account', exact: true })
@@ -143,6 +145,7 @@ test('set currency, create all account types, and preserve them across reload', 
   await expect(page.getByText('Annual interest rate: 1.1957%')).toBeVisible()
   await expect(page.getByText('Monthly installment: 123.45 THB')).toBeVisible()
   await expect(page.getByText('Mortgage · Liability · •••• 0123', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Table', exact: true }).click()
   await page.getByRole('button', { name: 'Edit account My loan', exact: true }).click()
   const editDialog = page.getByRole('dialog', { name: 'Edit account', exact: true })
   await expect(page.getByLabel('Account name', { exact: true })).toHaveValue('My loan')
@@ -172,7 +175,8 @@ test('set currency, create all account types, and preserve them across reload', 
   await page.getByRole('button', { name: 'Save account', exact: true }).click()
   await expect(editDialog).not.toBeVisible()
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Account updated.' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Student loan', exact: true })).toBeVisible()
+  await expect(page.getByRole('rowheader', { name: 'Student loan', exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Cards', exact: true }).click()
   await expect(page.getByRole('complementary').getByRole('link', { name: /^Student loan:/ })).toBeVisible()
   await page.reload()
   await page.getByRole('button', { name: 'Edit account Student loan', exact: true }).click()
@@ -228,6 +232,19 @@ test('type summaries show exact current assets and liabilities and refresh after
     } })
   })
   await page.goto('/#/accounts')
+  const table = page.getByRole('table', { name: 'Accounts', exact: true })
+  await expect(page.getByRole('button', { name: 'Table', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(table.locator('tbody tr')).toHaveCount(7)
+  await expect(table.getByRole('row').filter({ hasText: 'Account 0' })).toContainText('90,071,992,547,409.93 THB')
+  await expect(table.getByRole('row').filter({ hasText: 'Account 3' })).toContainText('Credit / overpayment')
+  await page.getByRole('button', { name: 'Cards', exact: true }).click()
+  await expect(table).toHaveCount(0)
+  await expect(page.getByRole('tabpanel').getByRole('listitem')).toHaveCount(7)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Cards', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Table', exact: true }).click()
+  await page.reload()
+  await expect(table.locator('tbody tr')).toHaveCount(7)
   const bank = page.getByRole('group', { name: 'Bank summary', exact: true })
   await expect(bank).toContainText('2 accounts')
   await expect(bank.locator('dd')).toHaveText(['90,071,992,547,408.93 THB', '90,071,992,547,409.93 THB', '1.00 THB'])
@@ -238,6 +255,7 @@ test('type summaries show exact current assets and liabilities and refresh after
   await expect(cash).toContainText('0 accounts')
   await expect(cash.locator('dd')).toHaveText(['0.00 THB', '0.00 THB', '0.00 THB'])
   await page.getByRole('tab', { name: 'Bank (2)', exact: true }).click()
+  await expect(table.locator('tbody tr')).toHaveCount(2)
   await expect(page.getByRole('group', { name: 'Credit cards summary' })).toBeVisible()
   await page.evaluate(() => {
     sessionStorage.setItem('updated-wallet', 'true')
@@ -246,6 +264,12 @@ test('type summaries show exact current assets and liabilities and refresh after
   await expect(page.getByRole('group', { name: 'Wallets summary' }).locator('dd')).toHaveText(['4.00 THB', '4.00 THB', '0.00 THB'])
   await page.setViewportSize({ width: 650, height: 700 })
   expect(await bank.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  expect(await page.locator('main').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  const scroll = page.getByRole('region', { name: 'Scrollable accounts', exact: true })
+  expect(await scroll.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+  await page.getByRole('tab', { name: 'Cash (0)', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'No cash accounts yet' })).toBeVisible()
+  await expect(table).toHaveCount(0)
 })
 
 test('long sidebar account lists scroll without moving navigation or Settings', async ({ page }) => {
@@ -289,3 +313,88 @@ test('long sidebar account lists scroll without moving navigation or Settings', 
     expect(await region.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   }
 })
+
+test('Loans shows exact annual rates and monthly installments with unset values sorted last', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'isTauri', { value: true })
+    const accounts = [null, 100000, 0, 11957, 75000, 11950].map((rate, index) => ({
+      id: String(index), name: `Loan ${index}`, type: 'loan', loan_type: 'personal_loan',
+      current_balance: '10000', opening_balance: '10000', interest_rate_ten_thousandths: rate,
+      institution: null, last_four: null, notes: null, credit_limit: null,
+      statement_day: null, payment_due_day: null, monthly_installment: [null, '9007199254740993', '0', '1000', '9007199254740992', '900'][index],
+    }))
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string) => {
+      if (command === 'plugin:app|version') return '0.0.1-alpha.5'
+      if (command === 'get_settings') return { currency: 'THB', period_start_day: 1 }
+      if (command === 'list_accounts') return accounts
+      if (command === 'list_institutions') return { institutions: [], accounts: [] }
+      if (command === 'list_card_limit_groups') return { groups: [], cards: [] }
+      if (command === 'list_transaction_options') return { payees: [], categories: [] }
+      throw new Error(command)
+    } } })
+  })
+  await page.goto('/#/accounts')
+  const table = page.getByRole('table', { name: 'Accounts', exact: true })
+  await expect(table.getByRole('columnheader', { name: /annual interest rate/i })).toHaveCount(0)
+  await expect(table.getByRole('columnheader', { name: /monthly installment/i })).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Loans (6)', exact: true }).click()
+  const header = table.getByRole('columnheader', { name: /annual interest rate/i })
+  await expect(header).toHaveAttribute('aria-sort', 'none')
+  await expect(table.locator('tbody tr').nth(0)).toContainText('Not set')
+  await expect(table.locator('tbody tr').nth(2)).toContainText('0%')
+  await expect(table.locator('tbody tr').nth(3)).toContainText('1.1957%')
+  await table.getByRole('button', { name: 'Sort annual interest rate lowest first' }).click()
+  await expect(header).toHaveAttribute('aria-sort', 'ascending')
+  await expect(table.getByRole('rowheader')).toContainText(['Loan 2', 'Loan 5', 'Loan 3', 'Loan 4', 'Loan 1', 'Loan 0'])
+  await table.getByRole('button', { name: 'Sort annual interest rate highest first' }).press('Enter')
+  await expect(header).toHaveAttribute('aria-sort', 'descending')
+  await expect(table.getByRole('rowheader')).toContainText(['Loan 1', 'Loan 4', 'Loan 3', 'Loan 5', 'Loan 2', 'Loan 0'])
+  const monthlyHeader = table.getByRole('columnheader', { name: /monthly installment/i })
+  await expect(monthlyHeader).toHaveAttribute('aria-sort', 'none')
+  await expect(table.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Loan 1', exact: true }) })).toContainText('90,071,992,547,409.93 THB')
+  await expect(table.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Loan 2', exact: true }) })).toContainText('0.00 THB')
+  await table.getByRole('button', { name: 'Sort monthly installment lowest first' }).click()
+  await expect(monthlyHeader).toHaveAttribute('aria-sort', 'ascending')
+  await expect(header).toHaveAttribute('aria-sort', 'none')
+  await expect(table.getByRole('rowheader')).toContainText(['Loan 2', 'Loan 5', 'Loan 3', 'Loan 4', 'Loan 1', 'Loan 0'])
+  await table.getByRole('button', { name: 'Sort monthly installment highest first' }).press('Enter')
+  await expect(monthlyHeader).toHaveAttribute('aria-sort', 'descending')
+  await expect(table.getByRole('rowheader')).toContainText(['Loan 1', 'Loan 4', 'Loan 3', 'Loan 5', 'Loan 2', 'Loan 0'])
+  await page.getByRole('button', { name: 'Cards', exact: true }).click()
+  await expect(page.getByText('Annual interest rate: 1.1957%', { exact: true })).toBeVisible()
+})
+
+for (const [accountType, tabName] of [['bank', 'Bank'], ['credit_card', 'Credit cards']] as const) {
+test(`${tabName} balances sort exactly in both directions, including negative and opening balances`, async ({ page }) => {
+  await page.addInitScript(accountType => {
+    Object.defineProperty(window, 'isTauri', { value: true })
+    const accounts = ['9007199254740993', '-100', '0', '9007199254740992', null].map((balance, index) => ({
+      id: String(index), name: `Account ${index}`, type: accountType, loan_type: null,
+      current_balance: balance, opening_balance: '1000', interest_rate_ten_thousandths: null,
+      institution: null, last_four: null, notes: null, credit_limit: null,
+      statement_day: null, payment_due_day: null, monthly_installment: null,
+    }))
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string) => {
+      if (command === 'plugin:app|version') return '0.0.1-alpha.5'
+      if (command === 'get_settings') return { currency: 'THB', period_start_day: 1 }
+      if (command === 'list_accounts') return accounts
+      if (command === 'list_institutions') return { institutions: [], accounts: [] }
+      if (command === 'list_card_limit_groups') return { groups: [], cards: [] }
+      if (command === 'list_transaction_options') return { payees: [], categories: [] }
+      throw new Error(command)
+    } } })
+  }, accountType)
+  await page.goto('/#/accounts')
+  const table = page.getByRole('table', { name: 'Accounts', exact: true })
+  await expect(table.getByRole('button', { name: /Sort balance/ })).toHaveCount(0)
+  await page.getByRole('tab', { name: `${tabName} (5)`, exact: true }).click()
+  const header = table.getByRole('columnheader', { name: /Sort balance/ })
+  await expect(header).toHaveAttribute('aria-sort', 'none')
+  await table.getByRole('button', { name: 'Sort balance lowest first' }).click()
+  await expect(header).toHaveAttribute('aria-sort', 'ascending')
+  await expect(table.getByRole('rowheader')).toContainText(['Account 1', 'Account 2', 'Account 4', 'Account 3', 'Account 0'])
+  await table.getByRole('button', { name: 'Sort balance highest first' }).press('Enter')
+  await expect(header).toHaveAttribute('aria-sort', 'descending')
+  await expect(table.getByRole('rowheader')).toContainText(['Account 0', 'Account 3', 'Account 4', 'Account 2', 'Account 1'])
+})
+}

@@ -61,6 +61,7 @@ pub struct PaymentPart {
 }
 #[derive(Serialize)]
 pub struct Snapshot {
+    paid_off_on: Option<String>,
     account: crate::accounts::Account,
     currency: Option<String>,
     facility: Option<Facility>,
@@ -100,8 +101,10 @@ pub async fn get_loan_account(
         .collect();
     let transactions=sqlx::query_as(&format!("{} WHERE t.account_id=? OR t.destination_account_id=? OR t.id IN (SELECT p.transaction_id FROM loan_payment_parts p JOIN loan_contracts c ON c.id=p.contract_id WHERE c.account_id=?) ORDER BY t.date DESC,t.created_at DESC",crate::transactions::SELECT)).bind(&account_id).bind(&account_id).bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
     let payment_parts=sqlx::query_as("SELECT p.transaction_id,p.payment_id,p.contract_id,p.component,CAST(p.amount AS TEXT) AS amount FROM loan_payment_parts p JOIN loan_contracts c ON c.id=p.contract_id WHERE c.account_id=?").bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
+    let paid_off_on = sqlx::query_scalar("SELECT paid_off_on FROM loan_payoffs WHERE account_id=?").bind(&account_id).fetch_optional(&mut *tx).await.map_err(err)?;
     tx.commit().await.map_err(err)?;
     Ok(Snapshot {
+        paid_off_on,
         account,
         currency,
         facility,

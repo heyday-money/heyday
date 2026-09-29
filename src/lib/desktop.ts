@@ -32,6 +32,7 @@ export const loanTypes = [
 ] as const
 export type LoanType = typeof loanTypes[number]['value']
 export interface Account {
+  paid_off_on?: string | null
   id: string
   name: string
   type: AccountType
@@ -49,10 +50,10 @@ export interface Account {
   initial_loan_amount?: string | null
 }
 import type { LoanContract, LoanFacility } from './loans'
-export type NewAccount = Omit<Account, 'id' | 'current_balance'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null }
+export type NewAccount = Omit<Account, 'id' | 'current_balance' | 'paid_off_on'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null }
 
-export function listAccounts(): Promise<Account[]> {
-  return invoke<Account[]>('list_accounts')
+export function listAccounts(includePaidOff = false): Promise<Account[]> {
+  return invoke<Account[]>('list_accounts', { includePaidOff })
 }
 export type AccountUpdate = Omit<NewAccount, 'opening_balance'> & { id: string }
 export async function updateAccount(input: AccountUpdate): Promise<Account> {
@@ -239,4 +240,9 @@ export async function deleteSubscription(id: string): Promise<void> {
 
 export function clearAllData(confirmation: string): Promise<void> {
   return invoke<void>('clear_all_data', { confirmation })
+}
+
+export async function markLoanPaidOff(accountId: string): Promise<void> {
+  await invoke('mark_loan_paid_off', { accountId })
+  for (const event of ['accounts-changed', 'plans-changed', 'transactions-changed']) window.dispatchEvent(new Event(event))
 }

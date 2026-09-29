@@ -10,6 +10,7 @@ export interface LoanContract {
  borrowing_transaction_id: string | null; needs_review: boolean; accounts_available: boolean
 }
 export interface LoanSnapshot {
+ paid_off_on?: string | null
  account: Account; currency: string | null; facility: LoanFacility | null; contracts: LoanContract[]
  transactions: Transaction[]; payment_parts: { transaction_id: string; payment_id: string; contract_id: string; component: string; amount: string }[]
 }

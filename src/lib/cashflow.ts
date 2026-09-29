@@ -13,6 +13,7 @@ export interface PlannerIncome {
   is_active: boolean; destination_account_name: string; account_archived: boolean
 }
 export interface PlannerDebtAccount {
+  paid_off_on?: string | null
   id: string; name: string; loan_type: string | null; current_balance: string; monthly_installment: string | null; notes: string | null; is_archived: boolean
 }
 export interface PlannerInstallment {
@@ -57,7 +58,7 @@ export interface PlannerData {
   months: { month: string; status: CycleStatus }[]
   opening: { month: string; amount: string } | null
   period_start_day: number
-  expense_categories: { id: string; name: string; is_archived: boolean }[]
+  expense_categories: { id: string; name: string; icon?: string | null; is_archived: boolean }[]
 }
 export type PlannerChange =
   | ({ kind: 'item' } & Omit<PlannerItem, 'id' | 'income' | 'debt_account' | 'installment' | 'credit_card' | 'deduction'> & { id: string | null })
@@ -211,7 +212,14 @@ function generatedAmount(data: PlannerData, item: PlannerItem, month: string) {
   if (item.debt_account || item.installment) return linkedPaymentsBetween(data, item, month, addMonths(month, 1))
   return scheduledAmount(item, month)
 }
+function paidOffForCycle(data: PlannerData, item: PlannerItem, month: string) {
+  const date = item.debt_account?.paid_off_on
+  if (!date) return false
+  const [year, m, day] = date.split('-').map(Number)
+  return month >= currentCycle(data.period_start_day, new Date(year, m - 1, day, 12))
+}
 function forecastItemAmount(data: PlannerData, item: PlannerItem, month: string) {
+  if (paidOffForCycle(data, item, month)) return { value: 0n, source: 'Loan paid off' }
   if (item.credit_card) return { value: recordedCardPayments(data, item.credit_card.id, month, addMonths(month, 1)).amount + cardPlannedBetween(data,item.credit_card.id,month,addMonths(month,1)), source: managedCard(data,item.credit_card.id) ? 'Recorded + remaining plan' : 'Recorded payments' }
   if (coveredInstallmentCycle(data,item,month)) return {value: generatedAmount(data,item,month), source: 'Included in statement'}
   if (usesRecordedCardTotal(data, item, month)) return { value: 0n, source: 'Using recorded card total' }
@@ -250,7 +258,7 @@ function forecastOpeningForCycle(data: PlannerData, month: string): bigint | nul
       cash += sign * BigInt(count) * BigInt(item.schedule_amount)
     }
     for (const entry of data.amounts) if (entry.item_id === item.id && entry.month >= data.opening.month && entry.month < month) {
-      if (usesRecordedCardTotal(data, item, entry.month) || coveredInstallmentCycle(data,item,entry.month)) continue
+      if (paidOffForCycle(data, item, entry.month) || usesRecordedCardTotal(data, item, entry.month) || coveredInstallmentCycle(data,item,entry.month)) continue
       cash += sign * (BigInt(entry.amount) - (generatedAmount(data, item, entry.month) ?? 0n))
     }
   }
@@ -277,7 +285,7 @@ function actualRows(data: PlannerData): PlannerItem[] {
   for (const t of data.ledger_transactions ?? []) {
     if (!cashType(t.account_type) || !['income', 'expense'].includes(t.type)) continue
     const key = t.type === 'income' ? actualIncomeKey(t) : `actual:expense:${t.category_id ?? 'uncategorized'}`
-    rows.set(key, { id: key, actual_key: key, category_id: t.type === 'income' ? 'income' : 'expenses', name: t.type === 'income' ? `Received · ${t.income_source_name ?? `Unassigned · ${t.account_name ?? t.account_id}`}` : `Recorded · ${t.category_name ?? 'Uncategorized'}`, description: 'Actual cash, bank and wallet transactions. Read-only; edit the underlying transactions. Forecast amounts are kept separately.', card_name: '', transaction_category_id: null, schedule_amount: null, schedule_start: null, schedule_end: null })
+    rows.set(key, { id: key, actual_key: key, category_id: t.type === 'income' ? 'income' : 'expenses', name: t.type === 'income' ? `Received · ${t.income_source_name ?? `Unassigned · ${t.account_name ?? t.account_id}`}` : `Recorded · ${t.category_name ?? 'Uncategorized'}`, description: 'Actual cash, bank and wallet transactions. Read-only; edit the underlying transactions. Forecast amounts are kept separately.', card_name: '', transaction_category_id: t.type === 'expense' ? t.category_id ?? null : null, schedule_amount: null, schedule_start: null, schedule_end: null })
   }
   return [...rows.values()]
 }

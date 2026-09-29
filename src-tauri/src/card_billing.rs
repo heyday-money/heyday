@@ -69,6 +69,28 @@ pub struct AccountBilling {
     entries: Vec<Entry>,
     installments: Vec<crate::installments::Installment>,
 }
+#[derive(Serialize)]
+pub struct CardOverview {
+    accounts: Vec<crate::accounts::Account>,
+    archived_ids: Vec<String>,
+    currency: Option<String>,
+    billing: BillingData,
+    transactions: Vec<crate::transactions::Transaction>,
+}
+async fn overview_snapshot(pool: &SqlitePool) -> Result<CardOverview, String> {
+    let mut tx = pool.begin().await.map_err(err)?;
+    let accounts = sqlx::query_as(&format!("SELECT {} FROM accounts WHERE type='credit_card' ORDER BY is_archived,name COLLATE NOCASE,id",crate::accounts::COLUMNS)).fetch_all(&mut *tx).await.map_err(err)?;
+    let archived_ids = sqlx::query_scalar("SELECT id FROM accounts WHERE type='credit_card' AND is_archived=1").fetch_all(&mut *tx).await.map_err(err)?;
+    let currency = sqlx::query_scalar("SELECT currency FROM settings WHERE id=1").fetch_one(&mut *tx).await.map_err(err)?;
+    let billing = snapshot(&mut tx).await.map_err(err)?;
+    let transactions = sqlx::query_as(&format!("{} WHERE a.type='credit_card' OR d.type='credit_card' ORDER BY t.date DESC,t.id",crate::transactions::SELECT)).fetch_all(&mut *tx).await.map_err(err)?;
+    tx.commit().await.map_err(err)?;
+    Ok(CardOverview { accounts, archived_ids, currency, billing, transactions })
+}
+#[tauri::command]
+pub async fn get_card_overview(pool: tauri::State<'_, SqlitePool>) -> Result<CardOverview, String> {
+    overview_snapshot(pool.inner()).await
+}
 async fn account_snapshot(pool: &SqlitePool, account_id: &str) -> Result<AccountBilling, String> {
     let mut tx = pool.begin().await.map_err(err)?;
     let account = sqlx::query_as(&format!(
@@ -484,6 +506,24 @@ mod tests {
             currency: "THB".into(),
             installments: vec![],
         }
+    }
+    #[tokio::test]
+    async fn overview_includes_archived_cards_and_both_transaction_sides_without_duplication() {
+        let p=pool().await;
+        sqlx::raw_sql("UPDATE accounts SET is_archived=1,current_balance=9007199254740993 WHERE id='other';
+        INSERT INTO transactions(id,type,account_id,destination_account_id,amount,date,description) VALUES('between','transfer','card','other',100,'2024-02-01','');
+        INSERT INTO transactions(id,type,account_id,amount,date,description) VALUES('purchase','expense','card',250,'2024-01-10',''),('cash-only','expense','bank',123,'2024-01-10','');").execute(&p).await.unwrap();
+        save_statement(&p,statement()).await.unwrap();
+        let before=balances(&p).await;
+        let data=overview_snapshot(&p).await.unwrap();
+        assert_eq!(data.currency.as_deref(),Some("THB"));
+        assert_eq!(data.archived_ids,vec!["other"]);
+        assert_eq!(data.accounts.len(),2);
+        assert_eq!(data.transactions.len(),2);
+        assert_eq!(data.billing.statements.len(),1);
+        let json=serde_json::to_value(&data).unwrap();
+        assert!(json["accounts"].as_array().unwrap().iter().any(|a|a["id"]=="other"&&a["current_balance"]=="9007199254740993"));
+        assert_eq!(balances(&p).await,before);
     }
     async fn id(p: &SqlitePool) -> String {
         sqlx::query_scalar("SELECT id FROM card_statements LIMIT 1")
