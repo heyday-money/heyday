@@ -2,6 +2,7 @@ use sqlx::SqlitePool;
 
 // Child-first order preserves foreign-key enforcement throughout the reset.
 const DATA_TABLES: &[&str] = &[
+    "loan_payoffs",
     "card_limit_members",
     "card_limit_groups",
     "card_statement_installments",

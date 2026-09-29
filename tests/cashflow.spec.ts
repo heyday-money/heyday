@@ -283,3 +283,22 @@ test('loan monthly installments populate every cycle exactly and overrides repla
   input.source_currency = 'USD'
   expect(cycleTotals(input, '2026-12').buckets.debt).toBe(0n)
 })
+
+test('paid-off loans suppress current and future overrides without losing past entries or actual repayments', () => {
+  const input = data()
+  input.debt_accounts = [{ id: 'loan', name: 'Loan', loan_type: 'personal_loan', current_balance: '0', monthly_installment: '100', notes: null, is_archived: true, paid_off_on: '2024-12-20' }]
+  input.opening = { month: '2024-10', amount: '1000' }
+  input.amounts = ['2024-10', '2024-11', '2024-12'].map(month => ({ item_id: 'debt:loan', month, amount: '100' }))
+  const item = plannerItems(input).find(item => item.id === 'debt:loan')!
+  expect(itemAmount(input, item, '2024-10', 'forecast').value).toBe(100n)
+  // Payday 25: a December 20 payoff is in the November-keyed cycle.
+  expect(itemAmount(input, item, '2024-11', 'forecast')).toEqual({ value: 0n, source: 'Loan paid off' })
+  expect(itemAmount(input, item, '2024-12', 'forecast').value).toBe(0n)
+  expect(openingForCycle(input, '2025-01')).toBe(900n)
+  expect(input.amounts).toHaveLength(3)
+  input.ledger_transactions = [{ id: 'final', type: 'repayment', account_id: 'bank', account_type: 'bank', destination_account_id: 'loan', destination_account_type: 'loan', amount: '100', date: '2024-12-20' }]
+  expect(itemAmount(input, item, '2024-11', 'actual').value).toBe(100n)
+  input.debt_accounts[0].paid_off_on = null
+  input.debt_accounts[0].is_archived = false
+  expect(itemAmount(input, item, '2024-12', 'forecast').value).toBe(100n)
+})

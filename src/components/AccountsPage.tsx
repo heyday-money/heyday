@@ -1,9 +1,10 @@
+import { AccountsTable } from './AccountsTable'
 import { AccountLabel } from './InstitutionLogo'
 import { useCardLimits } from '../lib/card-limits'
 import { SharedCreditLimits, CardCredit } from './SharedCreditLimits'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Pencil, Plus } from 'lucide-react'
+import { LayoutGrid, Table2, Pencil, Plus } from 'lucide-react'
 import { desktopAvailable, getSettings, listAccounts, loanTypes, type Account, type AccountType, type Settings } from '../lib/desktop'
 import { formatAmount } from '../lib/money'
 import { netWorth } from '../lib/financial'
@@ -14,6 +15,7 @@ import { Button } from './ui/button'
 
 export function AccountsPage() {
   const limits = useCardLimits()
+  const [closedLoans, setClosedLoans] = useState<Account[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loading, setLoading] = useState(desktopAvailable)
@@ -21,12 +23,19 @@ export function AccountsPage() {
   const [attempt, setAttempt] = useState(0)
   const [editor, setEditor] = useState<{ account?: Account; type: AccountType } | null>(null)
   const [selectedType, setSelectedType] = useState<AccountType | 'all'>('all')
+  const [view, setView] = useState<'table' | 'cards'>(() => {
+    try { return localStorage.getItem('accounts-view') === 'cards' ? 'cards' : 'table' } catch { return 'table' }
+  })
+  function changeView(next: 'table' | 'cards') {
+    setView(next)
+    try { localStorage.setItem('accounts-view', next) } catch { /* View preferences are optional. */ }
+  }
   useEffect(() => {
     if (!desktopAvailable) return
     let active = true
     setLoading(true); setLoadError(false)
-    Promise.all([getSettings(), listAccounts()]).then(([settings, accounts]) => {
-      if (active) { setSettings(settings); setAccounts(accounts) }
+    Promise.all([getSettings(), listAccounts(true)]).then(([settings, accounts]) => {
+      if (active) { setSettings(settings); setAccounts(accounts.filter(account => !account.paid_off_on)); setClosedLoans(accounts.filter(account => !!account.paid_off_on)) }
     }).catch(() => { if (active) setLoadError(true) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [attempt])
@@ -73,6 +82,10 @@ export function AccountsPage() {
             })}
           </div>
         </div>
+        <div role="group" aria-label="Account view" className="mb-3 flex justify-end gap-2">
+          <Button type="button" variant={view === 'table' ? 'default' : 'outline'} size="sm" aria-pressed={view === 'table'} onClick={() => changeView('table')}><Table2 size={16} />Table</Button>
+          <Button type="button" variant={view === 'cards' ? 'default' : 'outline'} size="sm" aria-pressed={view === 'cards'} onClick={() => changeView('cards')}><LayoutGrid size={16} />Cards</Button>
+        </div>
         <Tabs value={selectedType} onValueChange={value => setSelectedType(value as AccountType | 'all')}>
           <div className="min-w-0 overflow-x-auto p-1">
             <TabsList aria-label="Account types" className="w-max min-w-full">
@@ -85,6 +98,7 @@ export function AccountsPage() {
             const count = accounts.filter(account => tab === 'all' || account.type === tab).length
             return <TabsContent key={tab} value={tab}>
               {!count ? <div className="rounded-[22px] border border-line bg-card p-12 text-center"><h3 className="font-semibold">{tab === 'all' ? 'No accounts yet' : `No ${types.find(item => item.value === tab)!.label.toLowerCase()} accounts yet`}</h3><p className="mt-2 text-[14px]">Use Add account to {tab === 'all' ? 'start building your overview' : 'add one to this group'}.</p></div>
+                : view === 'table' ? <AccountsTable sortBalance={tab === 'bank' || tab === 'credit_card'} showLoanDetails={tab === 'loan'} accounts={groups.flatMap(group => accounts.filter(account => account.type === group.value))} currency={currency} limits={limits} onEdit={account => setEditor({ account, type: account.type })} />
                 : <div className="space-y-6">{groups.map(group => <section key={group.value} aria-label={`${group.groupLabel} accounts`}>
                   <h3 className="mb-3 text-sm font-semibold">{group.groupLabel} ({accounts.filter(account => account.type === group.value).length})</h3>
                   <ul className="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1" aria-label={`${group.groupLabel} accounts`}>{accounts.filter(account => account.type === group.value).map(account => {
@@ -112,6 +126,7 @@ export function AccountsPage() {
             </TabsContent>
           })}
         </Tabs>
+        {!!closedLoans.length && <details className="mt-6 rounded-2xl border border-line p-4"><summary className="cursor-pointer font-semibold">Paid-off loans ({closedLoans.length})</summary><div className="mt-4"><AccountsTable accounts={closedLoans} currency={currency} limits={limits} onEdit={() => {}} /></div></details>}
       </>}
   </>
 }

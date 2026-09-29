@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { saveTransactionOption, type TransactionOption } from '../lib/desktop'
 import { Input } from './ui/input'
+import { Popover, PopoverAnchor, PopoverContent } from './ui/popover'
 
 const normalize = (name: string) => name.trim().replace(/\s+/gu, ' ')
 
@@ -61,12 +62,19 @@ export function PayeeCombobox({ id, value, options, onChange, onCreated, onBusyC
     }
   }
   useEffect(() => {
-    if (open) document.getElementById(`${listId}-${activeIndex}`)?.scrollIntoView({ block: 'nearest' })
+    if (!open) return
+    const list = document.getElementById(listId)
+    const option = document.getElementById(`${listId}-${activeIndex}`)
+    if (!list || !option) return
+    const listBounds = list.getBoundingClientRect()
+    const optionBounds = option.getBoundingClientRect()
+    if (optionBounds.top < listBounds.top) list.scrollTop -= listBounds.top - optionBounds.top
+    else if (optionBounds.bottom > listBounds.bottom) list.scrollTop += optionBounds.bottom - listBounds.bottom
   }, [open, activeIndex, listId])
-  return <div className="mt-2 min-w-0" onBlur={event => {
+  return <Popover open={open} onOpenChange={next => { if (!busyRef.current) setOpen(next) }}><div className="mt-2 min-w-0" onBlur={event => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !busyRef.current) setOpen(false)
   }}>
-    <div className="relative"><span className="pointer-events-none absolute top-2 left-2"><PayeeLogo id={value} name={selectedName || query} assetId={options.find(p => p.id === value)?.logo_asset_id} /></span>
+    <PopoverAnchor asChild><div className="relative"><span className="pointer-events-none absolute top-2 left-2"><PayeeLogo id={value} name={selectedName || query} assetId={options.find(p => p.id === value)?.logo_asset_id} /></span>
     <Input className="pl-9" id={id} ref={inputRef} role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={open ? listId : undefined} aria-activedescendant={open ? `${listId}-${activeIndex}` : undefined} aria-describedby={`${listId}-help`} autoComplete="off" placeholder="Search or create a payee" value={query} readOnly={busy}
       onClick={() => setOpen(true)}
       onChange={event => {
@@ -75,17 +83,22 @@ export function PayeeCombobox({ id, value, options, onChange, onCreated, onBusyC
       }}
       onKeyDown={event => {
         if (event.nativeEvent.isComposing) return
-        if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); setOpen(false) }
+        if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); if (!busyRef.current) setOpen(false) }
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
           event.preventDefault(); setOpen(true)
           setActive(current => open ? (current + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length : 0)
         }
         if (event.key === 'Enter' && open) { event.preventDefault(); void choose(activeIndex) }
-      }} /></div>
-    {open && <div id={listId} role="listbox" aria-label="Payees" aria-busy={busy} className="mt-1 max-h-44 overflow-y-auto rounded-md border border-line bg-card p-1 shadow-sm">
-      {choices.map((choice, index) => <div key={choice.id} id={`${listId}-${index}`} role="option" aria-selected={index === activeIndex} aria-disabled={busy} className={`flex cursor-pointer items-center gap-2 break-words rounded-sm px-3 py-2 text-sm ${index === activeIndex ? 'bg-soft text-ink' : ''}`} onMouseDown={event => event.preventDefault()} onMouseMove={() => setActive(index)} onClick={() => void choose(index)}><PayeeLogo id={choice.id} name={choice.label} assetId={options.find(p => p.id === choice.id)?.logo_asset_id} /><span>{choice.label}</span></div>)}
-    </div>}
+      }} /></div></PopoverAnchor>
+    <PopoverContent id={listId} role="listbox" aria-label="Payees" aria-busy={busy}
+      className="max-h-[min(13rem,var(--radix-popover-content-available-height))] w-[var(--radix-popover-trigger-width)] overflow-y-auto overscroll-contain p-1"
+      onOpenAutoFocus={event => event.preventDefault()}
+      onCloseAutoFocus={event => event.preventDefault()}
+      onInteractOutside={event => { if (busyRef.current || event.target === inputRef.current) event.preventDefault() }}
+      onEscapeKeyDown={event => { event.preventDefault(); if (!busyRef.current) setOpen(false) }}>
+      {choices.map((choice, index) => <div key={choice.id} id={`${listId}-${index}`} role="option" aria-selected={index === activeIndex} aria-disabled={busy} className={`flex cursor-pointer items-center gap-2 break-words rounded-sm px-3 py-2 text-sm ${index === activeIndex ? 'bg-soft text-ink' : ''}`} onMouseDown={event => event.preventDefault()} onMouseMove={() => setActive(index)} onClick={() => void choose(index)}><PayeeLogo id={choice.id} name={choice.label} assetId={options.find(p => p.id === choice.id)?.logo_asset_id} /><span className="min-w-0 break-words">{choice.label}</span></div>)}
+    </PopoverContent>
     <p id={`${listId}-help`} className="mt-1 text-xs text-muted">{busy ? 'Creating payee…' : exact?.is_archived ? 'This payee is archived. Restore it in Settings to use it.' : tooLong ? 'Use a name of at most 100 characters.' : 'Select a payee or choose Create. New payees are saved immediately.'}</p>
     {error && <p role="alert" className="mt-1 text-sm text-red-700 dark:text-red-400">{error}</p>}
-  </div>
+  </div></Popover>
 }

@@ -18,6 +18,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 
 const labels = { income: 'Income', expense: 'Expense', transfer: 'Transfer', repayment: 'Repayment' }
 const control = 'mt-2 w-full'
+function moneyFlow(row: Transaction, accountFilter: string): 'in' | 'out' | 'transfer' {
+  if (row.type === 'income') return 'in'
+  if (row.type === 'expense') return 'out'
+  return accountFilter ? row.destination_account_id === accountFilter ? 'in' : 'out' : 'transfer'
+}
 function message(error: unknown) { return error instanceof Error ? error.message : typeof error === 'string' ? error : 'Could not save changes. Please try again.' }
 
 export function TransactionsPage() {
@@ -85,7 +90,10 @@ export function TransactionsPage() {
     { id: 'account', header: 'Account', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-36 max-w-60 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <><AccountLabel id={row.account_id} name={row.account_name} />{row.destination_account_name && <><span aria-hidden="true"> → </span><span className="sr-only"> to </span><AccountLabel id={row.destination_account_id} name={row.destination_account_name} /></>}</> },
     { id: 'payee', header: 'Payee', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-28 max-w-48 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <>{row.type === 'expense' ? row.payee_id ? <PayeeLabel id={row.payee_id} name={row.payee_name || 'Payee'} /> : 'No payee' : '—'}</> },
     { id: 'category', header: 'Category', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-28 max-w-48 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <>{row.type === 'expense' ? <span className="inline-flex items-center gap-2"><CategoryIcon name={row.category_icon} />{row.category_name || 'Uncategorized'}</span> : '—'}</> },
-    { id: 'amount', header: 'Amount', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap text-right', cellClassName: 'whitespace-nowrap px-3 py-1.5 text-right align-middle font-semibold tabular-nums text-ink' }, cell: ({ row: { original: row } }) => <>{row.type === 'income' ? '+' : row.type === 'expense' ? '−' : ''}{currency ? formatAmount(row.amount, currency) : '—'}</> },
+    { id: 'amount', header: 'Amount', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap text-right', cellClassName: 'whitespace-nowrap px-3 py-1.5 text-right align-middle font-semibold tabular-nums text-ink' }, cell: ({ row: { original: row } }) => {
+      const flow = moneyFlow(row, filter)
+      return <span className={flow === 'in' ? 'text-green-700 dark:text-green-400' : flow === 'out' ? 'text-red-700 dark:text-red-400' : 'text-ink'}>{row.type === 'income' ? '+' : row.type === 'expense' ? '−' : ''}{currency ? formatAmount(row.amount, currency) : '—'}</span>
+    } },
     { id: 'actions', header: 'Actions', meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap text-right', cellClassName: 'px-3 py-1.5 text-right align-middle' }, cell: ({ row: { original: row } }) => <><Button size="xs" variant="outline" aria-label={`Delete ${row.description || labels[row.type]}`} onClick={() => { setError(null); setConfirmReconciled(false); setNeedsConfirmation(!!row.has_reconciliation_history); setDeleting(row) }}>Delete</Button></> },
   ], [currency, filter])
   const table = useReactTable({ data: visible, columns, getRowId: row => row.id, getCoreRowModel: getCoreRowModel() })
@@ -124,7 +132,8 @@ export function TransactionsPage() {
 
 function TransactionFlow({ row, accountFilter }: { row: Transaction; accountFilter: string }) {
   const transfer = row.type === 'transfer' || row.type === 'repayment'
-  const direction = transfer ? (accountFilter ? (row.destination_account_id === accountFilter ? 'Transfer in' : 'Transfer out') : 'Transfer') : row.type === 'income' ? 'In' : 'Out'
+  const flow = moneyFlow(row, accountFilter)
+  const direction = transfer ? flow === 'transfer' ? 'Transfer' : `Transfer ${flow}` : flow === 'in' ? 'In' : 'Out'
   const Icon = transfer ? ArrowLeftRight : row.type === 'income' ? ArrowDownLeft : ArrowUpRight
   const tone = transfer ? 'bg-soft text-brand' : row.type === 'income' ? 'bg-green-500/10 text-green-700 dark:text-green-400' : 'bg-red-500/10 text-red-700 dark:text-red-400'
   return <div className="inline-flex items-center gap-1.5 whitespace-nowrap"><div>{labels[row.type]}</div><span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5 text-xs font-medium ${tone}`}><Icon size={13} aria-hidden="true" />{direction}</span></div>

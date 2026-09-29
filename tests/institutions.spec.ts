@@ -104,7 +104,7 @@ test('bank search, shared rename, history logos, and custom institution fallback
   await expect(page.getByText('New institution will be added when you save this account.')).toBeVisible()
   await page.getByRole('button',{name:'Save account',exact:true}).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  const card=page.getByRole('listitem').filter({has:page.getByRole('button',{name:'Edit account Wallet',exact:true})})
+  const card=page.getByRole('table',{name:'Accounts',exact:true}).getByRole('row').filter({has:page.getByRole('button',{name:'Edit account Wallet',exact:true})})
   await expect(card).toContainText('custom tools')
   await expect(card.locator('[aria-hidden=true]').first()).toHaveText('C')
   await card.scrollIntoViewIfNeeded()

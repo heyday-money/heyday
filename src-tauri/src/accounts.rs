@@ -3,6 +3,8 @@ use sqlx::SqlitePool;
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct Account {
+    #[sqlx(default)]
+    paid_off_on: Option<String>,
     id: String,
     name: String,
     #[serde(rename = "type")]
@@ -357,13 +359,39 @@ pub async fn create_account(
 }
 
 #[tauri::command]
-pub async fn list_accounts(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<Account>, String> {
-    sqlx::query_as::<_, Account>(&format!(
-        "SELECT {COLUMNS} FROM accounts WHERE is_archived = 0 ORDER BY created_at, id"
-    ))
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())
+pub async fn list_accounts(pool: tauri::State<'_, SqlitePool>, include_paid_off: Option<bool>) -> Result<Vec<Account>, String> {
+    let query = if include_paid_off.unwrap_or(false) {
+        format!("SELECT {COLUMNS}, (SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts WHERE is_archived=0 OR id IN (SELECT account_id FROM loan_payoffs) ORDER BY created_at,id")
+    } else {
+        format!("SELECT {COLUMNS} FROM accounts WHERE is_archived=0 ORDER BY created_at,id")
+    };
+    sqlx::query_as::<_, Account>(&query).fetch_all(pool.inner()).await.map_err(|e| e.to_string())
+}
+
+pub(crate) async fn mark_paid_off(pool: &SqlitePool, account_id: &str) -> Result<(), String> {
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(|e| e.to_string())?;
+    let account: Option<(String, i64, bool)> = sqlx::query_as("SELECT type,current_balance,is_archived FROM accounts WHERE id=?")
+        .bind(account_id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+    let (kind, balance, archived) = account.ok_or("Loan account not found.")?;
+    if kind != "loan" || archived { return Err("Choose an active loan account.".into()); }
+    if balance != 0 { return Err("The loan balance must be zero. Record the final repayment or resolve any credit first.".into()); }
+    let unresolved: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loan_contracts WHERE account_id=? AND (remaining_principal != 0 OR needs_review != 0))")
+        .bind(account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    if unresolved { return Err("Resolve remaining contract principal and contracts needing review before marking this loan paid off.".into()); }
+    let payroll: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM income_deductions WHERE debt_account_id=?)")
+        .bind(account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    if payroll { return Err("Remove this loan's linked payroll deductions in Income before marking it paid off.".into()); }
+    let today: String = sqlx::query_scalar("SELECT date('now', 'localtime')").fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("INSERT INTO loan_payoffs(account_id,paid_off_on) VALUES (?,?)").bind(account_id).bind(today)
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE accounts SET is_archived=1,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(account_id)
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn mark_loan_paid_off(pool: tauri::State<'_, SqlitePool>, account_id: String) -> Result<(), String> {
+    mark_paid_off(pool.inner(), &account_id).await
 }
 
 #[cfg(test)]
@@ -384,6 +412,42 @@ mod tests {
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
         pool
     }
+    #[tokio::test]
+    async fn payoff_preserves_history_stops_schedules_and_reopens_on_reversal() {
+        let pool = database().await;
+        sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,loan_type,opening_balance,current_balance,monthly_installment) VALUES ('loan','Loan','loan','personal_loan',1000,1000,100),('bank','Bank','bank',NULL,2000,2000,NULL);")
+            .execute(&pool).await.unwrap();
+        assert!(mark_paid_off(&pool, "loan").await.unwrap_err().contains("zero"));
+        assert!(mark_paid_off(&pool, "bank").await.is_err());
+        assert!(mark_paid_off(&pool, "missing").await.is_err());
+        let payment = crate::transactions::insert(&pool, serde_json::from_value(serde_json::json!({
+            "type":"repayment", "account_id":"bank", "destination_account_id":"loan", "amount":"1000", "date":"2024-01-01", "description":"Final payment", "currency":"THB", "payee_id":null, "category_id":null, "income_source_id":null
+        })).unwrap()).await.unwrap();
+        sqlx::raw_sql("INSERT INTO planner_debt_amounts(account_id,month,amount) VALUES ('loan','9999-01',100); INSERT INTO loan_facilities VALUES ('loan',1000); INSERT INTO loan_contracts(id,account_id,name,principal,remaining_principal,borrowing_date,receiving_account_id,payment_account_id,interest_rate,monthly_amount,installment_count,first_due_date,borrowing_kind) VALUES ('contract','loan','Loan contract',1000,1,'2024-01-01','bank','bank',0,100,12,'2024-02-01','existing');")
+            .execute(&pool).await.unwrap();
+        assert!(mark_paid_off(&pool, "loan").await.unwrap_err().contains("principal"));
+        sqlx::query("UPDATE loan_contracts SET remaining_principal=0,needs_review=1").execute(&pool).await.unwrap();
+        assert!(mark_paid_off(&pool, "loan").await.is_err());
+        sqlx::query("UPDATE loan_contracts SET needs_review=0").execute(&pool).await.unwrap();
+        sqlx::raw_sql("INSERT INTO incomes(id,name,destination_account_id,type,estimated_amount,recurrence_day_of_month) VALUES ('salary','Salary','bank','salary',1000,25); INSERT INTO income_deductions(id,income_id,name,amount,debt_account_id) VALUES ('deduction','salary','Loan repayment',100,'loan');").execute(&pool).await.unwrap();
+        assert!(mark_paid_off(&pool, "loan").await.unwrap_err().contains("payroll"));
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM loan_payoffs").fetch_one(&pool).await.unwrap(), 0);
+        sqlx::query("DELETE FROM income_deductions WHERE id='deduction'").execute(&pool).await.unwrap();
+        mark_paid_off(&pool, "loan").await.unwrap();
+        let state: (i64,i64,bool) = sqlx::query_as("SELECT opening_balance,current_balance,is_archived FROM accounts WHERE id='loan'").fetch_one(&pool).await.unwrap();
+        assert_eq!(state, (1000,0,true));
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM transactions").fetch_one(&pool).await.unwrap(), 1);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT amount FROM planner_debt_amounts WHERE account_id='loan'").fetch_one(&pool).await.unwrap(), 100);
+        assert!(!crate::loans::contracts(&mut *pool.acquire().await.unwrap()).await.unwrap()[0].accounts_available);
+        assert!(mark_paid_off(&pool, "loan").await.is_err());
+        let payment_id = serde_json::to_value(payment).unwrap()["id"].as_str().unwrap().to_owned();
+        crate::transactions::remove(&pool, &payment_id).await.unwrap();
+        assert_eq!(sqlx::query_as::<_,(i64,bool)>("SELECT current_balance,is_archived FROM accounts WHERE id='loan'").fetch_one(&pool).await.unwrap(), (1000,false));
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM loan_payoffs").fetch_one(&pool).await.unwrap(), 0);
+        sqlx::query("UPDATE accounts SET current_balance=-1 WHERE id='loan'").execute(&pool).await.unwrap();
+        assert!(mark_paid_off(&pool, "loan").await.unwrap_err().contains("zero"));
+    }
+
     fn input(kind: &str) -> NewAccount {
         NewAccount {
             institution_id: None,
@@ -409,6 +473,7 @@ mod tests {
         let object = value.as_object_mut().unwrap();
         object.remove("opening_balance");
         object.remove("current_balance");
+        object.remove("paid_off_on");
         object.insert("currency".into(), serde_json::json!("THB"));
         serde_json::from_value(value).unwrap()
     }

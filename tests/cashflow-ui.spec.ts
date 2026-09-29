@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
       { id: 'debt', name: 'Debt Payments', subtotal: 'Total Debt Payments' }, { id: 'installments', name: 'Card Installments', subtotal: 'Total Card Installments' },
       { id: 'cards', name: 'Credit Cards', subtotal: 'Total Card Payments' }, { id: 'expenses', name: 'General Expenses', subtotal: 'Total General Expenses' },
     ]
-    const initial: PlannerData = { incomes: [], income_deductions: [], debt_accounts: [], installments: [], credit_cards: [], card_transactions: [], source_currency: 'THB', categories, period_start_day: 25, opening: null, months: [], amounts: [], expense_categories: [{ id: 'water', name: 'Water', is_archived: false }],
+    const initial: PlannerData = { incomes: [], income_deductions: [], debt_accounts: [], installments: [], credit_cards: [], card_transactions: [], source_currency: 'THB', categories, period_start_day: 25, opening: null, months: [], amounts: [], expense_categories: [{ id: 'water', name: 'Water', icon: 'plug-zap', is_archived: false }],
       items: categories.map((c, i) => ({ id: c.id, category_id: c.id, name: ['Salary', 'Withholding tax', 'Mortgage', 'Card / installment 1', 'Card 1', 'Water'][i], description: 'Original description', card_name: '', transaction_category_id: c.id === 'expenses' ? 'water' : null, schedule_amount: null, schedule_start: null, schedule_end: null })) }
     const read = (): PlannerData => JSON.parse(localStorage.getItem('planner-test') ?? JSON.stringify(initial))
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: PlannerChange }) => {
@@ -37,6 +37,7 @@ test.beforeEach(async ({ page }) => {
 
 test('cycle amounts, opening cash, comparison columns and item edits survive reload and window changes', async ({ page }) => {
   await expect(page.getByRole('columnheader')).toHaveCount(17)
+  await expect(page.getByRole('rowheader').filter({ has: page.getByRole('button', { name: 'Edit Water', exact: true }) }).locator('svg.lucide-plug-zap')).toBeVisible()
   await expect(page.getByLabel('First visible cycle')).toHaveValue('2026-12')
   await expect(page.getByRole('columnheader').nth(1)).toContainText('25 Dec 2026 – 24 Jan 2027')
   await expect(page.getByRole('columnheader', { name: /^Jun 2027/ })).toBeVisible()
@@ -235,4 +236,32 @@ test('current cycle follows the computer date after focus while explicit selecti
   await expect(page.getByLabel('First visible cycle')).toHaveValue('2026-11')
   await page.getByRole('button', { name: 'Current cycle', exact: true }).click()
   await expect(page.getByLabel('First visible cycle')).toHaveValue('2027-02')
+})
+
+test('recorded General Expenses use saved icons and refresh category changes', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('planner-test', JSON.stringify({
+      incomes: [], income_deductions: [], debt_accounts: [], installments: [], credit_cards: [], card_transactions: [],
+      source_currency: 'THB', period_start_day: 25, opening: null, months: [], amounts: [], items: [],
+      categories: [{ id: 'expenses', name: 'General Expenses', subtotal: 'Total General Expenses' }],
+      expense_categories: [{ id: 'water', name: 'Water', icon: 'plug-zap', is_archived: true }],
+      ledger_transactions: ['water', null].map((category, index) => ({
+        id: String(index), type: 'expense', account_id: 'bank', account_name: 'Bank', account_type: 'bank',
+        destination_account_id: null, destination_account_type: null, amount: '100', date: '2026-12-26',
+        category_id: category, category_name: category ? 'Water' : null,
+      })),
+    }))
+    window.dispatchEvent(new Event('transaction-options-changed'))
+  })
+  const water = page.getByRole('rowheader').filter({ has: page.getByRole('link', { name: 'Recorded · Water', exact: true }) })
+  const uncategorized = page.getByRole('rowheader').filter({ has: page.getByRole('link', { name: 'Recorded · Uncategorized', exact: true }) })
+  await expect(water.locator('svg.lucide-plug-zap')).toBeVisible()
+  await expect(uncategorized.locator('svg.lucide-tag')).toBeVisible()
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('planner-test')!)
+    state.expense_categories[0].icon = 'coffee'
+    localStorage.setItem('planner-test', JSON.stringify(state))
+    window.dispatchEvent(new Event('transaction-options-changed'))
+  })
+  await expect(water.locator('svg.lucide-coffee')).toBeVisible()
 })
