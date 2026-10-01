@@ -1,27 +1,35 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
-  --font-sans: "Avenir Next", "Segoe UI", sans-serif;
-  --color-brand: #8942fe;
-  --color-accent: #fed728;
+  --font-sans: "Inter", "Noto Sans Thai", "Thonburi", "Leelawadee UI", sans-serif;
 }
 
 @theme inline {
   --color-background: var(--card);
   --color-foreground: var(--ink);
-  --color-primary: #8942fe;
-  --color-primary-foreground: #fff;
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-ink);
+  --color-brand: var(--brand);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-ink);
   --color-secondary: var(--soft);
   --color-secondary-foreground: var(--ink);
   --color-muted-foreground: var(--muted);
-  --color-accent-foreground: #212529;
   --color-border: var(--line);
   --color-input: var(--line);
-  --color-ring: #8942fe;
-  --color-destructive: #c43c3c;
+  --color-ring: var(--brand);
+  --color-destructive: var(--danger);
   --color-page: var(--page);
   --color-card: var(--card);
   --color-ink: var(--ink);
@@ -32,33 +40,62 @@
 
 @layer base {
   * { @apply border-border; }
-  :root {
-    --page: #fafbf7;
-    --card: #fff;
-    --ink: #212529;
-    --muted: #757b76;
-    --line: #e8ebe3;
-    --soft: #f3edff;
+  :root, [data-theme="light"] {
+    --page: #ffffff;
+    --card: #ffffff;
+    --ink: #18181b;
+    --muted: #61616b;
+    --line: #e4e4e7;
+    --soft: #f4f4f5;
+    --brand: #27272a;
+    --primary: #27272a;
+    --primary-ink: #ffffff;
+    --accent: #e4e4e7;
+    --accent-ink: #18181b;
+    --danger: #b91c1c;
     color-scheme: light;
   }
 
-  :root[data-theme="dark"] {
-    --page: #212529;
-    --card: #2b2e33;
-    --ink: #f6f5ef;
-    --muted: #adb4b9;
-    --line: #3b3e43;
-    --soft: #393047;
+  [data-theme="heyday"] {
+    --page: #faf9f5;
+    --card: #ffffff;
+    --ink: #24212b;
+    --muted: #686270;
+    --line: #e7e2eb;
+    --soft: #f2ebff;
+    --brand: #7130ce;
+    --primary: #7130ce;
+    --primary-ink: #ffffff;
+    --accent: #fed728;
+    --accent-ink: #29230b;
+    --danger: #b91c1c;
+    color-scheme: light;
+  }
+
+  [data-theme="dark"] {
+    --page: #18181b;
+    --card: #222225;
+    --ink: #f4f4f5;
+    --muted: #a9a9b2;
+    --line: #3f3f46;
+    --soft: #303034;
+    --brand: #e4e4e7;
+    --primary: #e4e4e7;
+    --primary-ink: #18181b;
+    --accent: #3f3f46;
+    --accent-ink: #f4f4f5;
+    --danger: #ef4444;
     color-scheme: dark;
   }
 
   html, body, #root { @apply h-full w-full overflow-hidden; }
-  body { @apply m-0 min-w-[360px] bg-page font-sans text-ink; }
-  p { @apply leading-[1.7] text-muted; }
+  body { @apply m-0 min-w-[360px] bg-page font-sans text-sm text-ink antialiased tabular-nums; font-feature-settings: "cv02", "cv03", "cv04", "cv11"; }
+  p { @apply leading-relaxed text-muted; }
+  h1, h2, h3, h4 { @apply tracking-tight; }
   button { @apply cursor-pointer; }
   button, a { -webkit-tap-highlight-color: transparent; }
-  button:focus-visible, a:focus-visible, select:focus-visible {
-    @apply outline-3 outline-offset-4 outline-brand;
+  button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible {
+    @apply outline-2 outline-offset-4 outline-brand;
   }
   button:disabled, select:disabled { @apply cursor-not-allowed opacity-55; }
 }

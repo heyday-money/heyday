@@ -41,7 +41,7 @@ export function InstitutionsSettings() {
     try { await deleteInstitution(deleting.id); setDeleting(null); toast.success('Institution permanently deleted.') }
     catch (e) { setError(String(e)) } finally { setBusy(false) }
   }
-  return <section className="rounded-[22px] border border-line bg-card p-6">
+  return <section className="rounded-2xl border border-line bg-card p-6">
     <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-semibold">Institutions</h3><Button disabled={busy || directory.loading || directory.error} onClick={() => { setEditing('new'); setLogoChange(undefined); setName(''); setError(null); setDiscard(false) }}>Add institution</Button></div>
     <p className="my-3 text-sm">Renaming updates linked accounts and their institution labels throughout the app, including transaction history. Archiving hides an institution from new selections and keeps existing links.</p>
     <p className="mb-3 text-sm">Permanent deletion is available only when no accounts are linked, including archived accounts. Transaction history links through those accounts.</p>

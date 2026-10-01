@@ -1,3 +1,7 @@
+import { AppearancePicker } from "./components/AppearancePicker";
+import { type Appearance, readAppearance } from "./lib/appearance";
+import { Button } from "./components/ui/button";
+import { NativeSelect } from "./components/ui/native-select";
 import { PayeeLogoProvider } from "./components/PayeeLogo";
 import { InstitutionProvider } from "./components/InstitutionProvider";
 import { InstitutionsSettings } from "./components/InstitutionsSettings";
@@ -73,8 +77,8 @@ const navigation = [
 ] as const;
 
 const ThemeContext = createContext({
-  dark: false,
-  setDark: (_dark: boolean) => {},
+  appearance: "heyday" as Appearance,
+  setAppearance: (_appearance: Appearance) => {},
 });
 
 export function AppLayout() {
@@ -96,13 +100,7 @@ export function AppLayout() {
   useEffect(() => {
     savePreference("sidebar-width", String(sidebarWidth));
   }, [sidebarWidth]);
-  const [dark, setDark] = useState(
-    () =>
-      readPreference(
-        "theme",
-        matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-      ) === "dark",
-  );
+  const [appearance, setAppearance] = useState<Appearance>(readAppearance);
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -113,12 +111,12 @@ export function AppLayout() {
     savePreference("sidebar-collapsed", String(collapsed));
   }, [collapsed]);
   useEffect(() => {
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-    savePreference("theme", dark ? "dark" : "light");
-  }, [dark]);
+    document.documentElement.dataset.theme = appearance;
+    savePreference("theme", appearance);
+  }, [appearance]);
 
   return (
-    <ThemeContext.Provider value={{ dark, setDark }}>
+    <ThemeContext.Provider value={{ appearance, setAppearance }}>
       <InstitutionProvider>
       <PayeeLogoProvider>
       <TransactionShortcut>
@@ -162,7 +160,7 @@ export function AppLayout() {
                     to={to}
                     activeOptions={{ exact: true }}
                     activeProps={{ "aria-current": "page" }}
-                    className={`flex min-w-0 max-w-full shrink-0 items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[14px] font-[550] text-muted hover:bg-page hover:text-ink aria-[current=page]:bg-soft aria-[current=page]:text-brand ${to === "/settings" ? "mt-auto" : ""} ${collapsed ? "justify-center" : ""}`}
+                    className={`flex min-w-0 max-w-full shrink-0 items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[14px] font-medium text-muted hover:bg-page hover:text-ink aria-[current=page]:bg-soft aria-[current=page]:text-brand ${to === "/settings" ? "mt-auto" : ""} ${collapsed ? "justify-center" : ""}`}
                     title={collapsed ? label : undefined}
                     aria-label={label}
                   >
@@ -183,7 +181,7 @@ export function AppLayout() {
               ))}
             </nav>
             <button
-              className={`mt-3 flex shrink-0 items-center gap-2.5 rounded-[9px] border-0 bg-transparent p-2.5 text-[12px] font-[550] text-muted hover:bg-page hover:text-ink ${collapsed ? "justify-center" : ""}`}
+              className={`mt-3 flex shrink-0 items-center gap-2.5 rounded-[9px] border-0 bg-transparent p-2.5 text-[12px] font-medium text-muted hover:bg-page hover:text-ink ${collapsed ? "justify-center" : ""}`}
               onClick={() => setCollapsed((value) => !value)}
               aria-expanded={!collapsed}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -209,7 +207,7 @@ export function AppLayout() {
         </div>
         <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <header className="flex h-16 shrink-0 items-center justify-between border-b border-line px-7 max-[650px]:px-[18px]">
-            <h1 className="text-[18px] font-[650]">{title}</h1>
+            <h1 className="text-lg font-semibold">{title}</h1>
             <AddTransactionButton />
           </header>
           <main className="min-h-0 w-full flex-1 overflow-y-auto p-7 max-[1000px]:p-[25px] max-[650px]:p-[18px]">
@@ -218,7 +216,7 @@ export function AppLayout() {
         </div>
       </div>
       <Toaster
-        theme={dark ? "dark" : "light"}
+        theme={appearance === "dark" ? "dark" : "light"}
         position="top-center"
         duration={4000}
         closeButton
@@ -230,90 +228,7 @@ export function AppLayout() {
   );
 }
 
-export function HomePage() {
-  return (
-    <>
-      <div className="mb-[27px]">
-        <p className="mb-2.5 text-[10px] font-bold tracking-[2px] text-brand">
-          YOUR MONEY, YOUR HEYDAY
-        </p>
-        <h2 className="mb-[7px] text-[clamp(22px,2.5vw,30px)] font-[650] tracking-[-.9px]">
-          A fresh start for your finances.
-        </h2>
-        <p className="text-[14px]">
-          A little clarity today. More freedom tomorrow.
-        </p>
-      </div>
-      <section className="grid min-h-[360px] grid-cols-2 items-center overflow-hidden rounded-[22px] border border-line bg-card p-9 max-[1000px]:p-[25px] max-[650px]:grid-cols-1">
-        <div>
-          <span className="inline-block rounded-[20px] bg-accent/20 px-3 py-1.5 text-[11px] font-semibold text-ink">
-            Make yourself at home
-          </span>
-          <h2 className="mt-[18px] mb-3.5 text-[clamp(25px,3vw,39px)] leading-[1.2] font-[650] tracking-[-1.4px]">
-            Your money.
-            <br />
-            All in one little world.
-          </h2>
-          <p className="max-w-[330px] text-[13px]">
-            Bring your accounts and expected income together, and make room for
-            what matters.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2.5">
-            <Link
-              to="/accounts"
-              className="inline-flex items-center gap-[7px] rounded-[10px] bg-brand px-[15px] py-[11px] text-[12px] font-semibold text-white"
-            >
-              Explore accounts <ArrowUpRight size={17} />
-            </Link>
-            <Link
-              to="/income"
-              className="inline-flex items-center gap-[7px] rounded-[10px] border border-line px-[15px] py-[11px] text-[12px] font-semibold"
-            >
-              Explore income
-            </Link>
-          </div>
-        </div>
-        <img
-          className="-ml-[4%] w-[115%] max-w-none dark:brightness-[.82] dark:saturate-[.85] max-[650px]:m-0 max-[650px]:w-full"
-          src="/images/island.png"
-          alt="A peaceful floating island with a purple-roofed home, trees, and a pond"
-        />
-      </section>
-      <div className="mt-[22px] grid grid-cols-3 gap-[18px] max-[1000px]:grid-cols-1">
-        <section className="rounded-[22px] border border-line bg-card p-[27px]">
-          <Wallet className="mb-[19px] text-brand" size={23} />
-          <h3 className="mb-[9px] text-[15px] font-[650]">Your accounts</h3>
-          <p className="mb-[17px] text-[12px]">
-            A home for your cash, savings, investments, and debts.
-          </p>
-          <Link to="/accounts" className="text-[12px] font-semibold text-brand">
-            View accounts →
-          </Link>
-        </section>
-        <section className="rounded-[22px] border border-line bg-card p-[27px]">
-          <ArrowUpRight className="mb-[19px] text-brand" size={23} />
-          <h3 className="mb-[9px] text-[15px] font-[650]">Expected income</h3>
-          <p className="mb-[17px] text-[12px]">
-            Plan around salary, variable income, and investment income.
-          </p>
-          <Link to="/income" className="text-[12px] font-semibold text-brand">
-            View income →
-          </Link>
-        </section>
-        <section className="rounded-[22px] border border-line bg-card p-[27px]">
-          <SettingsIcon className="mb-[19px] text-brand" size={23} />
-          <h3 className="mb-[9px] text-[15px] font-[650]">Your own rhythm</h3>
-          <p className="mb-[17px] text-[12px]">
-            A calendar month by default, with room for your payday cycle.
-          </p>
-          <Link to="/settings" className="text-[12px] font-semibold text-brand">
-            View settings →
-          </Link>
-        </section>
-      </div>
-    </>
-  );
-}
+export { HomePage } from "./components/HomePage";
 
 export { AccountsPage } from "./components/AccountsPage";
 
@@ -321,7 +236,7 @@ export { IncomePage } from "./components/IncomePage";
 
 export function SettingsPage() {
   const today = useLocalDate();
-  const { dark, setDark } = useContext(ThemeContext);
+  const { appearance, setAppearance } = useContext(ThemeContext);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [day, setDay] = useState(1);
@@ -371,9 +286,9 @@ export function SettingsPage() {
   }
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-[740px]">
       <div className="mb-6 max-w-[740px]">
-        <h2 className="mb-3 text-[25px] font-[650]">Make Heyday yours.</h2>
+        <h2 className="mb-3 text-2xl font-semibold">Make Heyday yours.</h2>
         <p className="text-sm">Manage your preferences, institutions, payees, and spending categories.</p>
       </div>
       <Tabs defaultValue="general" className="max-w-[740px]">
@@ -385,21 +300,8 @@ export function SettingsPage() {
         </TabsList>
         <TabsContent value="institutions"><InstitutionsSettings /></TabsContent>
         <TabsContent value="general" forceMount>
-      <section className="rounded-[22px] border border-line bg-card p-[27px]">
-        <h3 className="text-lg font-semibold">General</h3>
-        <p className="mt-2 text-sm">Your theme, currency, and payday cycle apply across the app.</p>
-        <div className="my-3 flex items-center justify-between gap-5 border-b border-line py-5 text-[14px]">
-          <label htmlFor="theme">Theme</label>
-          <select
-            className="rounded-[9px] border border-line bg-page py-[9px] pr-8 pl-3 text-ink"
-            id="theme"
-            value={dark ? "dark" : "light"}
-            onChange={(event) => setDark(event.target.value === "dark")}
-          >
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </div>
+      <section className="rounded-2xl border border-line bg-card p-6">
+        <AppearancePicker value={appearance} onChange={setAppearance} />
         {!desktopAvailable ? (
           <p className="mt-2 rounded-xl bg-soft p-[18px] text-[14px]">
             Open the desktop app to access your local settings.
@@ -415,11 +317,12 @@ export function SettingsPage() {
         ) : (
           <>
             <CurrencySetting settings={settings} onChange={setSettings} />
-            <form onSubmit={savePeriod}>
+            <form className="border-b border-line pb-6" onSubmit={savePeriod}>
+              <h3 className="text-base font-semibold">Payday cycle</h3>
+              <p className="mt-1 text-xs">Group your dashboard by your monthly payday. Save to apply changes.</p>
               <div className="my-3 flex items-center justify-between gap-5 border-b border-line py-5 text-[14px]">
                 <label htmlFor="period-day">Period start day</label>
-                <select
-                  className="rounded-[9px] border border-line bg-page py-[9px] pr-8 pl-3 text-ink"
+                <div className="w-48 shrink-0"><NativeSelect
                   id="period-day"
                   value={day}
                   disabled={saving}
@@ -435,7 +338,7 @@ export function SettingsPage() {
                       </option>
                     ),
                   )}
-                </select>
+                </NativeSelect></div>
               </div>
               <p className="mt-2 text-[14px]">
                 Your current cycle: <strong>{periodLabel(day, today)}</strong>
@@ -445,13 +348,12 @@ export function SettingsPage() {
                 Income schedules stay unchanged.
               </p>
               <div className="mt-4 flex flex-wrap gap-2.5">
-                <button
-                  className="inline-flex items-center gap-[7px] rounded-[10px] bg-brand px-[15px] py-[11px] text-[12px] font-semibold text-white"
+                <Button
                   type="submit"
                   disabled={saving || day === settings.period_start_day}
                 >
                   {saving ? "Saving…" : "Save period"}
-                </button>
+                </Button>
               </div>
               {saveError && (
                 <p className="mt-2 text-[14px]" role="alert">
@@ -459,7 +361,8 @@ export function SettingsPage() {
                 </p>
               )}
             </form>
-            <dl className="my-[26px]">
+            <h3 className="mt-6 text-base font-semibold">Storage &amp; app information</h3>
+            <dl className="my-3">
               <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
                 <dt>Currency</dt>
                 <dd className="text-right text-muted">
@@ -494,6 +397,6 @@ export function SettingsPage() {
       <p className="max-w-[740px] px-1 py-[18px] text-[12px]">
         Heyday Money · Version {version}
       </p>
-    </>
+    </div>
   );
 }

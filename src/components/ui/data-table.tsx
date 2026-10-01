@@ -22,7 +22,7 @@ export function DataTable<TData>({ table, label, className, headerClassName, bod
   busy?: boolean
 }) {
   return <div role="region" aria-label={regionLabel ?? `Scrollable ${label.toLowerCase()}`} aria-busy={busy} tabIndex={0} className={cn("max-w-full overflow-x-auto rounded-2xl border border-line bg-card focus-visible:outline-2 focus-visible:outline-brand", containerClassName)}>
-    <table aria-label={label} className={cn('w-full border-collapse text-left text-sm', className)}>
+    <table aria-label={label} className={cn('w-full border-collapse text-left text-[13px] tabular-nums', className)}>
       <thead className={headerClassName}>{table.getHeaderGroups().map(group => <tr key={group.id}>{group.headers.map(header => <th key={header.id} aria-sort={header.column.getCanSort() ? header.column.getIsSorted() === 'asc' ? 'ascending' : header.column.getIsSorted() === 'desc' ? 'descending' : 'none' : undefined} scope={header.colSpan > 1 ? 'colgroup' : 'col'} colSpan={header.colSpan} className={header.column.columnDef.meta?.headerClassName}>{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}</thead>
       <tbody className={bodyClassName}>{table.getRowModel().rows.map(row => <tr key={row.id} className={typeof rowClassName === 'function' ? rowClassName(row.original) : rowClassName}>{row.getVisibleCells().map(cell => {
         const meta = cell.column.columnDef.meta

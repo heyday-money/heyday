@@ -6,7 +6,7 @@ import type { Account, FinancialData } from './desktop'
 import { currentPeriod } from './period'
 
 export function dateKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  return `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 export function monthlyDate(year: number, month: number, day: number) {
   return new Date(year, month, Math.min(day, new Date(year, month + 1, 0).getDate()))

@@ -19,7 +19,7 @@ export function NetWorthPage() {
   return <div aria-busy={loading}>
     <div className="mb-6"><h2 className="text-2xl font-semibold">Your overall financial position.</h2><p className="mt-2 text-sm">Current assets minus liabilities · {dateKey(today)} · Active accounts</p></div>
     <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      {[['Net worth', totals.total], ['Assets', totals.assets], ['Liabilities', totals.liabilities]].map(([label, amount]) => <div key={String(label)} className="min-w-0 rounded-2xl border border-line bg-card p-6"><dt className="text-sm text-muted">{label}</dt><dd className="mt-3 break-words text-2xl font-semibold tabular-nums">{money(amount as bigint)}</dd></div>)}
+      {[['Net worth', totals.total], ['Assets', totals.assets], ['Liabilities', totals.liabilities]].map(([label, amount]) => <div key={String(label)} className="min-w-0 rounded-2xl border border-line bg-card p-6"><dt className="text-sm text-muted">{label}</dt><dd className="mt-3 break-words text-[28px] font-semibold tabular-nums">{money(amount as bigint)}</dd></div>)}
     </dl>
     <p className="mt-4 text-xs">Based on manual opening balances and recorded transactions. Investment values are entered manually. Overdrafts count as liabilities; card and loan credits count as assets. Expected income and payment plans are excluded.</p>
     {!data.accounts.length ? <div className="mt-6 rounded-2xl border border-line bg-card p-8"><h3 className="font-semibold">No accounts yet</h3><Link to="/accounts" className="mt-3 inline-block text-brand">Add your first account →</Link></div> : <div className="mt-6 space-y-5">{types.map(([type, label]) => {

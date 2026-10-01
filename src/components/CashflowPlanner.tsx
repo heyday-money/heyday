@@ -97,13 +97,13 @@ export function CashflowPlanner() {
       <div className="flex flex-wrap items-end gap-2"><Field label="First visible cycle"><Input type="month" min="0001-01" max="9999-05" value={visibleCycle} disabled={busy} onChange={e => { const value = e.target.value; if (/^\d{4}-\d{2}$/.test(value) && value >= '0001-01' && value <= '9999-05') setSelected(value) }} /></Field><Button variant="outline" onClick={() => setSelected('')}>Current cycle</Button><Button variant="outline" onClick={() => setEditor({ kind: 'opening' })}>Set opening cash</Button></div>
     </div>
     {data.source_currency !== 'THB' && (data.incomes.length > 0 || data.debt_accounts.length > 0 || data.installments.length > 0 || data.credit_cards.length > 0) && <p className="mb-3 rounded-xl bg-soft p-3">Linked sources use {data.source_currency ?? 'an unset currency'} and are excluded from this THB planner. No currency conversion is applied.</p>}
-    {!data.opening && <p className="mb-4 rounded-xl bg-soft p-4">Enter opening cash and its initial cycle to calculate cumulative balances. Explicit zero is valid.</p>}
-    <p className="mb-4 rounded-xl bg-soft p-3 text-sm">Compare the current cycle’s full Forecast with Actual recorded through today. These are separate views, never added together. Future cycles show Forecast; past cycles show Actual, with an option to compare saved forecasts.</p><TooltipProvider><PlannerTable data={data} activeCycle={activeCycle} selected={visibleCycle} busy={busy} edit={setEditor} /></TooltipProvider>
-    <div className="mt-4 space-y-2 text-xs text-muted">
+    <TooltipProvider><PlannerTable data={data} activeCycle={activeCycle} selected={visibleCycle} busy={busy} edit={setEditor} /></TooltipProvider>
+    <details className="mt-4 rounded-xl border border-line p-4 text-xs text-muted"><summary className="cursor-pointer text-sm font-medium text-ink">How forecasts and actuals work</summary><div className="mt-3 space-y-2">
       <p>Actual income is money received in Cash / Bank / Wallet. Gross salary and payroll deductions show “Not recorded separately” until a receipt breakdown is recorded; deductions are not subtracted again from net receipts.</p>
       <p>General Expenses includes direct cash/bank/wallet spending. Card purchases appear in Expenses; recorded card payments reduce cash once under Credit Cards. Forecasts retain saved estimates and the existing bill-payment rules.</p>
       <p>Both views start from the same recorded opening cash. Future projections carry the current cycle’s full forecast once, not its actual plus forecast amounts. Balances depend on your opening-cash anchor and complete transaction records; actual cash does not reserve future spending.</p>
     </div>
+    </details>
     {editor && <PlannerDialog editor={editor} data={data} selected={visibleCycle} save={save} close={() => setEditor(null)} />}
   </section>
 }
@@ -214,7 +214,7 @@ function PlannerTable({ data, selected, activeCycle, busy, edit }: { data: Plann
         [view === 'forecast' ? 'Forecast expenses' : 'Recorded cash expenses & repayments', values.expenses],
         ['Cycle Surplus / Deficit', values.surplus],
         [view === 'forecast' ? 'Projected closing cash' : 'Cash balance from recorded activity', values.closing],
-      ] as const).map(([label,value]) => <div key={label}><p className="text-xs text-muted">{label}</p><p className={`mt-1 text-lg font-semibold tabular-nums ${value !== null && value < 0n ? 'text-red-700 dark:text-red-400' : ''}`}>{plannerMoney(values.available ? value : null)}{values.available && value !== null && <span className="ml-1 text-xs">THB</span>}</p></div>)}</div>
+      ] as const).map(([label,value]) => <div key={label}><p className="text-xs text-muted">{label}</p><p className={`mt-1 text-xl font-semibold tabular-nums ${value !== null && value < 0n ? 'text-red-700 dark:text-red-400' : 'text-ink'}`}>{plannerMoney(values.available ? value : null)}{values.available && value !== null && <span className="ml-1 text-xs">THB</span>}</p></div>)}</div>
       <p className="mt-3 text-xs text-muted">{!values.available ? 'Actuals require recorded data in THB.' : view === 'forecast' ? 'Estimate for the entire cycle; not added to Actual.' : 'Based on recorded transactions and your opening-cash anchor. Does not reserve future spending.'}</p>
     </section>
   }

@@ -20,6 +20,6 @@ export function AccountLabel({ id, name, compact = false }: { id?: string | null
   const label = account?.name ?? name
   return <span className={`inline-flex min-w-0 max-w-full items-center gap-1.5 align-middle ${compact ? 'w-full' : ''}`} title={institution ? `${label} · ${institution.name}` : label}>
     <InstitutionLogo institution={institution} name={label} />
-    <span className={compact ? 'min-w-0 truncate' : 'min-w-0 break-words'}>{label}{institution && !compact && <span className="block text-xs font-normal text-muted">{institution.name}</span>}</span>
+    <span className={compact ? 'min-w-0 truncate' : 'min-w-0 break-words'}>{label}{institution && !compact && <span className="block text-[10px] font-normal text-muted">{institution.name}</span>}</span>
   </span>
 }

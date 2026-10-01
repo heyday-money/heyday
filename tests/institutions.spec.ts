@@ -116,7 +116,7 @@ test('bank search, shared rename, history logos, and custom institution fallback
   await page.getByRole('button',{name:'Restore institution custom tools',exact:true}).click()
   await expect(page.getByRole('button',{name:'Archive institution custom tools',exact:true})).toBeVisible()
   await page.getByRole('tab',{name:'General',exact:true}).click()
-  await page.getByLabel('Theme',{exact:true}).selectOption('dark')
+  await page.getByRole('radio', { name: 'Dark', exact: true }).check()
   await page.getByRole('tab',{name:'Institutions',exact:true}).click()
   await page.screenshot({path:'/tmp/heyday-institutions-dark.png',animations:'disabled'})
 })

@@ -85,15 +85,15 @@ export function IncomePage() {
 
   return <Dialog open={open} onOpenChange={changeOpen}>
     <div className="mb-6 flex items-start justify-between gap-4">
-      <div><h2 className="text-[25px] font-[650]">Know what’s coming in.</h2><p className="mt-2 text-[14px]">Plan your expected income and where it will go.</p></div>
+      <div><h2 className="text-2xl font-semibold">Know what’s coming in.</h2><p className="mt-2 text-[14px]">Plan your expected income and where it will go.</p></div>
       <DialogTrigger asChild><Button size="lg" disabled={!currency || !accounts.length || loading || loadError}><Plus size={17} />Add income source</Button></DialogTrigger>
     </div>
     {!desktopAvailable ? <p className="rounded-xl bg-soft p-5">Open the desktop app to manage your income sources.</p>
       : loading ? <p role="status">Loading income sources…</p>
       : loadError ? <div role="alert"><p>Could not load income sources.</p><Button variant="link" onClick={() => setAttempt(value => value + 1)}>Try again</Button></div>
-      : !currency ? <section className="rounded-[22px] border border-line bg-card p-7"><h3 className="font-semibold">Choose your currency first</h3><p className="mt-2">Set the shared currency before entering estimated income.</p><Link to="/settings" className="mt-4 inline-block text-brand">Go to Settings →</Link></section>
+      : !currency ? <section className="rounded-2xl border border-line bg-card p-7"><h3 className="font-semibold">Choose your currency first</h3><p className="mt-2">Set the shared currency before entering estimated income.</p><Link to="/settings" className="mt-4 inline-block text-brand">Go to Settings →</Link></section>
       : <>
-        {!accounts.length && <section className="mb-6 rounded-[22px] border border-line bg-card p-7"><h3 className="font-semibold">Add a destination account first</h3><p className="mt-2">Every income source needs an account to receive it.</p><Link to="/accounts" className="mt-4 inline-block text-brand">Go to Accounts →</Link></section>}
+        {!accounts.length && <section className="mb-6 rounded-2xl border border-line bg-card p-7"><h3 className="font-semibold">Add a destination account first</h3><p className="mt-2">Every income source needs an account to receive it.</p><Link to="/accounts" className="mt-4 inline-block text-brand">Go to Accounts →</Link></section>}
         <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden border-line bg-card p-0 sm:max-w-[640px]" showCloseButton={!saving}
           onOpenAutoFocus={event => { event.preventDefault(); nameRef.current?.focus() }}
           onInteractOutside={event => event.preventDefault()}
@@ -124,11 +124,11 @@ export function IncomePage() {
               : <DialogFooter className="shrink-0 border-t border-line px-6 py-4"><Button type="button" variant="outline" disabled={saving} onClick={() => changeOpen(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save income source'}</Button></DialogFooter>}
           </form>
         </DialogContent>
-        {!sources.length ? <section className="rounded-[22px] border border-line bg-card p-12 text-center"><ArrowUpRight size={28} className="mx-auto mb-4 text-brand" /><h3 className="font-semibold">No income sources yet</h3><p className="mt-2 text-[14px]">Add salary, variable income, investments, or another source.</p></section>
+        {!sources.length ? <section className="rounded-2xl border border-line bg-card p-12 text-center"><ArrowUpRight size={28} className="mx-auto mb-4 text-brand" /><h3 className="font-semibold">No income sources yet</h3><p className="mt-2 text-[14px]">Add salary, variable income, investments, or another source.</p></section>
           : <ul className="space-y-3" aria-label="Income sources">{sources.map(source => <li key={source.id} className="rounded-[18px] border border-line bg-card p-5">
             <div className="flex items-start justify-between gap-4 max-[600px]:flex-col">
               <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-semibold">{source.name}</h3><span className={`rounded-full px-2 py-0.5 text-[11px] ${source.is_active ? 'bg-soft text-brand' : 'bg-page text-muted'}`}>{source.is_active ? 'Active' : 'Inactive'}</span></div><p className="mt-2 break-words text-[13px]">{incomeTypes.find(type => type.value === source.type)?.label} · To <AccountLabel id={source.destination_account_id} name={source.destination_account_name} /></p><p className="mt-1 text-[12px]">Monthly · Day {source.recurrence_day_of_month}{source.recurrence_day_of_month > 28 ? ' (or month-end)' : ''}</p></div>
-              <div className="min-w-0 text-right max-[600px]:text-left"><p className="break-words text-[20px] font-semibold text-ink">{formatAmount(source.estimated_amount, currency)}</p><p className="text-[12px]">{source.type === 'salary' ? 'Estimated gross per payment' : 'Estimated per payment'}</p>{source.type === 'salary' && <><p className="mt-2 text-xs">Deductions: {formatAmount(source.deductions_total ?? '0', currency)}</p><p className="text-sm font-semibold text-ink">Net: {formatAmount((BigInt(source.estimated_amount) - BigInt(source.deductions_total ?? '0')).toString(), currency)}</p><Button className="mt-2" size="sm" variant="outline" onClick={() => setEditingDeductions(source)} aria-label={`Manage deductions for ${source.name}`}>Manage Deductions</Button></>}</div>
+              <div className="min-w-0 text-right tabular-nums max-[600px]:text-left"><p className="break-words text-[20px] font-semibold text-ink">{formatAmount(source.estimated_amount, currency)}</p><p className="text-[12px]">{source.type === 'salary' ? 'Estimated gross per payment' : 'Estimated per payment'}</p>{source.type === 'salary' && <><p className="mt-2 text-xs">Deductions: {formatAmount(source.deductions_total ?? '0', currency)}</p><p className="text-sm font-semibold text-ink">Net: {formatAmount((BigInt(source.estimated_amount) - BigInt(source.deductions_total ?? '0')).toString(), currency)}</p><Button className="mt-2" size="sm" variant="outline" onClick={() => setEditingDeductions(source)} aria-label={`Manage deductions for ${source.name}`}>Manage Deductions</Button></>}</div>
             </div>
           </li>)}</ul>}
       </>}
