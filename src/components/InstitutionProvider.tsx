@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { desktopAvailable } from '../lib/desktop'
 import { listInstitutions, type InstitutionDirectory } from '../lib/institutions'
@@ -5,6 +6,8 @@ const empty: InstitutionDirectory = { institutions: [], accounts: [] }
 const Context = createContext({ ...empty, loading: true, error: false, reload: () => {} })
 export const useInstitutions = () => useContext(Context)
 export function InstitutionProvider({ children }: { children: ReactNode }) {
+  useLanguage()
+
   const [data, setData] = useState(empty)
   const [loading, setLoading] = useState(desktopAvailable)
   const [error, setError] = useState(false)

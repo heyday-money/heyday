@@ -144,6 +144,7 @@ async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sqlx::Error> {
 }
 #[tauri::command]
 pub async fn get_cashflow_planner(pool: tauri::State<'_, SqlitePool>) -> Result<Planner, String> {
+    let _database_operation = crate::backups::operation()?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let result = snapshot(&mut tx).await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
@@ -425,6 +426,7 @@ pub async fn save_cashflow_planner(
     pool: tauri::State<'_, SqlitePool>,
     input: Change,
 ) -> Result<Planner, String> {
+    let _database_operation = crate::backups::operation()?;
     apply(pool.inner(), input).await
 }
 
@@ -890,12 +892,15 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(balance, 20000);
-        sqlx::query("UPDATE accounts SET is_archived=1 WHERE id='bank'")
-            .execute(&pool)
-            .await
-            .unwrap();
+        crate::accounts::change_archive(&pool, "bank", true).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.installments.iter().all(|i| !i.accounts_available));
+        assert!(result.incomes.iter().all(|i| i.account_archived));
+        crate::accounts::change_archive(&pool, "bank", false).await.unwrap();
+        let restored = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
+        assert!(restored.installments.iter().all(|i| i.accounts_available));
+        assert!(restored.incomes.iter().all(|i| !i.account_archived));
+        crate::accounts::change_archive(&pool, "bank", true).await.unwrap();
         let result = apply(
             &pool,
             Change::Amount {

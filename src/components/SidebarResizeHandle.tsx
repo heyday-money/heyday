@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { useRef } from 'react'
 
 export function SidebarResizeHandle({ width, maxWidth, onResize }: {
@@ -5,11 +6,13 @@ export function SidebarResizeHandle({ width, maxWidth, onResize }: {
   maxWidth: number
   onResize: (width: number) => void
 }) {
+  useLanguage()
+
   const drag = useRef<{ x: number; width: number } | null>(null)
   const resize = (value: number) => onResize(Math.round(Math.min(maxWidth, Math.max(180, value))))
-  return <div role="separator" aria-label="Resize sidebar" aria-orientation="vertical"
+  return <div role="separator" aria-label={translate("Resize sidebar")} aria-orientation="vertical"
     aria-valuemin={180} aria-valuemax={maxWidth} aria-valuenow={width} tabIndex={0}
-    title="Drag to resize. Use arrow keys to adjust."
+    title={translate("Drag to resize. Use arrow keys to adjust.")}
     className="absolute inset-y-0 -right-1 z-20 w-2 touch-none cursor-col-resize select-none hover:bg-brand/20 focus-visible:bg-brand/20 focus-visible:outline-2 focus-visible:outline-brand"
     onPointerDown={event => {
       if (event.button !== 0) return

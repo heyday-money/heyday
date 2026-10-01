@@ -89,6 +89,7 @@ async fn overview_snapshot(pool: &SqlitePool) -> Result<CardOverview, String> {
 }
 #[tauri::command]
 pub async fn get_card_overview(pool: tauri::State<'_, SqlitePool>) -> Result<CardOverview, String> {
+    let _database_operation = crate::backups::operation()?;
     overview_snapshot(pool.inner()).await
 }
 async fn account_snapshot(pool: &SqlitePool, account_id: &str) -> Result<AccountBilling, String> {
@@ -301,7 +302,7 @@ async fn save_statement(pool: &SqlitePool, input: SaveStatement) -> Result<(), S
     }
     tx.commit().await.map_err(err)
 }
-fn scheduled_date(first: &str, offset: i64) -> String {
+pub(crate) fn scheduled_date(first: &str, offset: i64) -> String {
     let y: i64 = first[..4].parse().unwrap();
     let m: i64 = first[5..7].parse().unwrap();
     let day: i64 = first[8..].parse().unwrap();
@@ -433,6 +434,7 @@ pub async fn get_card_billing(
     pool: tauri::State<'_, SqlitePool>,
     account_id: String,
 ) -> Result<AccountBilling, String> {
+    let _database_operation = crate::backups::operation()?;
     account_snapshot(pool.inner(), &account_id).await
 }
 #[tauri::command]
@@ -440,6 +442,7 @@ pub async fn save_card_statement(
     pool: tauri::State<'_, SqlitePool>,
     input: SaveStatement,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     save_statement(pool.inner(), input).await
 }
 #[tauri::command]
@@ -447,6 +450,7 @@ pub async fn save_card_payment_plan(
     pool: tauri::State<'_, SqlitePool>,
     input: SavePaymentPlan,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     save_plan(pool.inner(), input).await
 }
 #[tauri::command]
@@ -454,6 +458,7 @@ pub async fn record_card_payment(
     pool: tauri::State<'_, SqlitePool>,
     input: PaymentInput,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     payment(pool.inner(), input).await
 }
 #[tauri::command]
@@ -462,6 +467,7 @@ pub async fn remove_card_billing_record(
     kind: String,
     id: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     let query = match kind.as_str() {
         "statement" => "DELETE FROM card_statements WHERE id=?",
         "plan" => "DELETE FROM card_payment_plans WHERE statement_id=?",

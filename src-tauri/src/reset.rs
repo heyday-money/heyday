@@ -70,6 +70,7 @@ pub async fn clear_all_data(
     pool: tauri::State<'_, SqlitePool>,
     confirmation: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     clear_data(pool.inner(), &confirmation).await
 }
 

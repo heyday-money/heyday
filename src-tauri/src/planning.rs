@@ -116,6 +116,7 @@ pub async fn save_payment_plan(
     pool: tauri::State<'_, SqlitePool>,
     input: SavePlan,
 ) -> Result<PaymentPlan, String> {
+    let _database_operation = crate::backups::operation()?;
     save(pool.inner(), input).await
 }
 async fn remove(pool: &SqlitePool, id: &str) -> Result<(), String> {
@@ -134,6 +135,7 @@ pub async fn delete_payment_plan(
     pool: tauri::State<'_, SqlitePool>,
     id: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     remove(pool.inner(), &id).await
 }
 
@@ -216,6 +218,7 @@ async fn snapshot(pool: &SqlitePool) -> Result<FinancialData, String> {
 pub async fn get_financial_data(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<FinancialData, String> {
+    let _database_operation = crate::backups::operation()?;
     snapshot(pool.inner()).await
 }
 

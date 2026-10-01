@@ -1,3 +1,6 @@
+import { getLocale } from "./lib/i18n"
+import { LanguagePicker } from './components/LanguagePicker'
+import { t as translate, useLanguage } from "./lib/i18n"
 import { AppearancePicker } from "./components/AppearancePicker";
 import { type Appearance, readAppearance } from "./lib/appearance";
 import { Button } from "./components/ui/button";
@@ -7,6 +10,7 @@ import { InstitutionProvider } from "./components/InstitutionProvider";
 import { InstitutionsSettings } from "./components/InstitutionsSettings";
 import { AppUpdates } from "./components/AppUpdates";
 import { useLocalDate } from "./lib/useLocalDate";
+import { DatabaseBackups } from "./components/DatabaseBackups";
 import { DangerZone } from "./components/DangerZone";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { TransactionOptionsSettings } from "./components/TransactionOptionsSettings";
@@ -65,15 +69,15 @@ function savePreference(key: string, value: string) {
 }
 
 const navigation = [
-  { to: "/", label: "Home", icon: Home },
-  { to: "/outlook", label: "Outlook", icon: CalendarDays },
-  { to: "/net-worth", label: "Net Worth", icon: ChartNoAxesCombined },
-  { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-  { to: "/installments", label: "Installments", icon: ListOrdered },
-  { to: "/subscriptions", label: "Subscriptions", icon: Repeat },
-  { to: "/income", label: "Income", icon: ArrowUpRight },
-  { to: "/accounts", label: "Accounts", icon: Wallet },
-  { to: "/settings", label: "Settings", icon: SettingsIcon },
+  { to: "/", get label() { return translate("Home") }, icon: Home },
+  { to: "/outlook", get label() { return translate("Outlook") }, icon: CalendarDays },
+  { to: "/net-worth", get label() { return translate("Net Worth") }, icon: ChartNoAxesCombined },
+  { to: "/transactions", get label() { return translate("Transactions") }, icon: ArrowLeftRight },
+  { to: "/installments", get label() { return translate("Installments") }, icon: ListOrdered },
+  { to: "/subscriptions", get label() { return translate("Subscriptions") }, icon: Repeat },
+  { to: "/income", get label() { return translate("Income") }, icon: ArrowUpRight },
+  { to: "/accounts", get label() { return translate("Accounts") }, icon: Wallet },
+  { to: "/settings", get label() { return translate("Settings") }, icon: SettingsIcon },
 ] as const;
 
 const ThemeContext = createContext({
@@ -82,6 +86,8 @@ const ThemeContext = createContext({
 });
 
 export function AppLayout() {
+  useLanguage()
+
   const [collapsed, setCollapsed] = useState(
     () => readPreference("sidebar-collapsed", "true") === "true",
   );
@@ -105,7 +111,7 @@ export function AppLayout() {
     select: (state) => state.location.pathname,
   });
   const title =
-    navigation.find((item) => item.to === pathname)?.label ?? (pathname.endsWith("/billing") ? "Credit card billing" : pathname.endsWith("/loans") ? "Loan account" : pathname.startsWith("/accounts/") ? "Account transactions" : "Heyday");
+    navigation.find((item) => item.to === pathname)?.label ?? (pathname.endsWith("/billing") ? translate("Credit card billing") : pathname.endsWith("/loans") ? translate("Loan account") : pathname.startsWith("/accounts/") ? translate("Account transactions") : translate("Heyday"));
 
   useEffect(() => {
     savePreference("sidebar-collapsed", String(collapsed));
@@ -135,7 +141,7 @@ export function AppLayout() {
             <Link
               to="/"
               className={`mb-[26px] flex shrink-0 items-center gap-[9px] text-[16px] font-[750] tracking-[-.8px] whitespace-nowrap max-[650px]:text-[14px] ${collapsed ? "w-full justify-center" : ""}`}
-              aria-label="Heyday Money home"
+              aria-label={translate("Heyday Money home")}
             >
               <img
                 className="shrink-0"
@@ -152,7 +158,7 @@ export function AppLayout() {
             </Link>
             <nav
               className="flex min-h-0 flex-1 flex-col gap-1.5"
-              aria-label="Main navigation"
+              aria-label={translate("Main navigation")}
             >
               {navigation.map(({ to, label, icon: Icon }) => (
                 <Fragment key={to}>
@@ -161,16 +167,16 @@ export function AppLayout() {
                     activeOptions={{ exact: true }}
                     activeProps={{ "aria-current": "page" }}
                     className={`flex min-w-0 max-w-full shrink-0 items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[14px] font-medium text-muted hover:bg-page hover:text-ink aria-[current=page]:bg-soft aria-[current=page]:text-brand ${to === "/settings" ? "mt-auto" : ""} ${collapsed ? "justify-center" : ""}`}
-                    title={collapsed ? label : undefined}
-                    aria-label={label}
+                    title={collapsed ? translate(label) : undefined}
+                    aria-label={translate(label)}
                   >
                     <Icon className="shrink-0" size={18} aria-hidden="true" />
-                    {!collapsed && <span>{label}</span>}
+                    {!collapsed && <span>{translate(label)}</span>}
                   </Link>
                   {to === "/accounts" && !collapsed && (
                     <div
                       role="region"
-                      aria-label="Saved accounts"
+                      aria-label={translate("Saved accounts")}
                       tabIndex={0}
                       className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
                     >
@@ -184,15 +190,15 @@ export function AppLayout() {
               className={`mt-3 flex shrink-0 items-center gap-2.5 rounded-[9px] border-0 bg-transparent p-2.5 text-[12px] font-medium text-muted hover:bg-page hover:text-ink ${collapsed ? "justify-center" : ""}`}
               onClick={() => setCollapsed((value) => !value)}
               aria-expanded={!collapsed}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={collapsed ? translate("Expand sidebar") : translate("Collapse sidebar")}
+              title={collapsed ? translate("Expand sidebar") : translate("Collapse sidebar")}
             >
               {collapsed ? (
                 <PanelLeftOpen className="shrink-0" size={18} />
               ) : (
                 <>
                   <PanelLeftClose className="shrink-0" size={18} />
-                  <span>Collapse sidebar</span>
+                  <span>{translate("Collapse sidebar")}</span>
                 </>
               )}
             </button>
@@ -207,7 +213,7 @@ export function AppLayout() {
         </div>
         <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <header className="flex h-16 shrink-0 items-center justify-between border-b border-line px-7 max-[650px]:px-[18px]">
-            <h1 className="text-lg font-semibold">{title}</h1>
+            <h1 className="text-lg font-semibold">{translate(title)}</h1>
             <AddTransactionButton />
           </header>
           <main className="min-h-0 w-full flex-1 overflow-y-auto p-7 max-[1000px]:p-[25px] max-[650px]:p-[18px]">
@@ -235,6 +241,8 @@ export { AccountsPage } from "./components/AccountsPage";
 export { IncomePage } from "./components/IncomePage";
 
 export function SettingsPage() {
+  useLanguage()
+
   const today = useLocalDate();
   const { appearance, setAppearance } = useContext(ThemeContext);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -277,7 +285,7 @@ export function SettingsPage() {
       const updated = await updatePeriod(day);
       setSettings(updated);
       setDay(updated.period_start_day);
-      toast.success("Period saved.", { id: "period-saved" });
+      toast.success(translate("Period saved."), { id: "period-saved" });
     } catch {
       setSaveError("Could not save your period. Please try again.");
     } finally {
@@ -288,40 +296,39 @@ export function SettingsPage() {
   return (
     <div className="mx-auto w-full max-w-[740px]">
       <div className="mb-6 max-w-[740px]">
-        <h2 className="mb-3 text-2xl font-semibold">Make Heyday yours.</h2>
-        <p className="text-sm">Manage your preferences, institutions, payees, and spending categories.</p>
+        <h2 className="mb-3 text-2xl font-semibold">{translate("Make Heyday yours.")}</h2>
+        <p className="text-sm">{translate("Manage your preferences, institutions, payees, and spending categories.")}</p>
       </div>
       <Tabs defaultValue="general" className="max-w-[740px]">
-        <TabsList aria-label="Settings sections">
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="payees">Payees</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="institutions">Institutions</TabsTrigger>
+        <TabsList aria-label={translate("Settings sections")}>
+          <TabsTrigger value="general">{translate("General")}</TabsTrigger>
+          <TabsTrigger value="payees">{translate("Payees")}</TabsTrigger>
+          <TabsTrigger value="categories">{translate("Categories")}</TabsTrigger>
+          <TabsTrigger value="institutions">{translate("Institutions")}</TabsTrigger>
         </TabsList>
         <TabsContent value="institutions"><InstitutionsSettings /></TabsContent>
         <TabsContent value="general" forceMount>
       <section className="rounded-2xl border border-line bg-card p-6">
+        <LanguagePicker />
         <AppearancePicker value={appearance} onChange={setAppearance} />
         {!desktopAvailable ? (
           <p className="mt-2 rounded-xl bg-soft p-[18px] text-[14px]">
-            Open the desktop app to access your local settings.
-          </p>
+            {translate("Open the desktop app to access your local settings.")}</p>
         ) : error ? (
           <p className="mt-2 text-[14px]" role="alert">
-            {error}
+            {translate(error)}
           </p>
         ) : !settings ? (
           <p className="mt-2 text-[14px]" role="status">
-            Loading settings…
-          </p>
+            {translate("Loading settings…")}</p>
         ) : (
           <>
             <CurrencySetting settings={settings} onChange={setSettings} />
             <form className="border-b border-line pb-6" onSubmit={savePeriod}>
-              <h3 className="text-base font-semibold">Payday cycle</h3>
-              <p className="mt-1 text-xs">Group your dashboard by your monthly payday. Save to apply changes.</p>
+              <h3 className="text-base font-semibold">{translate("Payday cycle")}</h3>
+              <p className="mt-1 text-xs">{translate("Group your dashboard by your monthly payday. Save to apply changes.")}</p>
               <div className="my-3 flex items-center justify-between gap-5 border-b border-line py-5 text-[14px]">
-                <label htmlFor="period-day">Period start day</label>
+                <label htmlFor="period-day">{translate("Period start day")}</label>
                 <div className="w-48 shrink-0"><NativeSelect
                   id="period-day"
                   value={day}
@@ -334,68 +341,64 @@ export function SettingsPage() {
                   {Array.from({ length: 31 }, (_, index) => index + 1).map(
                     (value) => (
                       <option key={value} value={value}>
-                        {value === 1 ? "1 · Calendar month" : `Day ${value}`}
+                        {value === 1 ? translate("1 · Calendar month") : translate("Day {value0}", { value0: value })}
                       </option>
                     ),
                   )}
                 </NativeSelect></div>
               </div>
               <p className="mt-2 text-[14px]">
-                Your current cycle: <strong>{periodLabel(day, today)}</strong>
+                {translate("Your current cycle:")}<strong>{periodLabel(day, today)}</strong>
               </p>
               <p className="mt-2 text-[14px]">
-                If a month has fewer days, the cycle starts on its last day.
-                Income schedules stay unchanged.
-              </p>
+                {translate("If a month has fewer days, the cycle starts on its last day. Income schedules stay unchanged.")}</p>
               <div className="mt-4 flex flex-wrap gap-2.5">
                 <Button
                   type="submit"
                   disabled={saving || day === settings.period_start_day}
                 >
-                  {saving ? "Saving…" : "Save period"}
+                  {saving ? translate("Saving…") : translate("Save period")}
                 </Button>
               </div>
               {saveError && (
                 <p className="mt-2 text-[14px]" role="alert">
-                  {saveError}
+                  {translate(saveError)}
                 </p>
               )}
             </form>
-            <h3 className="mt-6 text-base font-semibold">Storage &amp; app information</h3>
+            <h3 className="mt-6 text-base font-semibold">{translate("Storage & app information")}</h3>
             <dl className="my-3">
               <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
-                <dt>Currency</dt>
+                <dt>{translate("Currency")}</dt>
                 <dd className="text-right text-muted">
-                  {settings.currency ?? "Not selected yet"}
+                  {settings.currency ?? translate("Not selected yet")}
                 </dd>
               </div>
               <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
-                <dt>Computer date</dt>
-                <dd className="text-right text-muted">{today.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</dd>
+                <dt>{translate("Computer date")}</dt>
+                <dd className="text-right text-muted">{today.toLocaleDateString(getLocale(), { day: "numeric", month: "short", year: "numeric" })}</dd>
               </div>
               <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
-                <dt>Storage</dt>
-                <dd className="text-right text-muted">Local SQLite database</dd>
+                <dt>{translate("Storage")}</dt>
+                <dd className="text-right text-muted">{translate("Local SQLite database")}</dd>
               </div>
             </dl>
           </>
         )}
-        <p className="mt-2 text-[14px] font-normal text-muted">
-          Manual backup and restore are planned.
-        </p>
       </section>
+          <DatabaseBackups disabled={saving || !settings || day !== settings.period_start_day} />
           <AppUpdates version={version} disabled={saving || !!settings && day !== settings.period_start_day} />
           <DangerZone disabled={saving || !settings} />
         </TabsContent>
         <TabsContent value="payees" forceMount>
-          {desktopAvailable ? <TransactionOptionsSettings kind="payee" /> : <p className="rounded-xl bg-soft p-5">Open the desktop app to manage payees.</p>}
+          {desktopAvailable ? <TransactionOptionsSettings kind="payee" /> : <p className="rounded-xl bg-soft p-5">{translate("Open the desktop app to manage payees.")}</p>}
         </TabsContent>
         <TabsContent value="categories" forceMount>
-          {desktopAvailable ? <TransactionOptionsSettings kind="category" /> : <p className="rounded-xl bg-soft p-5">Open the desktop app to manage categories.</p>}
+          {desktopAvailable ? <TransactionOptionsSettings kind="category" /> : <p className="rounded-xl bg-soft p-5">{translate("Open the desktop app to manage categories.")}</p>}
         </TabsContent>
       </Tabs>
       <p className="max-w-[740px] px-1 py-[18px] text-[12px]">
-        Heyday Money · Version {version}
+        {translate("Heyday Money · Version")} {version}
       </p>
     </div>
   );

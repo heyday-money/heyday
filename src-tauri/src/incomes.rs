@@ -37,7 +37,7 @@ pub struct NewIncome {
     is_active: bool,
 }
 
-pub async fn insert_income(pool: &SqlitePool, input: NewIncome) -> Result<Income, String> {
+fn validate_definition(input: &NewIncome) -> Result<i64, String> {
     let name = input.name.trim();
     if name.is_empty() || name.chars().count() > 100 {
         return Err("Enter an income name between 1 and 100 characters.".into());
@@ -62,6 +62,12 @@ pub async fn insert_income(pool: &SqlitePool, input: NewIncome) -> Result<Income
     if input.is_auto_create_transaction {
         return Err("Automatic transaction creation is not available yet.".into());
     }
+    Ok(amount)
+}
+
+pub async fn insert_income(pool: &SqlitePool, input: NewIncome) -> Result<Income, String> {
+    let amount = validate_definition(&input)?;
+    let name = input.name.trim();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let currency: Option<String> = sqlx::query_scalar("SELECT currency FROM settings WHERE id = 1")
         .fetch_one(&mut *tx)
@@ -96,16 +102,58 @@ pub async fn insert_income(pool: &SqlitePool, input: NewIncome) -> Result<Income
     Ok(income)
 }
 
+#[derive(Deserialize)]
+pub struct UpdateIncome {
+    id: String,
+    #[serde(flatten)]
+    changes: NewIncome,
+}
+async fn update(pool: &SqlitePool, input: UpdateIncome) -> Result<Income, String> {
+    let amount = validate_definition(&input.changes)?;
+    if !input.changes.deductions.is_empty() {
+        return Err("Manage existing salary deductions separately in Income.".into());
+    }
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let currency: Option<String> = sqlx::query_scalar("SELECT currency FROM settings WHERE id=1").fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    if currency.as_deref() != Some(input.changes.currency.as_str()) {
+        return Err("Currency changed. Reload Income before saving.".into());
+    }
+    let existing: Option<(String, String)> = sqlx::query_as("SELECT type,destination_account_id FROM incomes WHERE id=?").bind(&input.id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+    let (kind, destination) = existing.ok_or("Income source no longer exists. Reload to continue.")?;
+    if kind != input.changes.income_type {
+        return Err("Income type cannot be changed. Add a separate source for a different type.".into());
+    }
+    let deductions: Vec<i64> = sqlx::query_scalar("SELECT amount FROM income_deductions WHERE income_id=?").bind(&input.id).fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
+    let total = deductions.into_iter().try_fold(0i64, |sum, value| sum.checked_add(value)).ok_or("Deductions exceed the supported range.")?;
+    if total > amount { return Err("Estimated gross salary cannot be lower than its existing deductions. Adjust deductions in Income first.".into()); }
+    let available: Option<bool> = sqlx::query_scalar("SELECT is_archived=0 FROM accounts WHERE id=?").bind(&input.changes.destination_account_id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+    if available != Some(true) && !(available == Some(false) && destination == input.changes.destination_account_id && !input.changes.is_active) {
+        return Err("Choose an active destination account. An inactive source may keep its existing archived destination.".into());
+    }
+    sqlx::query("UPDATE incomes SET name=?,destination_account_id=?,estimated_amount=?,recurrence_day_of_month=?,is_active=?,is_auto_create_transaction=0,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(input.changes.name.trim()).bind(input.changes.destination_account_id).bind(amount).bind(input.changes.recurrence_day_of_month).bind(input.changes.is_active).bind(&input.id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let result = sqlx::query_as::<_, Income>(&format!("{SELECT} WHERE i.id=?")).bind(&input.id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(result)
+}
+#[tauri::command]
+pub async fn update_income(pool: tauri::State<'_, SqlitePool>, input: UpdateIncome) -> Result<Income, String> {
+    let _database_operation = crate::backups::operation()?;
+    update(pool.inner(), input).await
+}
+
 #[tauri::command]
 pub async fn create_income(
     pool: tauri::State<'_, SqlitePool>,
     input: NewIncome,
 ) -> Result<Income, String> {
+    let _database_operation = crate::backups::operation()?;
     insert_income(pool.inner(), input).await
 }
 
 #[tauri::command]
 pub async fn list_incomes(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<Income>, String> {
+    let _database_operation = crate::backups::operation()?;
     sqlx::query_as::<_, Income>(&format!("{SELECT} ORDER BY i.created_at, i.id"))
         .fetch_all(pool.inner())
         .await
@@ -136,6 +184,66 @@ mod tests {
         crate::save_currency(pool, "THB").await.unwrap();
         sqlx::query("INSERT INTO accounts (id, name, type, opening_balance) VALUES ('bank', 'Everyday bank', 'bank', 150000)").execute(pool).await.unwrap();
     }
+    #[tokio::test]
+    async fn source_edits_preserve_receipts_deductions_overrides_and_balances() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(":memory:").foreign_keys(true)).await.unwrap();
+        seed(&pool).await;
+        sqlx::query("INSERT INTO accounts(id,name,type,current_balance) VALUES('other','Other bank','bank',99)").execute(&pool).await.unwrap();
+        let source = insert_income(&pool,input()).await.unwrap();
+        sqlx::query("UPDATE incomes SET created_at='2000-01-01 00:00:00' WHERE id=?").bind(&source.id).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO income_deductions(id,income_id,name,amount) VALUES('tax',?,'Tax',100)").bind(&source.id).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO planner_income_amounts VALUES(?,'2026-01',0)").bind(&source.id).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO planner_deduction_amounts VALUES('tax','2026-01',0)").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO transactions(id,type,account_id,amount,date,description,income_source_id) VALUES('receipt','income','bank',200,'2026-01-01','Salary receipt',?)").bind(&source.id).execute(&pool).await.unwrap();
+        let before:Vec<(String,i64)>=sqlx::query_as("SELECT id,current_balance FROM accounts ORDER BY id").fetch_all(&pool).await.unwrap();
+        let mut changes=input();changes.name=" Updated salary ".into();changes.destination_account_id="other".into();changes.recurrence_day_of_month=28;changes.estimated_amount="9223372036854775807".into();changes.is_active=false;
+        let updated=update(&pool,UpdateIncome{id:source.id.clone(),changes}).await.unwrap();
+        assert_eq!(updated.id,source.id);assert_eq!(updated.name,"Updated salary");assert_eq!(updated.created_at,"2000-01-01 00:00:00");
+        assert_eq!(updated.destination_account_id,"other");assert_eq!(updated.recurrence_day_of_month,28);assert_eq!(updated.estimated_amount,"9223372036854775807");assert_eq!(updated.deductions_total,"100");assert!(!updated.is_active);assert!(!updated.is_auto_create_transaction);
+        let receipt:(String,String,i64,String)=sqlx::query_as("SELECT income_source_id,account_id,amount,description FROM transactions WHERE id='receipt'").fetch_one(&pool).await.unwrap();
+        assert_eq!(receipt,(source.id.clone(),"bank".into(),200,"Salary receipt".into()));
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT amount FROM planner_income_amounts WHERE income_id=?").bind(&source.id).fetch_one(&pool).await.unwrap(),0);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT amount FROM planner_deduction_amounts WHERE deduction_id='tax'").fetch_one(&pool).await.unwrap(),0);
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT income_id FROM income_deductions WHERE id='tax'").fetch_one(&pool).await.unwrap(),source.id);
+        let after:Vec<(String,i64)>=sqlx::query_as("SELECT id,current_balance FROM accounts ORDER BY id").fetch_all(&pool).await.unwrap();assert_eq!(before,after);
+        // Reactivation restores generated estimates while retaining the same source.
+        let mut changes=input();changes.is_active=true;
+        assert!(update(&pool,UpdateIncome{id:updated.id,changes}).await.unwrap().is_active);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM incomes").fetch_one(&pool).await.unwrap(),1);
+    }
+    #[tokio::test]
+    async fn invalid_edits_roll_back_and_archived_destination_can_be_retained_only_when_inactive() {
+        let pool=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(":memory:").foreign_keys(true)).await.unwrap();seed(&pool).await;
+        let source=insert_income(&pool,input()).await.unwrap();
+        sqlx::query("INSERT INTO income_deductions(id,income_id,name,amount) VALUES('tax',?,'Tax',100)").bind(&source.id).execute(&pool).await.unwrap();
+        let mut cases=Vec::new();
+        let mut value=input();value.estimated_amount="99".into();cases.push(value);
+        let mut value=input();value.estimated_amount="-1".into();cases.push(value);
+        let mut value=input();value.estimated_amount="9223372036854775808".into();cases.push(value);
+        let mut value=input();value.name=" ".into();cases.push(value);
+        let mut value=input();value.name="x".repeat(101);cases.push(value);
+        let mut value=input();value.income_type="other".into();cases.push(value);
+        let mut value=input();value.currency="USD".into();cases.push(value);
+        let mut value=input();value.destination_account_id="missing".into();cases.push(value);
+        let mut value=input();value.recurrence_frequency="weekly".into();cases.push(value);
+        for day in [0,32] {let mut value=input();value.recurrence_day_of_month=day;cases.push(value);}
+        let mut value=input();value.is_auto_create_transaction=true;cases.push(value);
+        let mut value=input();value.deductions=vec![crate::income_deductions::DeductionInput {id:Some("tax".into()),debt_account_id:None,name:"Tax".into(),description:"".into(),amount:"0".into()}];cases.push(value);
+        for changes in cases {
+            assert!(update(&pool,UpdateIncome{id:source.id.clone(),changes}).await.is_err());
+            let current:Income=sqlx::query_as(&format!("{SELECT} WHERE i.id=?")).bind(&source.id).fetch_one(&pool).await.unwrap();
+            assert_eq!(current.name,source.name);assert_eq!(current.estimated_amount,source.estimated_amount);assert!(current.is_active);
+        }
+        assert!(update(&pool,UpdateIncome{id:"missing".into(),changes:input()}).await.is_err());
+        sqlx::query("UPDATE accounts SET is_archived=1 WHERE id='bank'").execute(&pool).await.unwrap();
+        assert!(update(&pool,UpdateIncome{id:source.id.clone(),changes:input()}).await.is_err());
+        let mut changes=input();changes.is_active=false;
+        let disabled=update(&pool,UpdateIncome{id:source.id.clone(),changes}).await.unwrap();assert!(!disabled.is_active);assert_eq!(disabled.destination_account_id,"bank");
+        sqlx::query("INSERT INTO accounts(id,name,type,is_archived) VALUES('archived','Archived bank','bank',1)").execute(&pool).await.unwrap();
+        let mut changes=input();changes.is_active=false;changes.destination_account_id="archived".into();
+        assert!(update(&pool,UpdateIncome{id:source.id,changes}).await.is_err());
+    }
+
     #[tokio::test]
     async fn create_salary_and_deductions_atomically_and_reject_other_types() {
         let pool = SqlitePoolOptions::new()

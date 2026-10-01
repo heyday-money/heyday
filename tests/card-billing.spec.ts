@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { statementTotals, draftBillingDates, cardForecasts, type CardBillingData, type CardStatement } from '../src/lib/card-billing'
-import { cycleTotals, openingForCycle, type PlannerData } from '../src/lib/cashflow'
+import { cycleTotals, openingForCycle, itemAmount, plannerItems, type PlannerData } from '../src/lib/cashflow'
 import { monthlyOutlook } from '../src/lib/financial'
 import type { Account, FinancialData } from '../src/lib/desktop'
 const statement:CardStatement={id:'s',account_id:'card',start_date:'2098-12-01',end_date:'2098-12-31',due_date:'2099-01-10',amount:'1000000',minimum:'100000',needs_review:false}
@@ -42,6 +42,24 @@ test('explicit installment coverage suppresses only its occurrence and preserves
  expect(openingForCycle(d,'2099-04')).toBe(500000n)
  d.card_billing!.installments=[];expect(cycleTotals(d,'2099-01').expenses).toBe(488888n)
 })
+test('SCB billing and payday cycles cover the selected September occurrence, not the due month',()=>{
+ const d=planner();d.period_start_day=28;d.card_transactions=[];d.card_billing!.allocations=[]
+ d.installments=[{id:'i',name:'ThinkPad',debt_account_id:'card',debt_account_name:'SCB CardX BEYOND',debt_account_type:'credit_card',account_name:'Bank',monthly_amount:'431570',first_due_date:'2099-09-28',installment_count:6,accounts_available:true}]
+ d.card_billing!.statements=[{...statement,start_date:'2099-08-24',end_date:'2099-09-23',due_date:'2099-10-13',amount:'1380406'}]
+ d.card_billing!.plans=[{statement_id:'s',account_id:'bank',date:'2099-10-13',mode:'full',target:'1380406',available:true}]
+ d.card_billing!.installments=[{statement_id:'s',installment_id:'i',date:'2099-09-28'}]
+ expect(cycleTotals(d,'2099-09').expenses).toBe(1380406n)
+ expect(cycleTotals(d,'2099-10').expenses).toBe(431570n)
+ // A changed schedule cannot leave phantom coverage suppressing a saved override.
+ d.installments[0].first_due_date='2099-10-28'
+ d.amounts=[{item_id:'installment:i',month:'2099-09',amount:'12000'}]
+ expect(cycleTotals(d,'2099-09').expenses).toBe(1392406n)
+ d.card_billing!.statements[0].needs_review=true
+ const card=plannerItems(d).find(i=>i.credit_card)!
+ expect(itemAmount(d,card,'2099-09')).toMatchObject({value:0n,source:'Statement needs review'})
+ // Keep the saved plan unchanged while its statement awaits explicit confirmation.
+ expect(d.card_billing!.plans[0].date).toBe('2099-10-13')
+})
 test('account outlook excludes covered installments and includes only remaining cash payment',()=>{
  const base={loan_type:null,institution:null,last_four:null,notes:null,credit_limit:null,statement_day:null,payment_due_day:null,interest_rate_ten_thousandths:null,monthly_installment:null,opening_balance:'0'}
  const accounts:Account[]=[{...base,id:'card',name:'Visa',type:'credit_card',current_balance:'850000'},{...base,id:'bank',name:'Bank',type:'bank',current_balance:'850000'}]
@@ -60,7 +78,7 @@ test('billing UI confirms statement, plans partial payment, links existing payme
    if(command==='get_settings')return {currency:'THB',period_start_day:1}
    if(command==='list_card_limit_groups')return {groups:[],cards:[]}
    if(command==='list_accounts')return accounts
-   if(command==='get_card_billing')return {account:accounts[0],currency:'THB',billing:{statements,plans,allocations,installments:[]},transactions:[{id:'purchase',type:'expense',account_id:'card',account_name:'Visa',destination_account_id:null,amount:'10000',date:'2024-01-10',description:'Groceries',category_name:'Food'},{id:'payment',type:'repayment',account_id:'bank',account_name:'Bank',destination_account_id:'card',amount:'150000',date:'2024-02-02',description:''}],entries:[{statement_id:'s',transaction_id:'purchase'}],installments:[]}
+   if(command==='get_card_billing')return {account:accounts[0],currency:'THB',billing:{statements,plans,allocations,installments:[]},transactions:[{id:'purchase',type:'expense',account_id:'card',account_name:'Visa',destination_account_id:null,amount:'10000',date:'2024-01-10',description:'Groceries',category_name:'Food'},{id:'payment',type:'repayment',account_id:'bank',account_name:'Bank',destination_account_id:'card',amount:'150000',date:'2024-02-02',description:''}],entries:[{statement_id:'s',transaction_id:'purchase'}],installments:[{id:'i',name:'ThinkPad',account_id:'bank',debt_account_id:'card',monthly_amount:'1000',first_due_date:'2024-01-28',installment_count:6}]}
    if(command==='save_card_payment_plan'){sessionStorage.setItem(command,JSON.stringify(args.input));if(sessionStorage.getItem('fail-save'))throw 'Save failed. Retry.';plans=[{...args.input,available:true}];return}
    if(command==='save_card_statement'){sessionStorage.setItem(command,JSON.stringify(args.input));statements=[{...args.input,id:'s',needs_review:false}];return}
    if(command==='record_card_payment'){sessionStorage.setItem(command,JSON.stringify(args.input));allocations=[{statement_id:'s',transaction_id:'payment',date:'2024-02-02',amount:'150000'}];return}
@@ -92,8 +110,10 @@ test('billing UI confirms statement, plans partial payment, links existing payme
  expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('record_card_payment')!))).toMatchObject({transaction_id:'payment',statement_id:'s'})
  await page.getByRole('button',{name:'Review statement',exact:true}).click()
  await page.getByLabel('Statement amount',{exact:true}).fill('10000')
+ await page.getByRole('checkbox',{name:'ThinkPad · 2024-01-28'}).check()
+ await expect(page.getByRole('checkbox',{name:'ThinkPad · 2024-02-28'})).not.toBeChecked()
  await page.getByRole('button',{name:'Confirm statement'}).click()
- expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('save_card_statement')!))).toMatchObject({amount:'1000000',minimum:'100000'})
+ expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('save_card_statement')!))).toMatchObject({amount:'1000000',minimum:'100000',installments:[{installment_id:'i',date:'2024-01-28'}]})
  await expect(page.getByRole('dialog')).toHaveCount(0)
  await page.getByRole('heading',{name:'Visa · Billing'}).scrollIntoViewIfNeeded()
  await page.screenshot({path:'/tmp/heyday-card-billing-light.png',fullPage:true,animations:'disabled'})
@@ -103,7 +123,7 @@ test('billing UI confirms statement, plans partial payment, links existing payme
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
  await page.getByRole('button',{name:'Review statement',exact:true}).click()
  await expect(page.getByRole('dialog')).toBeVisible()
- await page.getByText('No scheduled installments in the due month.').scrollIntoViewIfNeeded()
+ await page.getByRole('checkbox',{name:'ThinkPad · 2024-06-28'}).scrollIntoViewIfNeeded()
  await expect(page.getByRole('button',{name:'Confirm statement'})).toBeInViewport()
  await page.screenshot({path:'/tmp/heyday-card-statement-dialog.png',fullPage:true,animations:'disabled'})
 })

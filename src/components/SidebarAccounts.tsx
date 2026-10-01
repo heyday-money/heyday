@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { AccountLabel } from './InstitutionLogo'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
@@ -15,6 +16,8 @@ export function accountDisplayBalance(account: Pick<Account, 'type' | 'opening_b
 }
 
 export function SidebarAccounts() {
+  useLanguage()
+
   const [accounts, setAccounts] = useState<Account[]>([])
   const [currency, setCurrency] = useState<string | null>(null)
   const [error, setError] = useState(false)
@@ -34,20 +37,20 @@ export function SidebarAccounts() {
     return () => { active = false; window.removeEventListener('accounts-changed', load) }
   }, [])
   if (!desktopAvailable) return null
-  if (error) return <p className="px-2 text-[11px]">Could not load account balances.</p>
+  if (error) return <p className="px-2 text-[11px]">{translate("Could not load account balances.")}</p>
   if (!currency || !accounts.length) return null
-  return <div className="min-w-0 space-y-3 px-1 pb-3" aria-label="Sidebar accounts">
+  return <div className="min-w-0 space-y-3 px-1 pb-3" aria-label={translate("Sidebar accounts")}>
     {groups.map(([type, label]) => {
       const items = accounts.filter(account => account.type === type)
       if (!items.length) return null
-      return <section key={type} aria-label={label}>
-        <h2 className="px-1 py-1 text-[10px] font-semibold tracking-wide text-muted uppercase">{label}</h2>
+      return <section key={type} aria-label={translate(label)}>
+        <h2 className="px-1 py-1 text-[10px] font-semibold tracking-wide text-muted uppercase">{translate(label)}</h2>
         <ul className="space-y-0.5">
           {items.map(account => {
             const balance = accountDisplayBalance(account)
             const amount = formatAmount(balance.toString(), currency)
             return <li key={account.id}>
-              <Link to={['bank', 'wallet', 'credit_card'].includes(account.type) ? '/accounts/$accountId' : '/accounts'} params={{ accountId: account.id }} title={`${account.name}: ${amount}`} aria-label={`${account.name}: ${amount}`}
+              <Link to={['bank', 'wallet', 'credit_card'].includes(account.type) ? '/accounts/$accountId' : '/accounts'} params={{ accountId: account.id }} title={translate("{value0}: {value1}", { value0: account.name, value1: amount })} aria-label={translate("{value0}: {value1}", { value0: account.name, value1: amount })}
                 className="flex min-w-0 items-center justify-between gap-2 rounded-md px-1 py-1.5 text-[12px] hover:bg-soft">
                 <span className="min-w-0 flex-1"><AccountLabel id={account.id} name={account.name} compact /></span>
                 <span data-balance-sign={balance > 0n ? 'positive' : balance < 0n ? 'negative' : 'zero'} className={`max-w-[60%] shrink-0 truncate text-right text-[11px] font-medium tabular-nums ${balance > 0n ? 'text-green-700 dark:text-green-400' : balance < 0n ? 'text-red-600 dark:text-red-400' : 'text-muted'}`}>

@@ -212,7 +212,7 @@ test('recorded card payments refresh by account and cycle without adding install
     localStorage.setItem('planner-test', JSON.stringify(data))
     window.dispatchEvent(new Event('transactions-changed'))
   })
-  await expect(page.getByRole('link', { name: 'Visa · Billing', exact: true })).toHaveAttribute('href', /accounts\/card\/billing/)
+  await expect(page.getByRole('link', { name: 'Visa', exact: true })).toHaveAttribute('href', /accounts\/card\/billing/)
   await expect(page.getByRole('button', { name: 'Visa 2026-12: Recorded payments', exact: true })).toContainText('2,000.00')
   await expect(page.getByRole('button', { name: 'Work laptop 2026-12: Using recorded card total', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2027-01 amount', exact: true })).toContainText('3,000.00')
@@ -254,8 +254,8 @@ test('recorded General Expenses use saved icons and refresh category changes', a
     }))
     window.dispatchEvent(new Event('transaction-options-changed'))
   })
-  const water = page.getByRole('rowheader').filter({ has: page.getByRole('link', { name: 'Recorded · Water', exact: true }) })
-  const uncategorized = page.getByRole('rowheader').filter({ has: page.getByRole('link', { name: 'Recorded · Uncategorized', exact: true }) })
+  const water = page.getByRole('rowheader').filter({ has: page.getByRole('link', { name: 'Water', exact: true }) })
+  const uncategorized = page.getByRole('rowheader').filter({ has: page.getByRole('link', { name: 'Uncategorized', exact: true }) })
   await expect(water.locator('svg.lucide-plug-zap')).toBeVisible()
   await expect(uncategorized.locator('svg.lucide-tag')).toBeVisible()
   await page.evaluate(() => {
@@ -265,4 +265,67 @@ test('recorded General Expenses use saved icons and refresh category changes', a
     window.dispatchEvent(new Event('transaction-options-changed'))
   })
   await expect(water.locator('svg.lucide-coffee')).toBeVisible()
+})
+
+test('Income and Expenses collapse to totals while expense subsections retain their subtotals', async ({ page }) => {
+  const table = page.getByRole('table', { name: 'Seven-cycle cashflow planner in THB' })
+  const closing = table.getByRole('row').last()
+  const before = await closing.innerText()
+  await table.getByRole('button', { name: 'Collapse Debt Payments', exact: true }).click()
+  await expect(table.getByRole('button', { name: 'Edit Mortgage', exact: true })).toHaveCount(0)
+  await expect(table.getByRole('rowheader', { name: /^Total Debt Payments/ })).toBeVisible()
+  await expect(table.getByRole('button', { name: 'Edit Water', exact: true })).toBeVisible()
+  await table.getByRole('button', { name: 'Collapse Expenses', exact: true }).click()
+  await expect(table.getByRole('button', { name: 'Edit Water', exact: true })).toHaveCount(0)
+  await expect(table.getByRole('rowheader', { name: /^Total Expenses/ })).toBeVisible()
+  await expect(table.getByRole('rowheader', { name: /^Total Debt Payments/ })).toHaveCount(0)
+  await table.getByRole('button', { name: 'Collapse Income', exact: true }).click()
+  await expect(table.getByRole('button', { name: 'Edit Salary', exact: true })).toHaveCount(0)
+  await expect(table.getByRole('rowheader', { name: /^Net Income \/ Cash Received/ })).toBeVisible()
+  await expect(table.getByRole('rowheader', { name: /^Cumulative Closing Cash/ })).toBeVisible()
+  expect(await closing.innerText()).toBe(before)
+  await page.getByLabel('First visible cycle').fill('2027-01')
+  await expect(table.getByRole('button', { name: 'Expand Expenses', exact: true })).toHaveAttribute('aria-expanded', 'false')
+  const expand = table.getByRole('button', { name: 'Expand Expenses', exact: true })
+  await expand.focus(); await page.keyboard.press('Enter')
+  // Parent collapse preserves the independently collapsed subsection.
+  await expect(table.getByRole('button', { name: 'Expand Debt Payments', exact: true })).toBeVisible()
+  await expect(table.getByRole('button', { name: 'Edit Mortgage', exact: true })).toHaveCount(0)
+  await table.getByRole('button', { name: 'Expand Debt Payments', exact: true }).click()
+  await expect(table.getByRole('button', { name: 'Edit Mortgage', exact: true })).toBeVisible()
+  await table.getByRole('button', { name: 'Expand Income', exact: true }).click()
+  await expect(table.getByRole('button', { name: 'Edit Salary', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('planner-test'))).toBeNull()
+})
+
+test('credit card rows open a Billing context menu and navigate to the selected card', async ({ page }) => {
+  await expect(page.getByRole('button', { name: 'Edit Salary', exact: true })).toBeVisible()
+  await page.evaluate(() => {
+    const native = (window as any).__TAURI_INTERNALS__
+    const invoke = native.invoke
+    native.invoke = async (command: string, args: any) => {
+      if (command === 'get_credit_limit_groups') return { groups: [], cards: [] }
+      if (command === 'get_card_billing') return { account: { id: args.accountId, name: 'SCB CardX BEYOND', current_balance: '1000', opening_balance: '1000', credit_limit: null }, currency: 'THB', billing: { statements: [], plans: [], allocations: [], installments: [] }, transactions: [], entries: [], installments: [] }
+      return invoke(command, args)
+    }
+    const categories = ['income', 'deductions', 'debt', 'installments', 'cards', 'expenses'].map(id => ({ id, name: id, subtotal: `Total ${id}` }))
+    localStorage.setItem('planner-test', JSON.stringify({ incomes: [], income_deductions: [], debt_accounts: [], installments: [], credit_cards: [{ id: 'scb', name: 'SCB CardX BEYOND', is_archived: false }], card_transactions: [], source_currency: 'THB', categories, period_start_day: 25, opening: null, months: [], amounts: [], expense_categories: [], items: [] }))
+    window.dispatchEvent(new Event('accounts-changed'))
+  })
+  const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'SCB CardX BEYOND', exact: true }) })
+  await expect(row).toHaveAttribute('tabindex', '0')
+  // Right-click a forecast cell, not just the card name.
+  for (const theme of ['light', 'dark', 'heyday']) {
+    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme)
+    await row.getByRole('cell').first().click({ button: 'right' })
+    await expect(page.getByRole('menu', { name: 'SCB CardX BEYOND actions' })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: 'Billing', exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('menu')).toHaveCount(0)
+  }
+  await row.click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Billing', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/#\/accounts\/scb\/billing$/)
+  await expect(page.getByRole('heading', { name: 'SCB CardX BEYOND · Billing' })).toBeVisible()
 })

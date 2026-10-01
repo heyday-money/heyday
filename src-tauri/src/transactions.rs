@@ -52,6 +52,7 @@ async fn expense_snapshot(pool: &SqlitePool) -> Result<ExpenseReport, String> {
 }
 #[tauri::command]
 pub async fn get_expense_report(pool: tauri::State<'_, SqlitePool>) -> Result<ExpenseReport, String> {
+    let _database_operation = crate::backups::operation()?;
     expense_snapshot(pool.inner()).await
 }
 
@@ -321,6 +322,7 @@ pub async fn create_transaction(
     pool: tauri::State<'_, SqlitePool>,
     input: NewTransaction,
 ) -> Result<Transaction, String> {
+    let _database_operation = crate::backups::operation()?;
     insert(pool.inner(), input).await
 }
 #[tauri::command]
@@ -329,12 +331,14 @@ pub async fn delete_transaction(
     id: String,
     confirm_reconciled: Option<bool>,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     remove_confirmed(pool.inner(), &id, confirm_reconciled.unwrap_or(false)).await
 }
 #[tauri::command]
 pub async fn list_transactions(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<Vec<Transaction>, String> {
+    let _database_operation = crate::backups::operation()?;
     sqlx::query_as(&format!(
         "{SELECT} ORDER BY t.date DESC, t.created_at DESC, t.id DESC"
     ))

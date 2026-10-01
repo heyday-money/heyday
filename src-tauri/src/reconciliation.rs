@@ -116,6 +116,7 @@ pub async fn get_reconciliation(
     pool: tauri::State<'_, SqlitePool>,
     account_id: String,
 ) -> Result<Snapshot, String> {
+    let _database_operation = crate::backups::operation()?;
     read(pool.inner(), &account_id).await
 }
 async fn read(pool: &SqlitePool, account: &str) -> Result<Snapshot, String> {
@@ -192,6 +193,7 @@ pub async fn set_transaction_verification(
     pool: tauri::State<'_, SqlitePool>,
     input: VerificationUpdate,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     set_status(pool.inner(), input).await
 }
 
@@ -245,6 +247,7 @@ pub async fn finish_reconciliation(
     pool: tauri::State<'_, SqlitePool>,
     input: Finish,
 ) -> Result<Snapshot, String> {
+    let _database_operation = crate::backups::operation()?;
     finish(pool.inner(), input).await
 }
 

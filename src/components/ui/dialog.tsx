@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../../lib/i18n"
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { XIcon } from "lucide-react"
@@ -8,24 +9,32 @@ import { Button } from "@/components/ui/button"
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  useLanguage()
+
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
 function DialogTrigger({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+  useLanguage()
+
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
 }
 
 function DialogPortal({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
+  useLanguage()
+
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 }
 
 function DialogClose({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Close>) {
+  useLanguage()
+
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
@@ -33,6 +42,8 @@ function DialogOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+  useLanguage()
+
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
@@ -53,6 +64,8 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  useLanguage()
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -71,7 +84,7 @@ function DialogContent({
             className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{translate("Close")}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
@@ -80,6 +93,8 @@ function DialogContent({
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  useLanguage()
+
   return (
     <div
       data-slot="dialog-header"
@@ -97,6 +112,8 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  useLanguage()
+
   return (
     <div
       data-slot="dialog-footer"
@@ -109,7 +126,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          <Button variant="outline">{translate("Close")}</Button>
         </DialogPrimitive.Close>
       )}
     </div>
@@ -120,6 +137,8 @@ function DialogTitle({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+  useLanguage()
+
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
@@ -133,6 +152,8 @@ function DialogDescription({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
+  useLanguage()
+
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"

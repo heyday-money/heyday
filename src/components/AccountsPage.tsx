@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { AccountsTable } from './AccountsTable'
 import { AccountLabel } from './InstitutionLogo'
 import { useCardLimits } from '../lib/card-limits'
@@ -5,16 +6,35 @@ import { SharedCreditLimits, CardCredit } from './SharedCreditLimits'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { LayoutGrid, Table2, Pencil, Plus } from 'lucide-react'
-import { desktopAvailable, getSettings, listAccounts, loanTypes, type Account, type AccountType, type Settings } from '../lib/desktop'
+import { setAccountArchived, desktopAvailable, getSettings, listAccounts, loanTypes, type Account, type AccountType, type Settings } from '../lib/desktop'
 import { formatAmount } from '../lib/money'
 import { netWorth } from '../lib/financial'
 import { interestRateText } from '../lib/installments'
 import { AccountFormDialog, accountTypes as types } from './AccountFormDialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
 import { Button } from './ui/button'
+import { toast } from 'sonner'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog'
 
 export function AccountsPage() {
+  useLanguage()
+
   const limits = useCardLimits()
+  const [archivedAccounts, setArchivedAccounts] = useState<Account[]>([])
+  const [archiveTarget, setArchiveTarget] = useState<Account | null>(null)
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
+  function chooseArchive(account: Account) { setArchiveError(null); setArchiveTarget(account) }
+  async function saveArchive() {
+    if (!archiveTarget || archiveBusy) return
+    setArchiveBusy(true); setArchiveError(null)
+    try {
+      await setAccountArchived(archiveTarget.id, !archiveTarget.is_archived)
+      toast.success(archiveTarget.is_archived ? translate("Account restored") : translate("Account archived"))
+      setArchiveTarget(null)
+    } catch (error) { setArchiveError(String(error)) }
+    finally { setArchiveBusy(false) }
+  }
   const [closedLoans, setClosedLoans] = useState<Account[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -34,8 +54,8 @@ export function AccountsPage() {
     if (!desktopAvailable) return
     let active = true
     setLoading(true); setLoadError(false)
-    Promise.all([getSettings(), listAccounts(true)]).then(([settings, accounts]) => {
-      if (active) { setSettings(settings); setAccounts(accounts.filter(account => !account.paid_off_on)); setClosedLoans(accounts.filter(account => !!account.paid_off_on)) }
+    Promise.all([getSettings(), listAccounts(true, true)]).then(([settings, accounts]) => {
+      if (active) { setArchivedAccounts(accounts.filter(account => account.is_archived && !account.paid_off_on)); setSettings(settings); setAccounts(accounts.filter(account => !account.paid_off_on && !account.is_archived)); setClosedLoans(accounts.filter(account => !!account.paid_off_on)) }
     }).catch(() => { if (active) setLoadError(true) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [attempt])
@@ -46,50 +66,62 @@ export function AccountsPage() {
   }, [])
   const currency = settings?.currency
   return <>
+    {archiveTarget && currency && <Dialog open onOpenChange={open => { if (!open && !archiveBusy) setArchiveTarget(null) }}>
+      <DialogContent onInteractOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (archiveBusy) event.preventDefault() }} showCloseButton={!archiveBusy}>
+        <DialogHeader><DialogTitle>{archiveTarget.is_archived ? translate("Restore") : translate("Archive")} {archiveTarget.name}?</DialogTitle><DialogDescription>
+          {archiveTarget.is_archived ? translate("Restoring includes this balance in Net Worth and makes the account available for new records. Linked income and payment schedules may generate forecasts again.") : translate("Archiving excludes this balance from Net Worth, sidebar totals and generated forecasts, and prevents selecting this account for new records. This does not pay off debt or close the account with its provider.")}
+        </DialogDescription></DialogHeader>
+        <p className="text-sm">{['credit_card', 'loan'].includes(archiveTarget.type) ? translate("Outstanding balance (negative means credit)") : translate("Current balance")}: <strong>{formatAmount(archiveTarget.current_balance, currency)}</strong></p>
+        <p className="text-sm text-muted">{translate("Balances, transactions, references, reconciliation history and shared credit-limit membership remain intact. Archived card balances still count toward shared availability and remain in Credit Cards Outlook. Explicit planner entries remain; review manual rows for duplicates.")}</p>
+        {archiveTarget.type === 'loan' && <p className="text-sm text-muted">{translate("Mark as paid off is a separate action on the loan overview and requires zero balance.")}</p>}
+        {archiveError && <p role="alert" className="text-sm text-red-600">{translate(archiveError)}</p>}
+        <DialogFooter><Button variant="outline" disabled={archiveBusy} onClick={() => setArchiveTarget(null)}>{translate("Cancel")}</Button><Button disabled={archiveBusy} onClick={() => void saveArchive()}>{archiveBusy ? translate("Saving…") : archiveTarget.is_archived ? translate("Restore account") : translate("Archive account")}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>}
     {editor && currency && <AccountFormDialog account={editor.account} initialType={editor.type} currency={currency} onClose={() => setEditor(null)} onSaved={account => {
       setAccounts(current => [...current.filter(item => item.id !== account.id), account])
       if (selectedType !== 'all') setSelectedType(account.type)
     }} />}
     <div className="mb-6 flex items-start justify-between gap-4">
-      <div><h2 className="text-2xl font-semibold">A place for every account.</h2><p className="mt-2 text-[14px]">Your cash, savings, investments, and debts.</p></div>
-      <Button onClick={() => setEditor({ type: selectedType === 'all' ? 'cash' : selectedType })} type="button" disabled={!currency || loading || loadError} size="lg"><Plus size={17} />Add account</Button>
+      <div><h2 className="text-2xl font-semibold">{translate("A place for every account.")}</h2><p className="mt-2 text-[14px]">{translate("Your cash, savings, investments, and debts.")}</p></div>
+      <Button onClick={() => setEditor({ type: selectedType === 'all' ? 'cash' : selectedType })} type="button" disabled={!currency || loading || loadError} size="lg"><Plus size={17} />{translate("Add account")}</Button>
     </div>
     {currency && (selectedType === 'all' || selectedType === 'credit_card') && <SharedCreditLimits currency={currency} limits={limits} />}
-    {!desktopAvailable ? <p className="rounded-xl bg-soft p-5">Open the desktop app to manage your local accounts.</p>
-      : loading ? <p role="status">Loading accounts…</p>
-      : loadError ? <div role="alert"><p>Could not load accounts.</p><button className="mt-3 text-brand" onClick={() => setAttempt(value => value + 1)}>Try again</button></div>
-      : !currency ? <div className="rounded-2xl border border-line bg-card p-7"><h3 className="font-semibold">Choose your currency first</h3><p className="mt-2">Set the currency for all your accounts before adding a balance.</p><Link to="/settings" className="mt-4 inline-block text-brand">Go to Settings →</Link></div>
+    {!desktopAvailable ? <p className="rounded-xl bg-soft p-5">{translate("Open the desktop app to manage your local accounts.")}</p>
+      : loading ? <p role="status">{translate("Loading accounts…")}</p>
+      : loadError ? <div role="alert"><p>{translate("Could not load accounts.")}</p><button className="mt-3 text-brand" onClick={() => setAttempt(value => value + 1)}>{translate("Try again")}</button></div>
+      : !currency ? <div className="rounded-2xl border border-line bg-card p-7"><h3 className="font-semibold">{translate("Choose your currency first")}</h3><p className="mt-2">{translate("Set the currency for all your accounts before adding a balance.")}</p><Link to="/settings" className="mt-4 inline-block text-brand">{translate("Go to Settings →")}</Link></div>
       : <>
         <div className="mb-6">
-          <h3 className="text-sm font-semibold">Summary by account type</h3>
-          <p className="mt-1 text-xs text-muted">Current balances for active accounts. Overdrafts count as liabilities; card and loan credits count as assets.</p>
+          <h3 className="text-sm font-semibold">{translate("Summary by account type")}</h3>
+          <p className="mt-1 text-xs text-muted">{translate("Current balances for active accounts. Overdrafts count as liabilities; card and loan credits count as assets.")}</p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {types.map(type => {
               const group = accounts.filter(account => account.type === type.value)
               const totals = netWorth(group)
               const Icon = type.icon
-              return <div key={type.value} role="group" aria-label={`${type.groupLabel} summary`} className="min-w-0 rounded-2xl border border-line bg-card p-5">
-                <div className="flex items-center gap-2"><Icon size={18} className="shrink-0 text-brand" /><h4 className="font-semibold">{type.groupLabel}</h4><span className="ml-auto text-xs text-muted">{group.length} {group.length === 1 ? 'account' : 'accounts'}</span></div>
+              return <div key={type.value} role="group" aria-label={translate("{value0} summary", { value0: type.groupLabel })} className="min-w-0 rounded-2xl border border-line bg-card p-5">
+                <div className="flex items-center gap-2"><Icon size={18} className="shrink-0 text-brand" /><h4 className="font-semibold">{type.groupLabel}</h4><span className="ml-auto text-xs text-muted">{group.length} {group.length === 1 ? translate("account") : translate("accounts")}</span></div>
                 <dl className="mt-4">
-                  <dt className="text-xs text-muted">Net balance</dt>
+                  <dt className="text-xs text-muted">{translate("Net balance")}</dt>
                   <dd className={`mt-1 break-words text-xl font-semibold tabular-nums ${totals.total < 0n ? 'text-red-700 dark:text-red-400' : totals.total > 0n ? 'text-green-700 dark:text-green-400' : 'text-ink'}`}>{formatAmount(totals.total.toString(), currency)}</dd>
                   <div className="mt-3 grid grid-cols-2 gap-3 border-t border-line pt-3">
-                    <div className="min-w-0"><dt className="text-xs text-muted">Assets</dt><dd className="mt-1 break-words text-sm tabular-nums">{formatAmount(totals.assets.toString(), currency)}</dd></div>
-                    <div className="min-w-0"><dt className="text-xs text-muted">Liabilities</dt><dd className="mt-1 break-words text-sm tabular-nums">{formatAmount(totals.liabilities.toString(), currency)}</dd></div>
+                    <div className="min-w-0"><dt className="text-xs text-muted">{translate("Assets")}</dt><dd className="mt-1 break-words text-sm tabular-nums">{formatAmount(totals.assets.toString(), currency)}</dd></div>
+                    <div className="min-w-0"><dt className="text-xs text-muted">{translate("Liabilities")}</dt><dd className="mt-1 break-words text-sm tabular-nums">{formatAmount(totals.liabilities.toString(), currency)}</dd></div>
                   </div>
                 </dl>
               </div>
             })}
           </div>
         </div>
-        <div role="group" aria-label="Account view" className="mb-3 flex justify-end gap-2">
-          <Button type="button" variant={view === 'table' ? 'default' : 'outline'} size="sm" aria-pressed={view === 'table'} onClick={() => changeView('table')}><Table2 size={16} />Table</Button>
-          <Button type="button" variant={view === 'cards' ? 'default' : 'outline'} size="sm" aria-pressed={view === 'cards'} onClick={() => changeView('cards')}><LayoutGrid size={16} />Cards</Button>
+        <div role="group" aria-label={translate("Account view")} className="mb-3 flex justify-end gap-2">
+          <Button type="button" variant={view === 'table' ? 'default' : 'outline'} size="sm" aria-pressed={view === 'table'} onClick={() => changeView('table')}><Table2 size={16} />{translate("Table")}</Button>
+          <Button type="button" variant={view === 'cards' ? 'default' : 'outline'} size="sm" aria-pressed={view === 'cards'} onClick={() => changeView('cards')}><LayoutGrid size={16} />{translate("Cards")}</Button>
         </div>
         <Tabs value={selectedType} onValueChange={value => setSelectedType(value as AccountType | 'all')}>
           <div className="min-w-0 overflow-x-auto p-1">
-            <TabsList aria-label="Account types" className="w-max min-w-full">
-              <TabsTrigger value="all" className="min-w-max shrink-0 whitespace-nowrap">All ({accounts.length})</TabsTrigger>
+            <TabsList aria-label={translate("Account types")} className="w-max min-w-full">
+              <TabsTrigger value="all" className="min-w-max shrink-0 whitespace-nowrap">{translate("All (")}{accounts.length})</TabsTrigger>
               {types.map(item => <TabsTrigger key={item.value} value={item.value} className="min-w-max shrink-0 whitespace-nowrap">{item.groupLabel} ({accounts.filter(account => account.type === item.value).length})</TabsTrigger>)}
             </TabsList>
           </div>
@@ -97,28 +129,29 @@ export function AccountsPage() {
             const groups = types.filter(item => tab === 'all' ? accounts.some(account => account.type === item.value) : item.value === tab)
             const count = accounts.filter(account => tab === 'all' || account.type === tab).length
             return <TabsContent key={tab} value={tab}>
-              {!count ? <div className="rounded-2xl border border-line bg-card p-12 text-center"><h3 className="font-semibold">{tab === 'all' ? 'No accounts yet' : `No ${types.find(item => item.value === tab)!.label.toLowerCase()} accounts yet`}</h3><p className="mt-2 text-[14px]">Use Add account to {tab === 'all' ? 'start building your overview' : 'add one to this group'}.</p></div>
-                : view === 'table' ? <AccountsTable sortBalance={tab === 'bank' || tab === 'credit_card'} showLoanDetails={tab === 'loan'} accounts={groups.flatMap(group => accounts.filter(account => account.type === group.value))} currency={currency} limits={limits} onEdit={account => setEditor({ account, type: account.type })} />
-                : <div className="space-y-6">{groups.map(group => <section key={group.value} aria-label={`${group.groupLabel} accounts`}>
+              {!count ? <div className="rounded-2xl border border-line bg-card p-12 text-center"><h3 className="font-semibold">{tab === 'all' ? translate("No accounts yet") : translate("No {value0} accounts yet", { value0: types.find(item => item.value === tab)!.label.toLowerCase() })}</h3><p className="mt-2 text-[14px]">{translate("Use Add account to")}{" "}{tab === 'all' ? translate("start building your overview") : translate("add one to this group")}.</p></div>
+                : view === 'table' ? <AccountsTable sortBalance={tab === 'bank' || tab === 'credit_card'} showLoanDetails={tab === 'loan'} accounts={groups.flatMap(group => accounts.filter(account => account.type === group.value))} currency={currency} limits={limits} onArchive={chooseArchive} onEdit={account => setEditor({ account, type: account.type })} />
+                : <div className="space-y-6">{groups.map(group => <section key={group.value} aria-label={translate("{value0} accounts", { value0: group.groupLabel })}>
                   <h3 className="mb-3 text-sm font-semibold">{group.groupLabel} ({accounts.filter(account => account.type === group.value).length})</h3>
-                  <ul className="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1" aria-label={`${group.groupLabel} accounts`}>{accounts.filter(account => account.type === group.value).map(account => {
+                  <ul className="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1" aria-label={translate("{value0} accounts", { value0: group.groupLabel })}>{accounts.filter(account => account.type === group.value).map(account => {
             const definition = types.find(item => item.value === account.type)!
             const liability = ['credit_card', 'loan'].includes(account.type)
             return <li key={account.id} className="min-w-0 rounded-2xl border border-line bg-card p-6">
-              <div className="flex items-center gap-3"><h4 className="min-w-0 flex-1 break-words font-semibold"><AccountLabel id={account.id} name={account.name} /></h4><Button type="button" variant="ghost" size="icon" aria-label={`Edit account ${account.name}`} onClick={() => setEditor({ account, type: account.type })}><Pencil size={16} /></Button></div>
-              <p className="mt-3 text-[12px]">{account.type === 'loan' ? loanTypes.find(item => item.value === account.loan_type)?.label ?? 'Loan (unclassified)' : definition.label} · {liability ? 'Liability' : 'Asset'}{account.last_four ? ` · •••• ${account.last_four}` : ''}</p>
+              <div className="flex items-center gap-3"><h4 className="min-w-0 flex-1 break-words font-semibold"><AccountLabel id={account.id} name={account.name} /></h4><Button type="button" variant="ghost" size="icon" aria-label={translate("Edit account {value0}", { value0: account.name })} onClick={() => setEditor({ account, type: account.type })}><Pencil size={16} /></Button></div>
+              <Button className="mt-3" variant="outline" size="sm" onClick={() => chooseArchive(account)}>{translate("Archive")}</Button>
+              <p className="mt-3 text-[12px]">{account.type === 'loan' ? loanTypes.find(item => item.value === account.loan_type)?.label ?? translate("Loan (unclassified)") : definition.label} · {liability ? translate("Liability") : translate("Asset")}{account.last_four ? translate(" · •••• {value0}", { value0: account.last_four }) : ''}</p>
 
               <p className="mt-4 break-words text-[28px] font-semibold tabular-nums text-ink">{formatAmount(account.current_balance ?? account.opening_balance, currency)}</p>
-              <p className="mt-1 text-[12px]">{liability ? 'Outstanding Balance' : 'Current balance'}</p>
-              {account.type === 'loan' && <p className="mt-2 text-[13px]">Initial Loan Amount: {account.initial_loan_amount != null ? formatAmount(account.initial_loan_amount, currency) : 'Not set'}</p>}
-              {account.type === 'loan' && <p className="mt-2 text-[13px]">Monthly installment: {account.monthly_installment != null ? formatAmount(account.monthly_installment, currency) : 'Not set'}</p>}
+              <p className="mt-1 text-[12px]">{liability ? translate("Outstanding Balance") : translate("Current balance")}</p>
+              {account.type === 'loan' && <p className="mt-2 text-[13px]">{translate("Initial Loan Amount:")}{" "}{account.initial_loan_amount != null ? formatAmount(account.initial_loan_amount, currency) : translate("Not set")}</p>}
+              {account.type === 'loan' && <p className="mt-2 text-[13px]">{translate("Monthly installment:")}{" "}{account.monthly_installment != null ? formatAmount(account.monthly_installment, currency) : translate("Not set")}</p>}
               {account.type === 'credit_card' && <CardCredit id={account.id} individualLimit={account.credit_limit} balance={account.current_balance ?? account.opening_balance} currency={currency} limits={limits} />}
-              {account.statement_day !== null && <p className="mt-2 text-[13px]">Statement day: {account.statement_day}</p>}
-              {account.payment_due_day !== null && <p className="mt-2 text-[13px]">Payment due day: {account.payment_due_day}</p>}
-              {account.interest_rate_ten_thousandths !== null && <p className="mt-2 text-[13px]">Annual interest rate: {interestRateText(String(account.interest_rate_ten_thousandths), 4)}%</p>}
-              {account.type === 'loan' && <Link className="mt-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId/loans" params={{ accountId: account.id }}>Overview, contracts & transactions</Link>}
-              {account.type === 'credit_card' && <Link className="mt-4 mr-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId/billing" params={{accountId:account.id}}>Billing & payments</Link>}
-              {['bank', 'wallet', 'credit_card'].includes(account.type) && <Link className="mt-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId" params={{ accountId: account.id }}>Transactions & reconciliation</Link>}
+              {account.statement_day !== null && <p className="mt-2 text-[13px]">{translate("Statement day:")}{" "}{account.statement_day}</p>}
+              {account.payment_due_day !== null && <p className="mt-2 text-[13px]">{translate("Payment due day:")}{" "}{account.payment_due_day}</p>}
+              {account.interest_rate_ten_thousandths !== null && <p className="mt-2 text-[13px]">{translate("Annual interest rate:")}{" "}{interestRateText(String(account.interest_rate_ten_thousandths), 4)}%</p>}
+              {account.type === 'loan' && <Link className="mt-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId/loans" params={{ accountId: account.id }}>{translate("Overview, contracts & transactions")}</Link>}
+              {account.type === 'credit_card' && <Link className="mt-4 mr-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId/billing" params={{accountId:account.id}}>{translate("Billing & payments")}</Link>}
+              {['bank', 'wallet', 'credit_card'].includes(account.type) && <Link className="mt-4 inline-block text-sm font-medium text-brand" to="/accounts/$accountId" params={{ accountId: account.id }}>{translate("Transactions & reconciliation")}</Link>}
               {account.notes && <p className="mt-3 break-words whitespace-pre-wrap text-[13px]">{account.notes}</p>}
             </li>
                   })}</ul>
@@ -126,7 +159,8 @@ export function AccountsPage() {
             </TabsContent>
           })}
         </Tabs>
-        {!!closedLoans.length && <details className="mt-6 rounded-2xl border border-line p-4"><summary className="cursor-pointer font-semibold">Paid-off loans ({closedLoans.length})</summary><div className="mt-4"><AccountsTable accounts={closedLoans} currency={currency} limits={limits} onEdit={() => {}} /></div></details>}
+        {!!archivedAccounts.length && <details className="mt-6 rounded-2xl border border-line p-4"><summary className="cursor-pointer font-semibold">{translate("Archived accounts (")}{archivedAccounts.length})</summary><div className="mt-4"><AccountsTable accounts={archivedAccounts} currency={currency} limits={limits} onEdit={() => {}} onArchive={chooseArchive} /></div></details>}
+        {!!closedLoans.length && <details className="mt-6 rounded-2xl border border-line p-4"><summary className="cursor-pointer font-semibold">{translate("Paid-off loans (")}{closedLoans.length})</summary><div className="mt-4"><AccountsTable accounts={closedLoans} currency={currency} limits={limits} onEdit={() => {}} /></div></details>}
       </>}
   </>
 }

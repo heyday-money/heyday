@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Account, AccountType } from '../lib/desktop'
@@ -7,12 +8,12 @@ import { Input } from './ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover'
 
 const groups: { type: AccountType; label: string }[] = [
-  { type: 'cash', label: 'Cash' },
-  { type: 'bank', label: 'Bank' },
-  { type: 'wallet', label: 'Wallets' },
-  { type: 'credit_card', label: 'Credit cards' },
-  { type: 'loan', label: 'Loans' },
-  { type: 'investment', label: 'Investments' },
+  { type: 'cash', get label() { return translate("Cash") } },
+  { type: 'bank', get label() { return translate("Bank") } },
+  { type: 'wallet', get label() { return translate("Wallets") } },
+  { type: 'credit_card', get label() { return translate("Credit cards") } },
+  { type: 'loan', get label() { return translate("Loans") } },
+  { type: 'investment', get label() { return translate("Investments") } },
 ]
 const normalize = (value: string) => value.trim().replace(/\s+/gu, ' ').toLowerCase()
 
@@ -23,6 +24,8 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
   disabled?: boolean
   onChange: (value: string) => void
 }) {
+  useLanguage()
+
   const directory = useInstitutions()
   const listId = useId()
   const input = useRef<HTMLInputElement>(null)
@@ -45,7 +48,7 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
     onChange(account.id); setOpen(false); input.current?.focus()
   }
   useEffect(() => {
-    input.current?.setCustomValidity(selected ? '' : 'Choose an account from the list.')
+    input.current?.setCustomValidity(selected ? '' : translate("Choose an account from the list."))
   }, [selected])
   useEffect(() => {
     if (!open || index < 0) return
@@ -64,7 +67,7 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
       <span className="pointer-events-none absolute top-2 left-2"><InstitutionLogo institution={institution(value)} name={selected?.name ?? ''} /></span>
       <Input id={id} ref={input} className="pr-8 pl-9" role="combobox" aria-autocomplete="list" aria-expanded={open}
         aria-controls={open ? listId : undefined} aria-activedescendant={open && index >= 0 ? `${listId}-${choices[index].id}` : undefined}
-        aria-required="true" disabled={disabled} autoComplete="off" placeholder="Search accounts" title={selected?.name}
+        aria-required="true" disabled={disabled} autoComplete="off" placeholder={translate("Search accounts")} title={selected?.name}
         value={open ? query : selected?.name ?? ''}
         onClick={() => { if (!open) show() }}
         onChange={event => { setQuery(event.target.value); setActive(0); setOpen(true) }}
@@ -80,7 +83,7 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
         }} />
       <ChevronDown className="pointer-events-none absolute top-2.5 right-2 size-4 text-muted" aria-hidden="true" />
     </div></PopoverAnchor>
-    <PopoverContent id={listId} role="listbox" aria-label="Accounts"
+    <PopoverContent id={listId} role="listbox" aria-label={translate("Accounts")}
       className="max-h-[min(13rem,var(--radix-popover-content-available-height))] w-[var(--radix-popover-trigger-width)] overflow-y-auto overscroll-contain p-1"
       onOpenAutoFocus={event => event.preventDefault()}
       onCloseAutoFocus={event => event.preventDefault()}
@@ -94,7 +97,7 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
           <InstitutionLogo institution={institution(account.id)} name={account.name} /><span className="min-w-0 break-words">{account.name}</span>
         </div>)}
       </div>)}
-      {!choices.length && <p role="status" className="px-2 py-3 text-sm text-muted">No matching accounts.</p>}
+      {!choices.length && <p role="status" className="px-2 py-3 text-sm text-muted">{translate("No matching accounts.")}</p>}
     </PopoverContent>
   </div></Popover>
 }

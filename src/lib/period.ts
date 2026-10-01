@@ -1,3 +1,4 @@
+import { getLocale } from "./i18n"
 // Use local calendar dates, with an exclusive next-start boundary.
 export function currentPeriod(day: number, today = new Date()) {
   if (!Number.isInteger(day) || day < 1 || day > 31) throw new Error('Invalid period start day')
@@ -12,6 +13,6 @@ export function currentPeriod(day: number, today = new Date()) {
 export function periodLabel(day: number, today = new Date()) {
   const { start, end } = currentPeriod(day, today)
   const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1)
-  const format = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  const format = new Intl.DateTimeFormat(getLocale(), { month: 'short', day: 'numeric', year: 'numeric' })
   return `${format.format(start)} – ${format.format(lastDay)}`
 }

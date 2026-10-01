@@ -1,8 +1,11 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { useEffect, useRef, useState, type ComponentProps } from 'react'
 import { NativeSelect } from './ui/native-select'
 import { useInstitutions } from './InstitutionProvider'
 import { InstitutionLogo } from './InstitutionLogo'
 export function AccountSelect({ value, defaultValue, onChange, children, className, accountIds, ...props }: ComponentProps<typeof NativeSelect> & { accountIds?: Record<string, string> }) {
+  useLanguage()
+
   const directory = useInstitutions()
   const select = useRef<HTMLSelectElement>(null)
   const [selected, setSelected] = useState(String(defaultValue ?? ''))

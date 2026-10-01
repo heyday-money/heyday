@@ -132,6 +132,7 @@ pub async fn install_app_update(
     pool: tauri::State<'_, SqlitePool>,
     version: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     if cfg!(debug_assertions) || !cfg!(target_os = "macos") {
         return Err("Installation is available only in installed macOS release builds.".into());
     }
