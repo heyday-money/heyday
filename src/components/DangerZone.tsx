@@ -40,7 +40,7 @@ export function DangerZone({ disabled = false }: { disabled?: boolean }) {
     window.location.reload()
   }
 
-  return <section className="mt-6 rounded-[22px] border border-red-500/40 bg-card p-[27px]" aria-labelledby="danger-zone-title">
+  return <section className="mt-6 rounded-2xl border border-red-500/40 bg-card p-6" aria-labelledby="danger-zone-title">
     <h3 id="danger-zone-title" className="text-lg font-semibold text-red-600 dark:text-red-400">Danger Zone</h3>
     <p className="mt-2 text-sm text-muted">Permanently delete all financial data and reset currency and payday settings. This cannot be undone.</p>
     <Button className="mt-4" variant="destructive" disabled={!desktopAvailable || disabled} onClick={() => { setConfirmation(''); setError(null); setOpen(true) }}>Clear all data</Button>

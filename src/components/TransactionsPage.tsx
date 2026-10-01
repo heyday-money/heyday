@@ -100,7 +100,7 @@ export function TransactionsPage() {
   const clearFilters = () => { setFilter(''); setTypeFilter(''); setPayeeFilter(''); setCategoryFilter('') }
   return <>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div><h2 className="text-[25px] font-semibold">Your money in motion.</h2><p className="mt-2 text-sm">Record actual activity. Saved transactions update your account balances.</p></div>
+        <div><h2 className="text-2xl font-semibold">Your money in motion.</h2><p className="mt-2 text-sm">Record actual activity. Saved transactions update your account balances.</p></div>
       </div>
       {!desktopAvailable ? <p className="rounded-xl bg-soft p-5">Open the desktop app to manage your local transactions.</p>
         : loading ? <p role="status">Loading transactions…</p>
@@ -121,7 +121,7 @@ export function TransactionsPage() {
           </div>
           <p className="mb-5 text-xs">Income is money in; expenses are money out. Transfers and repayments move money between your accounts.{filter && ' Transfer in/out shows the direction for the selected account.'}</p>
           <p className="mb-5 rounded-xl bg-soft p-4 text-sm" aria-label="Filtered spending">Spending in these results: <strong>{formatAmount(spending.toString(), currency)}</strong><span className="mt-1 block text-xs">All recorded dates, matching the selected filters. Expenses only; transfers and repayments are excluded.</span></p>
-          {!visible.length ? <div className="rounded-[22px] border border-line bg-card p-10 text-center"><h3 className="font-semibold">{records.length ? 'No matching transactions' : 'No transactions yet'}</h3><p className="mt-2 text-sm">{records.length ? 'Try different filters, or clear them to see all transactions.' : 'Record a payment, purchase, transfer, or repayment. Expected income stays separate.'}</p></div>
+          {!visible.length ? <div className="rounded-2xl border border-line bg-card p-10 text-center"><h3 className="font-semibold">{records.length ? 'No matching transactions' : 'No transactions yet'}</h3><p className="mt-2 text-sm">{records.length ? 'Try different filters, or clear them to see all transactions.' : 'Record a payment, purchase, transfer, or repayment. Expected income stays separate.'}</p></div>
             : <DataTable table={table} label="Transaction history" className="min-w-[960px] text-[13px]" headerClassName="border-b border-line bg-soft text-xs text-muted" bodyClassName="divide-y divide-line" rowClassName="hover:bg-soft/40" />}
         </>}
     <Dialog open={!!deleting} onOpenChange={next => { if (!next && !saving) { setDeleting(null); setError(null) } }}>

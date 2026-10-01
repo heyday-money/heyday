@@ -35,7 +35,7 @@ function SubscriptionsTable({ data, today, loading }: { data: FinancialData; tod
     return { ...subscription, next: available ? next : null, status: !subscription.is_active ? 'Paused' : !available ? 'Account unavailable' : !next ? 'Schedule ended' : subscription.first_billing_date > todayString ? 'Scheduled' : 'Active' }
   }), [data.subscriptions, data.accounts, todayString])
   const columns = useMemo<ColumnDef<typeof rows[number]>[]>(() => {
-    const meta = { headerClassName: 'px-4 py-3 font-semibold whitespace-nowrap', cellClassName: 'px-4 py-4 align-top' }
+    const meta = { headerClassName: 'px-4 py-3 font-semibold whitespace-nowrap', cellClassName: 'px-4 py-3 align-top' }
     return [
       { id: 'name', header: 'Subscription', meta: { ...meta, rowHeader: true, cellClassName: `${meta.cellClassName} min-w-40 max-w-60 break-words font-medium` }, cell: ({ row }) => row.original.name },
       { id: 'amount', header: 'Amount per charge', meta: { headerClassName: `${meta.headerClassName} text-right`, cellClassName: `${meta.cellClassName} text-right whitespace-nowrap tabular-nums font-semibold` }, cell: ({ row }) => formatAmount(row.original.amount, currency) },
@@ -58,7 +58,7 @@ function SubscriptionsTable({ data, today, loading }: { data: FinancialData; tod
   }
   const canAdd = data.accounts.some(account => ['cash', 'bank', 'wallet', 'credit_card'].includes(account.type))
   return <section className="min-w-0" aria-labelledby="subscriptions-title">
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h2 id="subscriptions-title" className="text-[25px] font-semibold">Subscription plans</h2><p className="mt-2 text-sm">Keep track of recurring services and their next scheduled charge.</p></div><Button disabled={!canAdd || loading} onClick={() => setEditing({})}><Plus size={16} />Add subscription</Button></div>
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h2 id="subscriptions-title" className="text-2xl font-semibold">Subscription plans</h2><p className="mt-2 text-sm">Keep track of recurring services and their next scheduled charge.</p></div><Button disabled={!canAdd || loading} onClick={() => setEditing({})}><Plus size={16} />Add subscription</Button></div>
     {!canAdd && <p className="mb-4 text-sm">Add a cash, bank, digital wallet, or credit card account in <Link to="/accounts" className="text-brand">Accounts</Link> to create a subscription.</p>}
     {rows.length ? <DataTable table={table} label="Subscription plans" className="min-w-[1100px]" headerClassName="border-b border-line bg-soft text-xs text-muted" bodyClassName="divide-y divide-line" busy={loading} /> : <p className="rounded-2xl border border-line bg-card p-6">No subscriptions yet. Add your first recurring service.</p>}
     <p className="mt-3 text-xs">These are schedules, not confirmed payments. Record charges separately in Transactions. Pausing or removing a plan here does not cancel the service with its provider.</p>

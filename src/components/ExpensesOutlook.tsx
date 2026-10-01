@@ -63,7 +63,7 @@ export function ExpensesOutlook() {
       ['Selected cycle spending', money(result.current)],
       ['Previous cycle spending', result.previous === null ? 'Unavailable' : money(result.previous)],
       ['Change from previous cycle', result.difference === null ? 'Unavailable' : `${result.difference > 0n ? '+' : ''}${money(result.difference)}`],
-    ].map(([label, value]) => <div key={label} className="rounded-2xl border border-line bg-card p-4"><p className="text-sm text-muted">{label}</p><p className="mt-2 break-words text-xl font-semibold tabular-nums">{value}</p></div>)}</div>
+    ].map(([label, value]) => <div key={label} className="rounded-2xl border border-line bg-card p-4"><p className="text-sm text-muted">{label}</p><p className="mt-2 break-words text-xl font-semibold tabular-nums text-ink">{value}</p></div>)}</div>
     <p className="text-sm">{result.transactionCount} recorded expense{result.transactionCount === 1 ? '' : 's'} in the selected cycle. The table compares this cycle with up to six earlier cycles. Expand a category for transactions across the displayed periods.</p>
     <ExpenseTable result={result} currency={data.settings.currency} day={data.settings.period_start_day} loading={loading} />
     {!result.rows.length && <p className="rounded-xl bg-soft p-4">No recorded expenses match these accounts, methods and periods.</p>}

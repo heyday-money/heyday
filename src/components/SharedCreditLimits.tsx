@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 export function SharedCreditLimits({ currency, limits }: { currency: string; limits: ReturnType<typeof useCardLimits> }) {
   const [editing, setEditing] = useState<CardLimitGroup | 'new' | null>(null)
-  return <section className="my-5 rounded-[22px] border border-line bg-card p-5" aria-label="Shared credit limits">
+  return <section className="my-5 rounded-2xl border border-line bg-card p-5" aria-label="Shared credit limits">
     <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold">Shared credit limits</h3><Button disabled={limits.loading || limits.error} onClick={() => setEditing('new')}>Add shared limit</Button></div>
     <p className="mt-2 text-sm">Group cards that share one credit limit. Billing and payments stay separate. Repayments and overpayments restore shared availability, which can exceed the limit. Estimates exclude pending authorizations and issuer holds.</p>
     {limits.loading ? <p role="status">Loading shared limits…</p> : limits.error ? <p role="alert">Could not load shared limits. <Button variant="outline" onClick={() => void limits.reload()}>Retry</Button></p> : <ul className="mt-3 space-y-3">{limits.data.groups.map(group => {

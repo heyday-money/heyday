@@ -1,3 +1,5 @@
+import { Button } from './ui/button'
+import { NativeSelect } from './ui/native-select'
 import { useState } from 'react'
 import { updateCurrency, type Settings } from '../lib/desktop'
 import { currencies } from '../lib/money'
@@ -13,15 +15,16 @@ export function CurrencySetting({ settings, onChange }: { settings: Settings; on
     catch (error) { setError(typeof error === 'string' ? error : 'Could not save currency. Please try again.') }
     finally { setBusy(false) }
   }}>
-    <div className="flex items-center justify-between gap-5 text-[14px]">
+    <h3 className="text-base font-semibold">Currency</h3>
+    <div className="mt-4 flex items-center justify-between gap-5 text-sm">
       <label htmlFor="currency">Currency</label>
-      <select id="currency" required disabled={busy} value={currency} onChange={event => { setCurrency(event.target.value); setError(null) }} className="rounded-[9px] border border-line bg-page px-3 py-2 text-ink">
+      <div className="w-40 shrink-0"><NativeSelect id="currency" required disabled={busy} value={currency} onChange={event => { setCurrency(event.target.value); setError(null) }}>
         <option value="" disabled>Select currency</option>
         {currencies.map(code => <option key={code}>{code}</option>)}
-      </select>
+      </NativeSelect></div>
     </div>
     <p className="mt-3 text-[13px]">Used for all accounts and income. Once you add financial records, the currency is locked.</p>
-    <button className="mt-4 rounded-[10px] bg-brand px-4 py-2.5 text-[12px] font-semibold text-white" disabled={busy || !currency || currency === settings.currency}>{busy ? 'Saving…' : 'Save currency'}</button>
+    <Button className="mt-4" disabled={busy || !currency || currency === settings.currency}>{busy ? 'Saving…' : 'Save currency'}</Button>
     {error && <p className="mt-3 text-[14px]" role="alert">{error}</p>}
   </form>
 }

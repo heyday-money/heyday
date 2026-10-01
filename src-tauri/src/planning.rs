@@ -169,7 +169,7 @@ async fn snapshot(pool: &SqlitePool) -> Result<FinancialData, String> {
         .fetch_all(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
-    let transactions = sqlx::query_as(crate::transactions::SELECT)
+    let transactions = sqlx::query_as(&format!("{} ORDER BY t.date DESC, t.created_at DESC, t.id DESC", crate::transactions::SELECT))
         .fetch_all(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;

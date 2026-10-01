@@ -3,6 +3,9 @@ import type { NewTransaction, Transaction, SaveTransactionOption, TransactionOpt
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
+    const uiErrors: string[] = []
+    Object.assign(window, { uiErrors })
+    window.addEventListener('error', event => uiErrors.push(event.message))
     Object.defineProperty(window, 'isTauri', { value: true })
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: NewTransaction & SaveTransactionOption; id: string }) => {
       const rows = (): Transaction[] => JSON.parse(localStorage.getItem('transactions') ?? '[]')
@@ -491,4 +494,9 @@ test('account search groups choices, supports keyboards, and restricts destinati
   await destination.press('Enter')
   await page.getByRole('button', { name: 'Save transaction', exact: true }).click()
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('transactions')!)[0])).toMatchObject({ account_id: 'bank', destination_account_id: 'card', type: 'repayment' })
+})
+
+// Layout errors must be caught even when Vite handles the window error event.
+test.afterEach(async ({ page }) => {
+  expect(await page.evaluate(() => (window as Window & { uiErrors?: string[] }).uiErrors ?? [])).toEqual([])
 })

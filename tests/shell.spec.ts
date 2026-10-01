@@ -27,7 +27,7 @@ test('dashboard navigation, preferences, and native-only settings', async ({ pag
   await expect(page.getByText('Open the desktop app to access your local settings.')).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Make Heyday yours.' })).toBeVisible()
-  await page.getByLabel('Theme', { exact: true }).selectOption('dark')
+  await page.getByRole('radio', { name: 'Dark', exact: true }).check()
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.getByRole('button', { name: 'Expand sidebar' }).click()

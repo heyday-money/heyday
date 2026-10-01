@@ -41,7 +41,8 @@ test('cycle amounts, opening cash, comparison columns and item edits survive rel
   await expect(page.getByLabel('First visible cycle')).toHaveValue('2026-12')
   await expect(page.getByRole('columnheader').nth(1)).toContainText('25 Dec 2026 – 24 Jan 2027')
   await expect(page.getByRole('columnheader', { name: /^Jun 2027/ })).toBeVisible()
-  await expect(page.getByText('Enter opening cash and its initial cycle')).toBeVisible()
+  await expect(page.getByText('Enter opening cash and its initial cycle')).toHaveCount(0)
+  await expect(page.getByText('Forecast is your full-cycle estimate.')).toHaveCount(0)
   await page.getByRole('button', { name: 'Edit Salary 2026-12 amount', exact: true }).click()
   await page.getByLabel('Cycle amount (THB)').fill('50000')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -68,8 +69,8 @@ test('cycle amounts, opening cash, comparison columns and item edits survive rel
   await expect(content).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await page.evaluate(() => document.documentElement.dataset.theme = 'dark')
   await page.getByRole('button', { name: 'Help: Main salary', exact: true }).hover()
-  await expect(content).toHaveCSS('background-color', 'rgb(43, 46, 51)')
-  await expect(content).toHaveCSS('color', 'rgb(246, 245, 239)')
+  await expect(content).toHaveCSS('background-color', 'rgb(34, 34, 37)')
+  await expect(content).toHaveCSS('color', 'rgb(244, 244, 245)')
   await page.evaluate(() => document.documentElement.dataset.theme = 'light')
   await page.keyboard.press('Escape')
   await expect(page.getByRole('tooltip')).toHaveCount(0)
@@ -79,7 +80,7 @@ test('cycle amounts, opening cash, comparison columns and item edits survive rel
     page.getByRole('link', { name: 'Manage salary deductions in Income', exact: true }),
   ]) {
     await control.hover()
-    await expect(control).toHaveCSS('color', 'rgb(246, 245, 239)')
+    await expect(control).toHaveCSS('color', 'rgb(244, 244, 245)')
   }
   await page.evaluate(() => document.documentElement.dataset.theme = 'light')
   await expect(page.getByLabel('Status 2026-12')).toHaveCount(0)
@@ -143,7 +144,7 @@ test('Income rows are queried, allow cycle overrides, and still allow extra inco
   await salaryLink.hover()
   await expect(salaryLink).toHaveCSS('border-bottom-style', 'dashed')
   await expect(salaryLink).toHaveCSS('border-bottom-width', '1px')
-  await expect(salaryLink).toHaveCSS('border-bottom-color', 'rgb(33, 37, 41)')
+  await expect(salaryLink).toHaveCSS('border-bottom-color', 'rgb(36, 33, 43)')
   await page.evaluate(() => document.documentElement.dataset.theme = 'dark')
   await expect(salaryLink).toHaveCSS('border-bottom-color', 'rgb(255, 255, 255)')
   await page.mouse.move(0, 0)

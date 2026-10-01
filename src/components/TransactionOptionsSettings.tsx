@@ -71,7 +71,7 @@ export function TransactionOptionsSettings({ kind }: { kind: TransactionOptionKi
   }
   return <div className="space-y-5">
     <p className="text-sm">Manage the payees and categories available when recording an expense. Renaming updates history labels; archiving hides an option from new expenses and preserves its history.</p>
-    {loading ? <p role="status">Loading payees and categories…</p> : loadError ? <div role="alert">Could not load payees and categories. <Button variant="outline" onClick={() => setAttempt(value => value + 1)}>Retry lists</Button></div> : groups.filter(group => group.kind === kind).map(group => <section key={group.kind} aria-label={group.title} className="rounded-[22px] border border-line bg-card p-6">
+    {loading ? <p role="status">Loading payees and categories…</p> : loadError ? <div role="alert">Could not load payees and categories. <Button variant="outline" onClick={() => setAttempt(value => value + 1)}>Retry lists</Button></div> : groups.filter(group => group.kind === kind).map(group => <section key={group.kind} aria-label={group.title} className="rounded-2xl border border-line bg-card p-6">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{group.title}</h2><Button disabled={saving || logoBusy} onClick={() => start(group.kind)}>Add {group.label}</Button></div>
       <p className="mt-2 text-sm">{group.description}</p>
       {!options[group.key].length ? <p className="mt-4 text-sm">No {group.key} yet. Add your first {group.label}.</p> : <ul className="mt-4 divide-y divide-line" aria-label={group.title}>{options[group.key].map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">

@@ -20,7 +20,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/billing', component: CardBillingPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/loans', component: LoanAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/outlook', component: MonthlyOutlook }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/outlook', validateSearch: (search: Record<string, unknown>): { view?: 'planner' | 'accounts' | 'expenses' | 'cards' } => ({ view: ['planner', 'accounts', 'expenses', 'cards'].includes(String(search.view)) ? search.view as 'planner' | 'accounts' | 'expenses' | 'cards' : undefined }), component: MonthlyOutlook }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: NetWorthPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', validateSearch: (search: Record<string, unknown>): { reconcile?: boolean } => ({ reconcile: search.reconcile === true || search.reconcile === 'true' ? true : undefined }), component: AccountTransactionsPage }),

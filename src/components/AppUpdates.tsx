@@ -27,7 +27,7 @@ export function AppUpdates({ version, disabled }: { version: string; disabled: b
       setInstalling(false)
     }
   }
-  return <section className="mt-6 rounded-[22px] border border-line bg-card p-[27px]" aria-labelledby="updates-title">
+  return <section className="mt-6 rounded-2xl border border-line bg-card p-6" aria-labelledby="updates-title">
     <h3 id="updates-title" className="text-lg font-semibold">App Updates</h3>
     <p className="mt-2 text-sm text-muted">Installed version: {version}. Updates come from heyday-money/heyday on GitHub.</p>
     <Button className="mt-4" variant="outline" disabled={!desktopAvailable || disabled || checking || installing} onClick={check}>{checking ? 'Checking…' : 'Check for Updates'}</Button>

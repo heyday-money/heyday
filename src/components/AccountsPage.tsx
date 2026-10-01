@@ -51,14 +51,14 @@ export function AccountsPage() {
       if (selectedType !== 'all') setSelectedType(account.type)
     }} />}
     <div className="mb-6 flex items-start justify-between gap-4">
-      <div><h2 className="text-[25px] font-[650]">A place for every account.</h2><p className="mt-2 text-[14px]">Your cash, savings, investments, and debts.</p></div>
+      <div><h2 className="text-2xl font-semibold">A place for every account.</h2><p className="mt-2 text-[14px]">Your cash, savings, investments, and debts.</p></div>
       <Button onClick={() => setEditor({ type: selectedType === 'all' ? 'cash' : selectedType })} type="button" disabled={!currency || loading || loadError} size="lg"><Plus size={17} />Add account</Button>
     </div>
     {currency && (selectedType === 'all' || selectedType === 'credit_card') && <SharedCreditLimits currency={currency} limits={limits} />}
     {!desktopAvailable ? <p className="rounded-xl bg-soft p-5">Open the desktop app to manage your local accounts.</p>
       : loading ? <p role="status">Loading accounts…</p>
       : loadError ? <div role="alert"><p>Could not load accounts.</p><button className="mt-3 text-brand" onClick={() => setAttempt(value => value + 1)}>Try again</button></div>
-      : !currency ? <div className="rounded-[22px] border border-line bg-card p-7"><h3 className="font-semibold">Choose your currency first</h3><p className="mt-2">Set the currency for all your accounts before adding a balance.</p><Link to="/settings" className="mt-4 inline-block text-brand">Go to Settings →</Link></div>
+      : !currency ? <div className="rounded-2xl border border-line bg-card p-7"><h3 className="font-semibold">Choose your currency first</h3><p className="mt-2">Set the currency for all your accounts before adding a balance.</p><Link to="/settings" className="mt-4 inline-block text-brand">Go to Settings →</Link></div>
       : <>
         <div className="mb-6">
           <h3 className="text-sm font-semibold">Summary by account type</h3>
@@ -68,7 +68,7 @@ export function AccountsPage() {
               const group = accounts.filter(account => account.type === type.value)
               const totals = netWorth(group)
               const Icon = type.icon
-              return <div key={type.value} role="group" aria-label={`${type.groupLabel} summary`} className="min-w-0 rounded-[22px] border border-line bg-card p-5">
+              return <div key={type.value} role="group" aria-label={`${type.groupLabel} summary`} className="min-w-0 rounded-2xl border border-line bg-card p-5">
                 <div className="flex items-center gap-2"><Icon size={18} className="shrink-0 text-brand" /><h4 className="font-semibold">{type.groupLabel}</h4><span className="ml-auto text-xs text-muted">{group.length} {group.length === 1 ? 'account' : 'accounts'}</span></div>
                 <dl className="mt-4">
                   <dt className="text-xs text-muted">Net balance</dt>
@@ -97,18 +97,18 @@ export function AccountsPage() {
             const groups = types.filter(item => tab === 'all' ? accounts.some(account => account.type === item.value) : item.value === tab)
             const count = accounts.filter(account => tab === 'all' || account.type === tab).length
             return <TabsContent key={tab} value={tab}>
-              {!count ? <div className="rounded-[22px] border border-line bg-card p-12 text-center"><h3 className="font-semibold">{tab === 'all' ? 'No accounts yet' : `No ${types.find(item => item.value === tab)!.label.toLowerCase()} accounts yet`}</h3><p className="mt-2 text-[14px]">Use Add account to {tab === 'all' ? 'start building your overview' : 'add one to this group'}.</p></div>
+              {!count ? <div className="rounded-2xl border border-line bg-card p-12 text-center"><h3 className="font-semibold">{tab === 'all' ? 'No accounts yet' : `No ${types.find(item => item.value === tab)!.label.toLowerCase()} accounts yet`}</h3><p className="mt-2 text-[14px]">Use Add account to {tab === 'all' ? 'start building your overview' : 'add one to this group'}.</p></div>
                 : view === 'table' ? <AccountsTable sortBalance={tab === 'bank' || tab === 'credit_card'} showLoanDetails={tab === 'loan'} accounts={groups.flatMap(group => accounts.filter(account => account.type === group.value))} currency={currency} limits={limits} onEdit={account => setEditor({ account, type: account.type })} />
                 : <div className="space-y-6">{groups.map(group => <section key={group.value} aria-label={`${group.groupLabel} accounts`}>
                   <h3 className="mb-3 text-sm font-semibold">{group.groupLabel} ({accounts.filter(account => account.type === group.value).length})</h3>
                   <ul className="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1" aria-label={`${group.groupLabel} accounts`}>{accounts.filter(account => account.type === group.value).map(account => {
             const definition = types.find(item => item.value === account.type)!
             const liability = ['credit_card', 'loan'].includes(account.type)
-            return <li key={account.id} className="min-w-0 rounded-[22px] border border-line bg-card p-6">
+            return <li key={account.id} className="min-w-0 rounded-2xl border border-line bg-card p-6">
               <div className="flex items-center gap-3"><h4 className="min-w-0 flex-1 break-words font-semibold"><AccountLabel id={account.id} name={account.name} /></h4><Button type="button" variant="ghost" size="icon" aria-label={`Edit account ${account.name}`} onClick={() => setEditor({ account, type: account.type })}><Pencil size={16} /></Button></div>
               <p className="mt-3 text-[12px]">{account.type === 'loan' ? loanTypes.find(item => item.value === account.loan_type)?.label ?? 'Loan (unclassified)' : definition.label} · {liability ? 'Liability' : 'Asset'}{account.last_four ? ` · •••• ${account.last_four}` : ''}</p>
 
-              <p className="mt-4 break-words text-[23px] font-semibold text-ink">{formatAmount(account.current_balance ?? account.opening_balance, currency)}</p>
+              <p className="mt-4 break-words text-[28px] font-semibold tabular-nums text-ink">{formatAmount(account.current_balance ?? account.opening_balance, currency)}</p>
               <p className="mt-1 text-[12px]">{liability ? 'Outstanding Balance' : 'Current balance'}</p>
               {account.type === 'loan' && <p className="mt-2 text-[13px]">Initial Loan Amount: {account.initial_loan_amount != null ? formatAmount(account.initial_loan_amount, currency) : 'Not set'}</p>}
               {account.type === 'loan' && <p className="mt-2 text-[13px]">Monthly installment: {account.monthly_installment != null ? formatAmount(account.monthly_installment, currency) : 'Not set'}</p>}
