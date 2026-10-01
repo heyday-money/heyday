@@ -116,6 +116,7 @@ pub async fn list_income_deductions(
     pool: tauri::State<'_, SqlitePool>,
     income_id: String,
 ) -> Result<Vec<IncomeDeduction>, String> {
+    let _database_operation = crate::backups::operation()?;
     sqlx::query_as(&format!("{SELECT} WHERE income_id=? ORDER BY rowid"))
         .bind(income_id)
         .fetch_all(pool.inner())
@@ -164,6 +165,7 @@ pub async fn save_salary_deductions(
     pool: tauri::State<'_, SqlitePool>,
     input: SaveSalaryDeductions,
 ) -> Result<crate::incomes::Income, String> {
+    let _database_operation = crate::backups::operation()?;
     save(pool.inner(), input).await
 }
 

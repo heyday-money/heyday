@@ -138,12 +138,14 @@ pub async fn save_transaction_option(
     pool: tauri::State<'_, SqlitePool>,
     input: SaveOption,
 ) -> Result<TransactionOption, String> {
+    let _database_operation = crate::backups::operation()?;
     save(pool.inner(), input).await
 }
 #[tauri::command]
 pub async fn list_transaction_options(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<TransactionOptions, String> {
+    let _database_operation = crate::backups::operation()?;
     let payees = sqlx::query_as(
         "SELECT id, name, is_archived, logo_asset_id FROM payees ORDER BY is_archived, name COLLATE NOCASE, id",
     )

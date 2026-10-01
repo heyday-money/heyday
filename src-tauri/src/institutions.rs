@@ -133,6 +133,7 @@ pub async fn resolve(
 pub async fn list_institutions(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<InstitutionDirectory, String> {
+    let _database_operation = crate::backups::operation()?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let institutions =
         sqlx::query_as("SELECT * FROM institutions ORDER BY is_archived,name COLLATE NOCASE,id")
@@ -151,6 +152,7 @@ pub async fn list_institutions(
 }
 #[tauri::command]
 pub async fn delete_institution(pool: tauri::State<'_, SqlitePool>, id: String) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     delete(pool.inner(), &id).await
 }
 
@@ -176,6 +178,7 @@ pub async fn save_institution(
     pool: tauri::State<'_, SqlitePool>,
     input: SaveInstitution,
 ) -> Result<Institution, String> {
+    let _database_operation = crate::backups::operation()?;
     save(pool.inner(), input).await
 }
 

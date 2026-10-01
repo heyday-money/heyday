@@ -1,3 +1,5 @@
+import { t as translate } from "./i18n"
+import { getLocale } from "./i18n"
 import { localToday, cardForecasts, installmentCovered, type CardBillingData } from './card-billing'
 import { loanSchedule, type LoanContract, type LoanFacility } from './loans'
 import { invoke } from '@tauri-apps/api/core'
@@ -90,10 +92,10 @@ export function boundary(month: string, day: number) {
 export function cycleLabel(month: string, day: number) {
   const start = boundary(month, day), end = boundary(addMonths(month, 1), day)
   end.setDate(end.getDate() - 1)
-  const format = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const format = new Intl.DateTimeFormat(getLocale(), { day: 'numeric', month: 'short', year: 'numeric' })
   return `${format.format(start)} – ${format.format(end)}`
 }
-export const monthLabel = (month: string) => boundary(month, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+export const monthLabel = (month: string) => boundary(month, 1).toLocaleDateString(getLocale(), { month: 'short', year: 'numeric' })
 export function parsePlannerAmount(value: string, signed = false) {
   const amount = decimalToInteger(value, 2)
   if (!signed && BigInt(amount) < 0n) throw new Error('Amount cannot be negative.')
@@ -105,7 +107,7 @@ export function editableSatang(value: string | null) {
   return `${amount < 0n ? '-' : ''}${abs / 100n}.${(abs % 100n).toString().padStart(2, '0')}`
 }
 export function plannerMoney(amount: bigint | null) {
-  if (amount === null) return 'Unavailable'
+  if (amount === null) return translate('Unavailable')
   const abs = amount < 0n ? -amount : amount
   return `${amount < 0n ? '−' : ''}${(abs / 100n).toLocaleString('en-US')}.${(abs % 100n).toString().padStart(2, '0')}`
 }
@@ -116,7 +118,7 @@ export function scheduledAmount(item: PlannerItem, month: string): bigint | null
 export function plannerItems(data: PlannerData): PlannerItem[] {
   const sources: PlannerItem[] = data.source_currency === 'THB' ? data.incomes.map(income => ({
     id: `income:${income.id}`, category_id: 'income', name: income.name,
-    description: `Income source · monthly on day ${income.recurrence_day_of_month} · ${income.destination_account_name}${!income.is_active ? ' · Inactive' : income.account_archived ? ' · Account unavailable' : ''}`,
+    description: translate("Income source · monthly on day {value0} · {value1}{value2}", { value0: income.recurrence_day_of_month, value1: income.destination_account_name, value2: (!income.is_active ? translate(" · Inactive") : (income.account_archived ? translate(" · Account unavailable") : '')) }),
     card_name: '', transaction_category_id: null, schedule_amount: null, schedule_start: null, schedule_end: null, income,
   })) : []
   const linked: PlannerItem[] = []
@@ -127,21 +129,21 @@ export function plannerItems(data: PlannerData): PlannerItem[] {
       if (!salary) continue
       linked.push({ ...defaults, id: `deduction:${deduction.id}`, category_id: 'deductions', name: `${salary.name} · ${deduction.name}`, deduction,
         income: { ...salary, estimated_amount: deduction.amount },
-        description: `${deduction.description || deduction.name}. ${deduction.debt_account_id ? `Linked debt: ${deduction.debt_account_name ?? "Unavailable account"}. Expected payroll repayment; actual debt balance is unchanged. ` : ""}Deducted per salary payment, monthly on day ${salary.recurrence_day_of_month}. ${!salary.is_active ? 'Inactive salary; estimates excluded.' : salary.account_archived ? 'Destination unavailable; estimates excluded.' : ''} Gross salary remains in Gross Income; this amount is subtracted once here. Manage this deduction on Income.` })
+        description: translate("{value0}. {value1}Deducted per salary payment, monthly on day {value2}. {value3} Gross salary remains in Gross Income; this amount is subtracted once here. Manage this deduction on Income.", { value0: deduction.description || deduction.name, value1: (deduction.debt_account_id ? translate("Linked debt: {value0}. Expected payroll repayment; actual debt balance is unchanged. ", { value0: deduction.debt_account_name ?? "Unavailable account" }) : ""), value2: salary.recurrence_day_of_month, value3: (!salary.is_active ? translate("Inactive salary; estimates excluded.") : (salary.account_archived ? translate("Destination unavailable; estimates excluded.") : '')) }) })
     }
     for (const card of data.credit_cards) {
       linked.push({ ...defaults, id: `card:${card.id}`, category_id: 'cards', name: card.name, credit_card: card,
-        description: `Cash, bank, and wallet repayments/transfers recorded in Transactions, totaled for each payday cycle.${card.is_archived ? ' Archived account; historical payments retained.' : ''} Purchases, refunds and debt-to-debt transfers are excluded. Confirmed bills add remaining dated payment plans and suppress only explicitly included installment occurrences. Without statements, recorded payments retain the legacy installment replacement rule. No installment paid status is inferred.` })
+        description: translate("Cash, bank, and wallet repayments/transfers recorded in Transactions, totaled for each payday cycle.{value0} Purchases, refunds and debt-to-debt transfers are excluded. Confirmed bills add remaining dated payment plans and suppress only explicitly included installment occurrences. Without statements, recorded payments retain the legacy installment replacement rule. No installment paid status is inferred.", { value0: (card.is_archived ? translate(" Archived account; historical payments retained.") : '') }) })
     }
     for (const account of data.debt_accounts) {
       const payroll = data.income_deductions.filter(deduction => deduction.debt_account_id === account.id && data.incomes.some(salary => salary.id === deduction.income_id && salary.is_active && !salary.account_archived))
       const legacy = data.installments.some(plan => plan.debt_account_type === 'loan' && plan.debt_account_id === account.id)
-      linked.push({ ...defaults, id: `debt:${account.id}`, category_id: 'debt', name: payroll.length ? `${account.name} · Additional Payments` : account.name, debt_account: account,
-        description: `${payroll.length ? `Payroll repayments (${payroll.map(deduction => deduction.name).join(', ')}) are entered on the salary and included under Income Deductions. This row is for additional payments outside payroll. Existing entered amounts and schedules are retained; review them for duplicates. ` : ''}${account.loan_type?.replaceAll('_', ' ') ?? 'Loan'} · Balance: ${plannerMoney(BigInt(account.current_balance))} THB (positive means owed, negative means credit). ${account.notes ?? ''} ${account.is_archived ? 'Archived account. ' : ''}${data.loan_facilities?.some(f => f.account_id === account.id) ? 'Contract schedules replace monthly and legacy schedules. Expand to view contract estimates; an entered account cycle amount replaces the full total. No payments are inferred.' : account.monthly_installment != null ? `Monthly installment: ${plannerMoney(BigInt(account.monthly_installment))} THB per payday cycle. Replaces legacy loan schedules in this row. Current settings apply to past and future cycles; entered cycle amounts are preserved.` : legacy ? 'Legacy loan schedules are included once in this row. Entering a cycle amount replaces their combined payment.' : 'Enter the payment for each cycle; the balance is not a payment.'} Exclude payments already deducted through payroll.` })
+      linked.push({ ...defaults, id: `debt:${account.id}`, category_id: 'debt', name: (payroll.length ? translate("{value0} · Additional Payments", { value0: account.name }) : account.name), debt_account: account,
+        description: translate("{value0}{value1} · Balance: {value2} THB (positive means owed, negative means credit). {value3} {value4}{value5} Exclude payments already deducted through payroll.", { value0: (payroll.length ? translate("Payroll repayments ({value0}) are entered on the salary and included under Income Deductions. This row is for additional payments outside payroll. Existing entered amounts and schedules are retained; review them for duplicates. ", { value0: payroll.map(deduction => deduction.name).join(', ') }) : ''), value1: account.loan_type?.replaceAll('_', ' ') ?? 'Loan', value2: plannerMoney(BigInt(account.current_balance)), value3: account.notes ?? '', value4: (account.is_archived ? translate("Archived account. ") : ''), value5: (data.loan_facilities?.some(f => f.account_id === account.id) ? translate("Contract schedules replace monthly and legacy schedules. Expand to view contract estimates; an entered account cycle amount replaces the full total. No payments are inferred.") : (account.monthly_installment != null ? translate("Monthly installment: {value0} THB per payday cycle. Replaces legacy loan schedules in this row. Current settings apply to past and future cycles; entered cycle amounts are preserved.", { value0: plannerMoney(BigInt(account.monthly_installment)) }) : (legacy ? translate("Legacy loan schedules are included once in this row. Entering a cycle amount replaces their combined payment.") : translate("Enter the payment for each cycle; the balance is not a payment.")))) }) })
     }
     for (const plan of data.installments.filter(plan => plan.debt_account_type === 'credit_card')) {
       linked.push({ ...defaults, id: `installment:${plan.id}`, category_id: 'installments', name: plan.name, card_name: plan.debt_account_name, installment: plan,
-        description: `${plan.debt_account_name} · Pay from ${plan.account_name} · ${plannerMoney(BigInt(plan.monthly_amount))} THB per installment · ${plan.installment_count} installments from ${plan.first_due_date}.${plan.accounts_available ? '' : ' Account unavailable; schedule excluded.'} Schedule dates do not confirm payment. Exclude these installments from other card payments.` })
+        description: translate("{value0} · Pay from {value1} · {value2} THB per installment · {value3} installments from {value4}.{value5} Schedule dates do not confirm payment. Exclude these installments from other card payments.", { value0: plan.debt_account_name, value1: plan.account_name, value2: plannerMoney(BigInt(plan.monthly_amount)), value3: plan.installment_count, value4: plan.first_due_date, value5: (plan.accounts_available ? '' : translate(" Account unavailable; schedule excluded.")) }) })
     }
   }
   return [...sources, ...linked, ...data.items, ...actualRows(data)]
@@ -178,7 +180,7 @@ function recordedPaymentCycles(data: PlannerData, cardId: string, from: string, 
 }
 function managedCard(data: PlannerData, id: string) { return !!data.card_billing?.statements.some(s => s.account_id === id) }
 export function coveredInstallmentCycle(data: PlannerData, item: PlannerItem, month: string) {
-  return !!item.installment && !!data.card_billing?.installments.some(c => c.installment_id === item.installment!.id && c.date >= boundaryKey(month,data.period_start_day) && c.date < boundaryKey(addMonths(month,1),data.period_start_day))
+  return !!item.installment && !!data.card_billing?.installments.some(c => c.installment_id === item.installment!.id && installmentSchedule(item.installment!).some(p => p.date === c.date) && c.date >= boundaryKey(month,data.period_start_day) && c.date < boundaryKey(addMonths(month,1),data.period_start_day))
 }
 function usesRecordedCardTotal(data: PlannerData, item: PlannerItem, month: string) {
   return !!item.installment && !managedCard(data,item.installment.debt_account_id) && recordedCardPayments(data, item.installment.debt_account_id, month, addMonths(month, 1)).count > 0
@@ -220,7 +222,11 @@ function paidOffForCycle(data: PlannerData, item: PlannerItem, month: string) {
 }
 function forecastItemAmount(data: PlannerData, item: PlannerItem, month: string) {
   if (paidOffForCycle(data, item, month)) return { value: 0n, source: 'Loan paid off' }
-  if (item.credit_card) return { value: recordedCardPayments(data, item.credit_card.id, month, addMonths(month, 1)).amount + cardPlannedBetween(data,item.credit_card.id,month,addMonths(month,1)), source: managedCard(data,item.credit_card.id) ? 'Recorded + remaining plan' : 'Recorded payments' }
+  if (item.credit_card) {
+    const start = boundaryKey(month,data.period_start_day), end = boundaryKey(addMonths(month,1),data.period_start_day)
+    const review = data.card_billing?.statements.some(s => s.account_id === item.credit_card!.id && s.needs_review && data.card_billing!.plans.some(p => p.statement_id === s.id && p.date >= start && p.date < end))
+    return { value: recordedCardPayments(data, item.credit_card.id, month, addMonths(month, 1)).amount + cardPlannedBetween(data,item.credit_card.id,month,addMonths(month,1)), source: review ? 'Statement needs review' : managedCard(data,item.credit_card.id) ? 'Recorded + remaining plan' : 'Recorded payments' }
+  }
   if (coveredInstallmentCycle(data,item,month)) return {value: generatedAmount(data,item,month), source: 'Included in statement'}
   if (usesRecordedCardTotal(data, item, month)) return { value: 0n, source: 'Using recorded card total' }
   const entry = data.amounts.find(a => a.item_id === item.id && a.month === month)
@@ -285,7 +291,7 @@ function actualRows(data: PlannerData): PlannerItem[] {
   for (const t of data.ledger_transactions ?? []) {
     if (!cashType(t.account_type) || !['income', 'expense'].includes(t.type)) continue
     const key = t.type === 'income' ? actualIncomeKey(t) : `actual:expense:${t.category_id ?? 'uncategorized'}`
-    rows.set(key, { id: key, actual_key: key, category_id: t.type === 'income' ? 'income' : 'expenses', name: t.type === 'income' ? `Received · ${t.income_source_name ?? `Unassigned · ${t.account_name ?? t.account_id}`}` : `Recorded · ${t.category_name ?? 'Uncategorized'}`, description: 'Actual cash, bank and wallet transactions. Read-only; edit the underlying transactions. Forecast amounts are kept separately.', card_name: '', transaction_category_id: t.type === 'expense' ? t.category_id ?? null : null, schedule_amount: null, schedule_start: null, schedule_end: null })
+    rows.set(key, { id: key, actual_key: key, category_id: t.type === 'income' ? 'income' : 'expenses', name: (t.type === 'income' ? translate("Received · {value0}", { value0: t.income_source_name ?? `Unassigned · ${t.account_name ?? t.account_id}` }) : (t.category_name ?? 'Uncategorized')), description: translate("Actual cash, bank and wallet transactions. Read-only; edit the underlying transactions. Forecast amounts are kept separately."), card_name: '', transaction_category_id: t.type === 'expense' ? t.category_id ?? null : null, schedule_amount: null, schedule_start: null, schedule_end: null })
   }
   return [...rows.values()]
 }

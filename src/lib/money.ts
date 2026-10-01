@@ -1,3 +1,4 @@
+import { getLocale } from "./i18n"
 export const currencies = ['THB', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'SGD', 'AUD', 'CAD', 'CHF', 'INR', 'KRW', 'VND', 'KWD', 'BHD'] as const
 
 export function fractionDigits(currency: string) {
@@ -17,7 +18,7 @@ export function formatAmount(value: string, currency: string, showCurrency = tru
   const amount = BigInt(value)
   const absolute = amount < 0n ? -amount : amount
   const scale = 10n ** BigInt(digits)
-  const whole = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(absolute / scale)
-  const decimal = new Intl.NumberFormat().formatToParts(1.1).find(part => part.type === 'decimal')?.value ?? '.'
+  const whole = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }).format(absolute / scale)
+  const decimal = new Intl.NumberFormat(getLocale()).formatToParts(1.1).find(part => part.type === 'decimal')?.value ?? '.'
   return `${amount < 0n ? '−' : ''}${whole}${digits ? decimal + (absolute % scale).toString().padStart(digits, '0') : ''}${showCurrency ? ` ${currency}` : ''}`
 }

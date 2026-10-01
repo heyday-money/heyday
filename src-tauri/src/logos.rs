@@ -92,6 +92,7 @@ pub async fn get_logo_asset(
     pool: tauri::State<'_, SqlitePool>,
     id: String,
 ) -> Result<String, String> {
+    let _database_operation = crate::backups::operation()?;
     let bytes: Vec<u8> = sqlx::query_scalar("SELECT data FROM logo_assets WHERE id=?")
         .bind(id)
         .fetch_optional(pool.inner())

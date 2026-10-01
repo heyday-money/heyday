@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 pub struct Account {
     #[sqlx(default)]
     paid_off_on: Option<String>,
+    is_archived: bool,
     id: String,
     name: String,
     #[serde(rename = "type")]
@@ -24,7 +25,7 @@ pub struct Account {
     initial_loan_amount: Option<String>,
 }
 
-pub(crate) const COLUMNS: &str = "id, name, type AS account_type, loan_type, CAST(opening_balance AS TEXT) AS opening_balance, CAST(current_balance AS TEXT) AS current_balance, institution, last_four, notes, CAST(credit_limit AS TEXT) AS credit_limit, statement_day, payment_due_day, interest_rate_ten_thousandths, CAST(monthly_installment AS TEXT) AS monthly_installment, CAST(initial_loan_amount AS TEXT) AS initial_loan_amount";
+pub(crate) const COLUMNS: &str = "is_archived, id, name, type AS account_type, loan_type, CAST(opening_balance AS TEXT) AS opening_balance, CAST(current_balance AS TEXT) AS current_balance, institution, last_four, notes, CAST(credit_limit AS TEXT) AS credit_limit, statement_day, payment_due_day, interest_rate_ten_thousandths, CAST(monthly_installment AS TEXT) AS monthly_installment, CAST(initial_loan_amount AS TEXT) AS initial_loan_amount";
 
 #[derive(Deserialize)]
 pub struct NewAccount {
@@ -347,6 +348,7 @@ pub async fn update_account(
     pool: tauri::State<'_, SqlitePool>,
     input: AccountUpdate,
 ) -> Result<Account, String> {
+    let _database_operation = crate::backups::operation()?;
     update(pool.inner(), input).await
 }
 
@@ -355,17 +357,39 @@ pub async fn create_account(
     pool: tauri::State<'_, SqlitePool>,
     input: NewAccount,
 ) -> Result<Account, String> {
+    let _database_operation = crate::backups::operation()?;
     insert_account(pool.inner(), input).await
 }
 
 #[tauri::command]
-pub async fn list_accounts(pool: tauri::State<'_, SqlitePool>, include_paid_off: Option<bool>) -> Result<Vec<Account>, String> {
-    let query = if include_paid_off.unwrap_or(false) {
+pub async fn list_accounts(pool: tauri::State<'_, SqlitePool>, include_paid_off: Option<bool>, include_archived: Option<bool>) -> Result<Vec<Account>, String> {
+    let _database_operation = crate::backups::operation()?;
+    let query = if include_archived.unwrap_or(false) {
+        format!("SELECT {COLUMNS}, (SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts ORDER BY created_at,id")
+    } else if include_paid_off.unwrap_or(false) {
         format!("SELECT {COLUMNS}, (SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts WHERE is_archived=0 OR id IN (SELECT account_id FROM loan_payoffs) ORDER BY created_at,id")
     } else {
         format!("SELECT {COLUMNS} FROM accounts WHERE is_archived=0 ORDER BY created_at,id")
     };
     sqlx::query_as::<_, Account>(&query).fetch_all(pool.inner()).await.map_err(|e| e.to_string())
+}
+
+pub(crate) async fn change_archive(pool: &SqlitePool, account_id: &str, archived: bool) -> Result<(), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let state: Option<(bool, bool)> = sqlx::query_as("SELECT is_archived, EXISTS(SELECT 1 FROM loan_payoffs WHERE account_id=accounts.id) FROM accounts WHERE id=?")
+        .bind(account_id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+    let (current, paid_off) = state.ok_or("Account not found.")?;
+    if paid_off { return Err("Paid-off loans use the separate payoff flow and cannot be restored here.".into()); }
+    if current == archived { return Err("Account archive status has changed. Reload and try again.".into()); }
+    sqlx::query("UPDATE accounts SET is_archived=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(archived).bind(account_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_account_archived(pool: tauri::State<'_, SqlitePool>, account_id: String, archived: bool) -> Result<(), String> {
+    let _operation = crate::backups::operation()?;
+    change_archive(pool.inner(), &account_id, archived).await
 }
 
 pub(crate) async fn mark_paid_off(pool: &SqlitePool, account_id: &str) -> Result<(), String> {
@@ -391,6 +415,7 @@ pub(crate) async fn mark_paid_off(pool: &SqlitePool, account_id: &str) -> Result
 
 #[tauri::command]
 pub async fn mark_loan_paid_off(pool: tauri::State<'_, SqlitePool>, account_id: String) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     mark_paid_off(pool.inner(), &account_id).await
 }
 
@@ -412,6 +437,31 @@ mod tests {
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
         pool
     }
+    #[tokio::test]
+    async fn general_archive_is_reversible_and_preserves_references_and_balances() {
+        let pool = database().await;
+        sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('bank','Bank','bank',9007199254740993,9007199254740993); INSERT INTO incomes(id,name,destination_account_id,type,estimated_amount,recurrence_frequency,recurrence_day_of_month,is_auto_create_transaction,is_active) VALUES('salary','Salary','bank','salary',100,'monthly',1,0,1);")
+            .execute(&pool).await.unwrap();
+        sqlx::raw_sql("INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('card','Card','credit_card',500,500); INSERT INTO card_limit_groups(id,name,name_key,credit_limit) VALUES('group','Shared','shared',1000); INSERT INTO card_limit_members(account_id,group_id) VALUES('card','group'); INSERT INTO transactions(id,date,description,type,amount,account_id) VALUES('tx','2026-01-01','Income','income',100,'bank'); INSERT INTO reconciliations(account_id,confirmed_balance,opening_balance) VALUES('bank',9007199254740993,9007199254740993); INSERT INTO reconciliation_entries(reconciliation_id,transaction_id,date,description,type,balance_change) VALUES(1,'tx','2026-01-01','Income','income',100);").execute(&pool).await.unwrap();
+        let ledger: String = sqlx::query_scalar("SELECT json_group_array(json_object('id',id,'amount',amount)) FROM transactions").fetch_one(&pool).await.unwrap();
+        let history: String = sqlx::query_scalar("SELECT json_group_array(json_object('id',reconciliation_id,'tx',transaction_id,'change',balance_change)) FROM reconciliation_entries").fetch_one(&pool).await.unwrap();
+        assert!(change_archive(&pool, "missing", true).await.is_err());
+        for archived in [true, false] {
+            change_archive(&pool, "bank", archived).await.unwrap();
+            assert!(change_archive(&pool, "bank", archived).await.is_err());
+            let row: (bool,i64,i64,String) = sqlx::query_as("SELECT a.is_archived,a.opening_balance,a.current_balance,i.destination_account_id FROM accounts a JOIN incomes i ON i.destination_account_id=a.id WHERE a.id='bank'").fetch_one(&pool).await.unwrap();
+            assert_eq!(row, (archived,9007199254740993,9007199254740993,"bank".into()));
+            let selected: i64 = sqlx::query_scalar("SELECT count(*) FROM accounts WHERE is_archived=0").fetch_one(&pool).await.unwrap();
+            assert_eq!(selected, 1);
+            assert_eq!(sqlx::query_scalar::<_,String>("SELECT json_group_array(json_object('id',id,'amount',amount)) FROM transactions").fetch_one(&pool).await.unwrap(), ledger);
+            assert_eq!(sqlx::query_scalar::<_,String>("SELECT json_group_array(json_object('id',reconciliation_id,'tx',transaction_id,'change',balance_change)) FROM reconciliation_entries").fetch_one(&pool).await.unwrap(), history);
+            change_archive(&pool, "card", archived).await.unwrap();
+            assert_eq!(sqlx::query_scalar::<_,String>("SELECT group_id FROM card_limit_members WHERE account_id='card'").fetch_one(&pool).await.unwrap(), "group");
+        }
+        sqlx::raw_sql("INSERT INTO accounts(id,name,type,opening_balance,current_balance,is_archived) VALUES('paid','Paid','loan',0,0,1); INSERT INTO loan_payoffs(account_id,paid_off_on) VALUES('paid','2026-10-02');").execute(&pool).await.unwrap();
+        assert!(change_archive(&pool, "paid", false).await.unwrap_err().contains("payoff"));
+    }
+
     #[tokio::test]
     async fn payoff_preserves_history_stops_schedules_and_reopens_on_reversal() {
         let pool = database().await;
@@ -474,6 +524,7 @@ mod tests {
         object.remove("opening_balance");
         object.remove("current_balance");
         object.remove("paid_off_on");
+        object.remove("is_archived");
         object.insert("currency".into(), serde_json::json!("THB"));
         serde_json::from_value(value).unwrap()
     }

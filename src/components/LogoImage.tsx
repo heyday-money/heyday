@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { useEffect, useState } from 'react'
 import { getLogoAsset } from '../lib/logos'
 export function useLogoAsset(id?: string | null) {
@@ -10,6 +11,8 @@ export function useLogoAsset(id?: string | null) {
   return loaded && loaded.id === id ? loaded.src : null
 }
 export function LogoImage({ src, name, className = '' }: { src?: string | null; name: string; className?: string }) {
+  useLanguage()
+
   const [failed, setFailed] = useState<string | null>(null)
   const hasLogo = !!src && failed !== src
   return <span aria-hidden="true" className={`inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded ${hasLogo ? '' : 'bg-soft'} text-[11px] font-semibold text-brand ${className}`}>

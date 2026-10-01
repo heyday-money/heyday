@@ -109,6 +109,7 @@ pub async fn save_subscription(
     pool: tauri::State<'_, SqlitePool>,
     input: SaveSubscription,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     save(pool.inner(), input).await
 }
 #[tauri::command]
@@ -116,6 +117,7 @@ pub async fn delete_subscription(
     pool: tauri::State<'_, SqlitePool>,
     id: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     remove(pool.inner(), &id).await
 }
 

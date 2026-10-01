@@ -5,7 +5,7 @@ async function setup(page: import('@playwright/test').Page) {
   await page.addInitScript(() => {
     Object.defineProperty(window, 'isTauri', { value: true })
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {
-      invoke: async (command: string, args: { input?: NewIncome & { income_id?: string; deductions?: IncomeDeductionInput[] }; incomeId?: string }) => {
+      invoke: async (command: string, args: { input?: NewIncome & { id?: string; income_id?: string; deductions?: IncomeDeductionInput[] }; incomeId?: string }) => {
         const sources = (): Income[] => JSON.parse(localStorage.getItem('test-income') ?? '[]')
         const deductions = (): IncomeDeduction[] => JSON.parse(localStorage.getItem('test-income-deductions') ?? '[]')
         const account = { id: 'bank', name: 'Everyday bank', type: 'bank', opening_balance: '150000' }
@@ -13,7 +13,7 @@ async function setup(page: import('@playwright/test').Page) {
           case 'plugin:app|version': return '0.1.0'
           case 'get_settings': return { currency: localStorage.getItem('test-currency'), period_start_day: 25 }
           case 'list_transaction_options': return { payees: [], categories: [] }
-          case 'list_accounts': return localStorage.getItem('test-account') ? [account, ...(localStorage.getItem('test-loan') ? [{ id: 'student', name: 'Student Loan', type: 'loan' }] : [])] : []
+          case 'list_accounts': return !localStorage.getItem('test-no-active-account') && localStorage.getItem('test-account') ? [account, ...(localStorage.getItem('test-other-account') ? [{ id: 'other', name: 'Other bank', type: 'bank', opening_balance: '0' }] : []), ...(localStorage.getItem('test-loan') ? [{ id: 'student', name: 'Student Loan', type: 'loan' }] : [])] : []
           case 'list_incomes': return sources()
           case 'list_income_deductions': return deductions().filter(row => row.income_id === args.incomeId)
           case 'save_salary_deductions': {
@@ -27,6 +27,15 @@ async function setup(page: import('@playwright/test').Page) {
           case 'get_cashflow_planner': return {
             categories: [{ id: 'income', name: 'Gross Income', subtotal: 'Total Gross Income' }, { id: 'deductions', name: 'Income Deductions', subtotal: 'Total Deductions' }],
             incomes: sources().map(source => ({ ...source, account_archived: false })), income_deductions: deductions(), source_currency: 'THB', debt_accounts: [], installments: [], credit_cards: [], card_transactions: [], items: [], amounts: [], months: [], opening: null, period_start_day: 25, expense_categories: [],
+          }
+          case 'update_income': {
+            if (sessionStorage.getItem('fail-income')) throw 'Could not save income. Please try again.'
+            if (sessionStorage.getItem('pause-update')) await new Promise<void>(resolve => { (window as any).finishIncomeUpdate = resolve })
+            const existing = sources().find(source => source.id === args.input!.id)!
+            const income = { ...existing, ...args.input!, destination_account_name: args.input!.destination_account_id === 'other' ? 'Other bank' : existing.destination_account_id === args.input!.destination_account_id ? existing.destination_account_name : account.name, updated_at: 'updated' }
+            localStorage.setItem('test-income', JSON.stringify(sources().map(source => source.id === income.id ? income : source)))
+            sessionStorage.setItem('update-input', JSON.stringify(args.input))
+            return income
           }
           case 'create_income': {
             if (sessionStorage.getItem('fail-income')) throw 'Could not save income. Please try again.'
@@ -183,4 +192,110 @@ test('salary deduction links to a student loan and can be unlinked after reload'
   await page.getByRole('button', { name: 'Manage deductions for Salary', exact: true }).click()
   await expect(page.getByLabel('Deduction 1 debt account (optional)')).toHaveValue('')
   await expect(page.getByLabel('Deduction 1 amount per month (THB)', { exact: true })).toHaveValue('2000.00')
+})
+
+test('edit income preserves deductions, protects drafts, supports disable/reactivate, and keeps automation disabled', async ({ page }) => {
+  await setup(page)
+  await page.goto('/#/income')
+  await page.evaluate(() => {
+    localStorage.setItem('test-currency', 'THB'); localStorage.setItem('test-account', 'true'); localStorage.setItem('test-other-account', 'true')
+    localStorage.setItem('test-income', JSON.stringify([{ id: 'salary', name: 'Monthly Salary', type: 'salary', estimated_amount: '5000000', deductions_total: '10000', destination_account_id: 'bank', destination_account_name: 'Everyday bank', recurrence_frequency: 'monthly', recurrence_day_of_month: 28, is_active: true, is_auto_create_transaction: false, created_at: 'original', updated_at: 'original' }]))
+    localStorage.setItem('test-income-deductions', JSON.stringify([{ id: 'tax', income_id: 'salary', name: 'Tax', description: '', amount: '10000' }]))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Edit Monthly Salary', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit income source', exact: true })
+  await expect(page.getByLabel('Income name', { exact: true })).toHaveValue('Monthly Salary')
+  await expect(page.getByLabel('Estimated amount (THB)')).toHaveValue('50000.00')
+  await expect(page.getByLabel('Day of month', { exact: true })).toHaveValue('28')
+  await expect(page.getByLabel('Income type', { exact: true })).toBeDisabled()
+  await expect(dialog).toContainText('including past estimates')
+  await expect(page.getByLabel('Automatically create transactions')).toBeDisabled()
+  await page.getByLabel('Income name', { exact: true }).fill('Updated salary')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click()
+  await expect(page.getByLabel('Income name', { exact: true })).toHaveValue('Updated salary')
+  await page.getByLabel('Estimated amount (THB)').fill('99')
+  await page.getByRole('button', { name: 'Save income source', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('existing deductions')
+  await page.getByLabel('Estimated amount (THB)').fill('90071992547409.93')
+  await page.getByLabel('Destination account', { exact: true }).selectOption('other')
+  await page.getByLabel('Day of month', { exact: true }).selectOption('31')
+  await page.getByLabel('Status', { exact: true }).selectOption('false')
+  await page.setViewportSize({ width: 760, height: 560 })
+  await expect(page.getByRole('button', { name: 'Save income source', exact: true })).toBeInViewport()
+  await page.screenshot({ path: 'test-results/income-edit-dialog.png', animations: 'disabled' })
+  await page.setViewportSize({ width: 1200, height: 800 })
+  await page.evaluate(() => sessionStorage.setItem('fail-income', 'true'))
+  await page.getByRole('button', { name: 'Save income source', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Could not save income')
+  await expect(page.getByLabel('Status', { exact: true })).toHaveValue('false')
+  await page.evaluate(() => { sessionStorage.removeItem('fail-income'); sessionStorage.setItem('pause-update', 'true') })
+  await page.getByRole('button', { name: 'Save income source', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Saving…', exact: true })).toBeDisabled()
+  await page.keyboard.press('Escape'); await expect(dialog).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+  await page.evaluate(() => (window as any).finishIncomeUpdate())
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Edit Updated salary', exact: true })).toBeFocused()
+  await expect(page.getByText('Income source updated.', { exact: true })).toBeVisible()
+  const source = await page.evaluate(() => JSON.parse(localStorage.getItem('test-income')!)[0])
+  expect(source).toMatchObject({ id: 'salary', name: 'Updated salary', estimated_amount: '9007199254740993', deductions_total: '10000', recurrence_day_of_month: 31, destination_account_id: 'other', is_active: false, created_at: 'original', is_auto_create_transaction: false })
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('test-income-deductions')!))).toEqual([{ id: 'tax', income_id: 'salary', name: 'Tax', description: '', amount: '10000' }])
+  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('update-input')!).deductions)).toBeUndefined()
+  await page.reload()
+  await expect(page.getByText('Inactive', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit Updated salary', exact: true }).click()
+  await page.getByLabel('Status', { exact: true }).selectOption('true')
+  await page.evaluate(() => sessionStorage.removeItem('pause-update'))
+  await page.getByRole('button', { name: 'Save income source', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('list', { name: 'Income sources' }).getByText('Active', { exact: true })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Income sources' }).getByRole('listitem')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Edit Updated salary', exact: true }).click()
+  await page.getByLabel('Income name', { exact: true }).fill('Discarded edit')
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Updated salary', exact: true })).toBeVisible()
+})
+
+test('inactive sources remove generated estimates while explicit overrides and actual receipts stay intact', async () => {
+  const { cycleTotals, plannerItems, itemAmount } = await import('../src/lib/cashflow')
+  const data: import('../src/lib/cashflow').PlannerData = { source_currency: 'THB', period_start_day: 1, categories: [], items: [], months: [], opening: null, debt_accounts: [], installments: [], credit_cards: [], card_transactions: [], expense_categories: [],
+    incomes: [{ id: 'salary', name: 'Salary', estimated_amount: '5000000', recurrence_day_of_month: 28, destination_account_name: 'Bank', is_active: true, account_archived: false }],
+    income_deductions: [{ id: 'tax', income_id: 'salary', name: 'Tax', description: '', amount: '10000' }], amounts: [],
+    ledger_transactions: [{ id: 'receipt', type: 'income', account_id: 'bank', account_type: 'bank', destination_account_id: null, destination_account_type: null, amount: '4990000', date: '2026-01-28', income_source_id: 'salary' }],
+  }
+  expect(cycleTotals(data, '2026-01', 'forecast').netIncome).toBe(4990000n)
+  const actual = cycleTotals(data, '2026-01', 'actual').netIncome
+  data.incomes[0].is_active = false
+  expect(cycleTotals(data, '2026-01', 'forecast').netIncome).toBe(0n)
+  expect(cycleTotals(data, '2026-01', 'actual').netIncome).toBe(actual)
+  const override = { ...data, amounts: [{ item_id: 'income:salary', month: '2026-01', amount: '12345' }] }
+  expect(itemAmount(override, plannerItems(override).find(item => item.income?.id === 'salary')!, '2026-01', 'forecast')).toMatchObject({ value: 12345n, source: 'Entered' })
+  data.incomes[0].is_active = true
+  data.incomes[0].recurrence_day_of_month = 31
+  data.incomes[0].estimated_amount = '6000000'
+  expect(cycleTotals(data, '2026-02', 'forecast').netIncome).toBe(5990000n)
+  expect(cycleTotals(data, '2026-01', 'actual').netIncome).toBe(actual)
+})
+
+test('can disable a source with an unavailable destination and edit explicit zero in JPY', async ({ page }) => {
+  await setup(page); await page.goto('/#/income')
+  await page.evaluate(() => {
+    localStorage.setItem('test-currency', 'JPY'); localStorage.setItem('test-no-active-account', 'true')
+    localStorage.setItem('test-income', JSON.stringify([{ id: 'archived-source', name: 'Archived source', type: 'other', estimated_amount: '9007199254740993', deductions_total: '0', destination_account_id: 'archived', destination_account_name: 'Archived bank', recurrence_frequency: 'monthly', recurrence_day_of_month: 1, is_active: true, is_auto_create_transaction: false, created_at: 'original', updated_at: 'original' }]))
+  })
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Add income source', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Edit Archived source', exact: true }).click()
+  await expect(page.getByLabel('Estimated amount (JPY)')).toHaveValue('9007199254740993')
+  await expect(page.getByLabel('Destination account', { exact: true })).toHaveValue('archived')
+  await page.getByLabel('Estimated amount (JPY)').fill('0')
+  await page.getByLabel('Status', { exact: true }).selectOption('false')
+  await page.getByRole('button', { name: 'Save income source', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const input = await page.evaluate(() => JSON.parse(sessionStorage.getItem('update-input')!))
+  expect(input).toMatchObject({ id: 'archived-source', estimated_amount: '0', currency: 'JPY', destination_account_id: 'archived', is_active: false, is_auto_create_transaction: false })
+  await expect(page.getByText('Inactive', { exact: true })).toBeVisible()
 })

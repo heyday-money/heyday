@@ -1,3 +1,4 @@
+import { t as translate } from './i18n'
 import { invoke } from '@tauri-apps/api/core'
 import type { AccountType, Settings, Transaction } from './desktop'
 import { addMonths, boundary, monthIndex } from './cashflow'
@@ -35,9 +36,9 @@ export function expenseComparison(data: ExpenseReport, selected: string, today: 
     totals[index] += amount
     if (index === cycles.length - 1) transactionCount++
     const key = t.category_id ? `category:${t.category_id}` : 'uncategorized'
-    const group = groups.get(key) ?? { id: key, name: t.category_name ?? 'Uncategorized', icon: t.category_icon, amounts: cycles.map(() => 0n), children: [] }
+    const group = groups.get(key) ?? { id: key, name: t.category_name ?? translate('Uncategorized'), icon: t.category_icon, amounts: cycles.map(() => 0n), children: [] }
     group.amounts[index] += amount
-    group.children!.push({ id: `transaction:${t.id}`, name: t.description || 'Expense', transaction: t, amounts: cycles.map((_, i) => i === index ? amount : 0n) })
+    group.children!.push({ id: `transaction:${t.id}`, name: t.description || translate('Expense'), transaction: t, amounts: cycles.map((_, i) => i === index ? amount : 0n) })
     groups.set(key, group)
   }
   const rows = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))

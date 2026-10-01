@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import type { LogoChange } from './logos'
 import type { CardBillingData } from './card-billing'
 import { invoke, isTauri } from '@tauri-apps/api/core'
@@ -23,15 +24,16 @@ export function updateCurrency(currency: string): Promise<Settings> {
 
 export type AccountType = 'cash' | 'bank' | 'wallet' | 'credit_card' | 'loan' | 'investment'
 export const loanTypes = [
-  { value: 'mortgage', label: 'Mortgage' },
-  { value: 'auto_loan', label: 'Auto Loan' },
-  { value: 'student_loan', label: 'Student Loan' },
-  { value: 'personal_loan', label: 'Personal Loan' },
-  { value: 'medical_debt', label: 'Medical Debt' },
-  { value: 'other_debt', label: 'Other Debt' },
+  { value: 'mortgage', get label() { return t('Mortgage') } },
+  { value: 'auto_loan', get label() { return t('Auto Loan') } },
+  { value: 'student_loan', get label() { return t('Student Loan') } },
+  { value: 'personal_loan', get label() { return t('Personal Loan') } },
+  { value: 'medical_debt', get label() { return t('Medical Debt') } },
+  { value: 'other_debt', get label() { return t('Other Debt') } },
 ] as const
 export type LoanType = typeof loanTypes[number]['value']
 export interface Account {
+  is_archived?: boolean
   paid_off_on?: string | null
   id: string
   name: string
@@ -50,10 +52,10 @@ export interface Account {
   initial_loan_amount?: string | null
 }
 import type { LoanContract, LoanFacility } from './loans'
-export type NewAccount = Omit<Account, 'id' | 'current_balance' | 'paid_off_on'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null }
+export type NewAccount = Omit<Account, 'id' | 'current_balance' | 'paid_off_on' | 'is_archived'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null }
 
-export function listAccounts(includePaidOff = false): Promise<Account[]> {
-  return invoke<Account[]>('list_accounts', { includePaidOff })
+export function listAccounts(includePaidOff = false, includeArchived = false): Promise<Account[]> {
+  return invoke<Account[]>('list_accounts', { includePaidOff, includeArchived })
 }
 export type AccountUpdate = Omit<NewAccount, 'opening_balance'> & { id: string }
 export async function updateAccount(input: AccountUpdate): Promise<Account> {
@@ -90,6 +92,12 @@ export function listIncomes(): Promise<Income[]> {
 }
 export async function createIncome(input: NewIncome): Promise<Income> {
   const income = await invoke<Income>('create_income', { input })
+  window.dispatchEvent(new Event('incomes-changed'))
+  return income
+}
+export type UpdateIncome = Omit<NewIncome, 'deductions'> & { id: string }
+export async function updateIncome(input: UpdateIncome): Promise<Income> {
+  const income = await invoke<Income>('update_income', { input })
   window.dispatchEvent(new Event('incomes-changed'))
   return income
 }
@@ -245,4 +253,9 @@ export function clearAllData(confirmation: string): Promise<void> {
 export async function markLoanPaidOff(accountId: string): Promise<void> {
   await invoke('mark_loan_paid_off', { accountId })
   for (const event of ['accounts-changed', 'plans-changed', 'transactions-changed']) window.dispatchEvent(new Event(event))
+}
+
+export async function setAccountArchived(accountId: string, archived: boolean): Promise<void> {
+  await invoke('set_account_archived', { accountId, archived })
+  window.dispatchEvent(new Event('accounts-changed'))
 }

@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { AccountSelect } from './AccountSelect'
 import { useRef, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
@@ -15,6 +16,8 @@ function editableAmount(amount: string, currency: string) {
   return `${value / scale}${digits ? '.' + (value % scale).toString().padStart(digits, '0') : ''}`
 }
 export function PaymentPlanDialog({ data, date, plan, onClose }: { data: FinancialData; date: string; plan?: PaymentPlan; onClose: () => void }) {
+  useLanguage()
+
   const returnFocus = useRef(document.activeElement as HTMLElement | null)
   const currency = data.settings.currency!
   const [kind, setKind] = useState<'expense' | 'repayment'>(plan?.type ?? 'expense')
@@ -36,29 +39,29 @@ export function PaymentPlanDialog({ data, date, plan, onClose }: { data: Financi
     setSaving(true); setError(null)
     try {
       const amount = decimalToInteger(String(form.get('amount')), fractionDigits(currency))
-      if (BigInt(amount) <= 0n) throw new Error('Amount must be greater than zero.')
+      if (BigInt(amount) <= 0n) throw new Error("Amount must be greater than zero.")
       await savePaymentPlan({ id: plan?.id ?? null, type: kind, name: String(form.get('name')).trim(), date: String(form.get('date')), amount, currency,
         account_id: String(form.get('account')), destination_account_id: kind === 'repayment' ? String(form.get('destination')) : null,
         category_id: kind === 'expense' ? String(form.get('category') ?? '') || null : null })
-      onClose(); toast.success('Plan saved. Account balances are unchanged.')
-    } catch (error) { setError(typeof error === 'string' ? error : error instanceof Error ? error.message : 'Could not save the plan.') } finally { setSaving(false) }
+      onClose(); toast.success(translate("Plan saved. Account balances are unchanged."))
+    } catch (error) { setError(typeof error === 'string' ? error : error instanceof Error ? error.message : "Could not save the plan.") } finally { setSaving(false) }
   }
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[600px]" showCloseButton={!saving} onCloseAutoFocus={event => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus() }} onInteractOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (saving) event.preventDefault() }}>
-      <DialogHeader className="shrink-0 border-b border-line px-6 py-5"><DialogTitle>{plan ? 'Edit payment plan' : 'Add payment plan'}</DialogTitle><DialogDescription>A one-time forecast for a future date. Record the actual payment separately in Transactions.</DialogDescription></DialogHeader>
+      <DialogHeader className="shrink-0 border-b border-line px-6 py-5"><DialogTitle>{plan ? translate("Edit payment plan") : translate("Add payment plan")}</DialogTitle><DialogDescription>{translate("A one-time forecast for a future date. Record the actual payment separately in Transactions.")}</DialogDescription></DialogHeader>
       <form onSubmit={save} onChange={() => setDirty(true)} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 overflow-y-auto px-6 py-5">
           <fieldset disabled={saving} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label={`Planned amount (${currency})`}><Input className="mt-2" name="amount" inputMode="decimal" required defaultValue={plan ? editableAmount(plan.amount, currency) : ''} /></Field>
-            <Field label="Plan name"><Input className="mt-2" name="name" maxLength={100} required defaultValue={plan?.name ?? ''} placeholder="e.g. Rent" /></Field>
-            <Field label="Plan type"><NativeSelect className="mt-2" value={kind} onChange={event => setKind(event.target.value as 'expense' | 'repayment')}><option value="expense">Expense</option><option value="repayment">Debt repayment</option></NativeSelect></Field>
-            <Field label="Planned date"><Input className="mt-2" type="date" name="date" min={tomorrow} max="9999-12-31" required defaultValue={date} /></Field>
-            <Field label="Pay from"><AccountSelect className="mt-2" name="account" defaultValue={plan?.account_id ?? data.accounts.find(isCash)?.id ?? ''} required><option value="">Choose account</option>{data.accounts.filter(isCash).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></Field>
-            {kind === 'repayment' ? <Field label="Debt account"><AccountSelect className="mt-2" name="destination" defaultValue={plan?.destination_account_id ?? ''} required><option value="">Choose account</option>{data.accounts.filter(isDebt).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></Field> : <Field label="Planned category"><NativeSelect className="mt-2" name="category" defaultValue={plan?.category_id ?? ''}><option value="">Uncategorized</option>{data.categories.map(category => <option key={category.id} value={category.id} disabled={category.is_archived}>{category.name}{category.is_archived ? ' (archived)' : ''}</option>)}</NativeSelect></Field>}
+            <Field label={translate("Planned amount ({value0})", { value0: currency })}><Input className="mt-2" name="amount" inputMode="decimal" required defaultValue={plan ? editableAmount(plan.amount, currency) : ''} /></Field>
+            <Field label={translate("Plan name")}><Input className="mt-2" name="name" maxLength={100} required defaultValue={plan?.name ?? ''} placeholder={translate("e.g. Rent")} /></Field>
+            <Field label={translate("Plan type")}><NativeSelect className="mt-2" value={kind} onChange={event => setKind(event.target.value as 'expense' | 'repayment')}><option value="expense">{translate("Expense")}</option><option value="repayment">{translate("Debt repayment")}</option></NativeSelect></Field>
+            <Field label={translate("Planned date")}><Input className="mt-2" type="date" name="date" min={tomorrow} max="9999-12-31" required defaultValue={date} /></Field>
+            <Field label={translate("Pay from")}><AccountSelect className="mt-2" name="account" defaultValue={plan?.account_id ?? data.accounts.find(isCash)?.id ?? ''} required><option value="">{translate("Choose account")}</option>{data.accounts.filter(isCash).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></Field>
+            {kind === 'repayment' ? <Field label={translate("Debt account")}><AccountSelect className="mt-2" name="destination" defaultValue={plan?.destination_account_id ?? ''} required><option value="">{translate("Choose account")}</option>{data.accounts.filter(isDebt).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></Field> : <Field label={translate("Planned category")}><NativeSelect className="mt-2" name="category" defaultValue={plan?.category_id ?? ''}><option value="">{translate("Uncategorized")}</option>{data.categories.map(category => <option key={category.id} value={category.id} disabled={category.is_archived}>{category.name}{category.is_archived ? translate(" (archived)") : ''}</option>)}</NativeSelect></Field>}
           </fieldset>
-          {error && <p className="mt-4 text-sm" role="alert">{error}</p>}
+          {error && <p className="mt-4 text-sm" role="alert">{translate(error)}</p>}
         </div>
-        <div className="shrink-0 border-t border-line px-6 py-4">{discard ? <><p className="mb-3 text-sm" role="alert">Discard unsaved plan changes?</p><DialogFooter><Button type="button" variant="outline" onClick={() => setDiscard(false)}>Keep editing</Button><Button type="button" variant="destructive" onClick={onClose}>Discard changes</Button></DialogFooter></> : <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={() => changeOpen(false)}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save plan'}</Button></DialogFooter>}</div>
+        <div className="shrink-0 border-t border-line px-6 py-4">{discard ? <><p className="mb-3 text-sm" role="alert">{translate("Discard unsaved plan changes?")}</p><DialogFooter><Button type="button" variant="outline" onClick={() => setDiscard(false)}>{translate("Keep editing")}</Button><Button type="button" variant="destructive" onClick={onClose}>{translate("Discard changes")}</Button></DialogFooter></> : <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={() => changeOpen(false)}>{translate("Cancel")}</Button><Button type="submit" disabled={saving}>{saving ? translate("Saving…") : translate("Save plan")}</Button></DialogFooter>}</div>
       </form>
     </DialogContent>
   </Dialog>

@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "./lib/i18n"
 import { CardBillingPage } from './components/CardBillingPage'
 import { LoanAccountPage } from './components/LoanAccountPage'
 import { AccountTransactionsPage } from './components/AccountTransactionsPage'
@@ -14,7 +15,7 @@ import { TransactionsPage } from './components/TransactionsPage'
 
 const rootRoute = createRootRoute({
   component: AppLayout,
-  notFoundComponent: () => <section className="rounded-[22px] border border-line bg-card p-[27px]"><h2>Page not found</h2><a href="#/">Return home</a></section>,
+  notFoundComponent: () => <section className="rounded-[22px] border border-line bg-card p-[27px]"><h2>{translate("Page not found")}</h2><a href="#/">{translate("Return home")}</a></section>,
 })
 const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/billing', component: CardBillingPage }),
@@ -25,7 +26,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', validateSearch: (search: Record<string, unknown>): { reconcile?: boolean } => ({ reconcile: search.reconcile === true || search.reconcile === 'true' ? true : undefined }), component: AccountTransactionsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/income', component: IncomePage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/transactions', component: TransactionsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions', validateSearch: (search: Record<string, unknown>): { account?: string } => ({ account: typeof search.account === 'string' ? search.account : undefined }), component: TransactionsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/installments', component: InstallmentsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/subscriptions', component: SubscriptionsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),

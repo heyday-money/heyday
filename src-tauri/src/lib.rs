@@ -2,6 +2,7 @@ use serde::Serialize;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
+mod backups;
 mod card_limits;
 mod institutions;
 mod logos;
@@ -27,6 +28,7 @@ struct Settings {
 
 #[tauri::command]
 async fn get_settings(pool: tauri::State<'_, SqlitePool>) -> Result<Settings, String> {
+    let _database_operation = crate::backups::operation()?;
     sqlx::query_as::<_, Settings>("SELECT currency, period_start_day FROM settings WHERE id = 1")
         .fetch_one(pool.inner())
         .await
@@ -48,6 +50,7 @@ async fn save_period(pool: &SqlitePool, day: i64) -> Result<Settings, String> {
 
 #[tauri::command]
 async fn update_period(pool: tauri::State<'_, SqlitePool>, day: i64) -> Result<Settings, String> {
+    let _database_operation = crate::backups::operation()?;
     save_period(pool.inner(), day).await
 }
 
@@ -70,6 +73,7 @@ async fn update_currency(
     pool: tauri::State<'_, SqlitePool>,
     currency: String,
 ) -> Result<Settings, String> {
+    let _database_operation = crate::backups::operation()?;
     save_currency(pool.inner(), &currency).await
 }
 
@@ -84,6 +88,8 @@ fn data_directory(base: std::path::PathBuf, development: bool) -> std::path::Pat
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
+        .manage(backups::BackupState::default())
         .setup(|app| {
             let directory = data_directory(app.path().app_data_dir()?, cfg!(debug_assertions));
             std::fs::create_dir_all(&directory)?;
@@ -101,6 +107,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
+            backups::export_backup,
+            backups::preview_backup,
+            backups::restore_backup,
+            backups::cancel_backup_restore,
             institutions::list_institutions,
             institutions::save_institution,
             institutions::delete_institution,
@@ -139,8 +149,10 @@ pub fn run() {
             accounts::create_account,
             accounts::update_account,
             accounts::list_accounts,
+            accounts::set_account_archived,
             accounts::mark_loan_paid_off,
             incomes::create_income,
+            incomes::update_income,
             incomes::list_incomes,
             income_deductions::list_income_deductions,
             income_deductions::save_salary_deductions,

@@ -40,7 +40,7 @@ test('comparison UI shows forecast beside actual, refreshes payments, and preser
   }}})
  },fixture)
  await page.goto('/#/outlook')
- await expect(page.getByLabel('Recorded · Food 2024-02: Recorded actual',{exact:true})).toHaveText('5.00')
+ await expect(page.getByLabel('Food 2024-02: Recorded actual',{exact:true})).toHaveText('5.00')
  await expect(page.getByRole('columnheader',{name:/Feb 2024/})).toHaveAttribute('colspan','2')
  await expect(page.getByLabel('Status 2024-02')).toHaveCount(0)
  await expect(page.getByRole('button',{name:'Edit Food budget 2024-02 amount'})).toContainText('7.77')

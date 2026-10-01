@@ -398,3 +398,40 @@ test(`${tabName} balances sort exactly in both directions, including negative an
   await expect(table.getByRole('rowheader')).toContainText(['Account 0', 'Account 3', 'Account 4', 'Account 2', 'Account 1'])
 })
 }
+
+test('archive and restore preserve account details with explicit confirmation', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'isTauri', { value: true })
+    const account = { id: 'bank', name: 'Savings', type: 'bank', opening_balance: '12345', current_balance: '12345', is_archived: false, notes: 'Keep this history', last_four: null, loan_type: null, institution: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { includeArchived?: boolean; archived?: boolean }) => {
+      switch (command) {
+        case 'get_settings': return { currency: 'THB', period_start_day: 1 }
+        case 'plugin:app|version': return 'test'
+        case 'list_accounts': return args.includeArchived || !account.is_archived ? [account] : []
+        case 'list_institutions': return { institutions: [], accounts: [] }
+        case 'list_card_limit_groups': return { groups: [], cards: [] }
+        case 'set_account_archived': account.is_archived = args.archived!; return null
+        default: throw new Error(`Unexpected command: ${command}`)
+      }
+    } } })
+  })
+  await page.goto('/#/accounts')
+  await page.getByRole('button', { name: 'Archive account Savings', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('excludes this balance from Net Worth')
+  await expect(dialog).toContainText('123.45')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Archive account Savings', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Archive account Savings', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Archive account', exact: true }).click()
+  await page.getByText('Archived accounts (1)', { exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Edit account Savings' })).toHaveCount(0)
+  await page.getByText('Account details', { exact: true }).click()
+  await expect(page.getByText('Keep this history', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Transaction history', exact: true })).toHaveAttribute('href', /account=bank/)
+  await page.getByRole('button', { name: 'Restore account Savings', exact: true }).click()
+  await expect(dialog).toContainText('may generate forecasts again')
+  await dialog.getByRole('button', { name: 'Restore account', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Edit account Savings' })).toBeVisible()
+  await expect(page.getByText('Archived accounts (1)', { exact: true })).toHaveCount(0)
+})

@@ -132,6 +132,18 @@ async fn save(pool: &SqlitePool, input: SaveInstallment) -> Result<(), String> {
     } else {
         None
     };
+    // Keep exact surviving occurrences, never shift an inclusion to a different payment.
+    // The existing review trigger preserves the issuer statement for explicit review.
+    if let Some(id) = &input.id {
+        let included: Vec<(String, String, String)> = sqlx::query_as("SELECT c.statement_id,c.date,s.account_id FROM card_statement_installments c JOIN card_statements s ON s.id=c.statement_id WHERE c.installment_id=?")
+            .bind(id).fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
+        for (statement, date, card) in included {
+            if card != input.debt_account_id || !(0..input.installment_count).any(|n| crate::card_billing::scheduled_date(&input.first_due_date, n) == date) {
+                sqlx::query("UPDATE card_statements SET needs_review=1 WHERE id=?").bind(&statement).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+                sqlx::query("DELETE FROM card_statement_installments WHERE installment_id=? AND date=?").bind(id).bind(date).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            }
+        }
+    }
     let result = if let Some(id) = input.id {
         sqlx::query("UPDATE installments SET name = ?, account_id = ?, debt_account_id = ?, monthly_amount = ?, installment_count = ?, first_due_date = ?, interest_rate_millis = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
             .bind(name).bind(input.account_id).bind(input.debt_account_id).bind(amount).bind(input.installment_count).bind(input.first_due_date).bind(interest).bind(id).execute(&mut *tx).await
@@ -160,6 +172,7 @@ pub async fn save_installment(
     pool: tauri::State<'_, SqlitePool>,
     input: SaveInstallment,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     save(pool.inner(), input).await
 }
 #[tauri::command]
@@ -167,6 +180,7 @@ pub async fn delete_installment(
     pool: tauri::State<'_, SqlitePool>,
     id: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     remove(pool.inner(), &id).await
 }
 
@@ -205,6 +219,34 @@ mod tests {
             .await
             .unwrap()
     }
+    #[tokio::test]
+    async fn editing_start_date_removes_only_invalid_bill_occurrences_atomically() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        seed(&pool).await;
+        save(&pool, input()).await.unwrap();
+        let id = records(&pool).await.remove(0).id;
+        sqlx::query("INSERT INTO card_statements(id,account_id,start_date,end_date,due_date,amount,minimum) VALUES('s','card','2024-01-01','2024-01-31','2024-02-10',1000,100)").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO card_payment_plans VALUES('s','bank','2024-02-10','full',1000)").execute(&pool).await.unwrap();
+        for date in ["2024-01-31", "2024-02-29"] {
+            sqlx::query("INSERT INTO card_statement_installments VALUES('s',?,?)").bind(&id).bind(date).execute(&pool).await.unwrap();
+        }
+        let before = balances(&pool).await;
+        let mut edit = input(); edit.id = Some(id.clone()); edit.first_due_date = "2024-02-31".into();
+        assert!(save(&pool, edit).await.is_err());
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM card_statement_installments").fetch_one(&pool).await.unwrap(),2);
+        // March 31 changes the schedule while preserving an original-day month-end clamp.
+        let mut edit = input(); edit.id = Some(id.clone()); edit.first_due_date = "2024-03-31".into();
+        save(&pool,edit).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM card_statement_installments").fetch_one(&pool).await.unwrap(),0);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT needs_review FROM card_statements WHERE id='s'").fetch_one(&pool).await.unwrap(),1);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT target FROM card_payment_plans WHERE statement_id='s'").fetch_one(&pool).await.unwrap(),1000);
+        assert_eq!(balances(&pool).await,before);
+        sqlx::query("INSERT INTO card_statement_installments VALUES('s',?,'2024-04-30')").bind(&id).execute(&pool).await.unwrap();
+        let mut edit = input(); edit.id = Some(id); edit.first_due_date = "2024-03-31".into(); edit.name = "Renamed".into();
+        save(&pool,edit).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT date FROM card_statement_installments").fetch_one(&pool).await.unwrap(),"2024-04-30");
+    }
+
     #[tokio::test]
     async fn wallet_can_fund_schedule_without_changing_balances() {
         let pool = SqlitePoolOptions::new()

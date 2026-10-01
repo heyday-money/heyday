@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { PayeeLogo } from './PayeeLogo'
 import { useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -16,6 +17,8 @@ export function PayeeCombobox({ id, value, options, onChange, onCreated, onBusyC
   onBusyChange: (busy: boolean) => void
   onUnresolvedChange: (unresolved: boolean) => void
 }) {
+  useLanguage()
+
   const listId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const busyRef = useRef(false)
@@ -32,7 +35,7 @@ export function PayeeCombobox({ id, value, options, onChange, onCreated, onBusyC
   const matches = options.filter(option => !option.is_archived && normalize(option.name).toLowerCase().includes(key))
   const tooLong = [...name].length > 100
   const choices = [
-    { id: '', label: 'No payee', create: false },
+    { id: '', label: translate("No payee"), create: false },
     ...matches.map(option => ({ id: option.id, label: option.name, create: false })),
     ...(name && !exact && !tooLong ? [{ id: 'create', label: `Create “${name}”`, create: true }] : []),
   ]
@@ -53,9 +56,9 @@ export function PayeeCombobox({ id, value, options, onChange, onCreated, onBusyC
       const option = await saveTransactionOption({ kind: 'payee', id: null, name, is_archived: false })
       onCreated(option); onChange(option.id); onUnresolvedChange(false)
       setQuery(option.name); setOpen(false)
-      toast.success('Payee added.')
+      toast.success(translate("Payee added."))
     } catch (error) {
-      setError(error instanceof Error ? error.message : typeof error === 'string' ? error : 'Could not create payee. Please try again.')
+      setError(error instanceof Error ? error.message : typeof error === 'string' ? error : "Could not create payee. Please try again.")
     } finally {
       busyRef.current = false; setBusy(false); onBusyChange(false)
       requestAnimationFrame(() => inputRef.current?.focus())
@@ -75,7 +78,7 @@ export function PayeeCombobox({ id, value, options, onChange, onCreated, onBusyC
     if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !busyRef.current) setOpen(false)
   }}>
     <PopoverAnchor asChild><div className="relative"><span className="pointer-events-none absolute top-2 left-2"><PayeeLogo id={value} name={selectedName || query} assetId={options.find(p => p.id === value)?.logo_asset_id} /></span>
-    <Input className="pl-9" id={id} ref={inputRef} role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={open ? listId : undefined} aria-activedescendant={open ? `${listId}-${activeIndex}` : undefined} aria-describedby={`${listId}-help`} autoComplete="off" placeholder="Search or create a payee" value={query} readOnly={busy}
+    <Input className="pl-9" id={id} ref={inputRef} role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={open ? listId : undefined} aria-activedescendant={open ? `${listId}-${activeIndex}` : undefined} aria-describedby={`${listId}-help`} autoComplete="off" placeholder={translate("Search or create a payee")} value={query} readOnly={busy}
       onClick={() => setOpen(true)}
       onChange={event => {
         setQuery(event.target.value); setOpen(true); setActive(1); setError(null)
@@ -90,7 +93,7 @@ export function PayeeCombobox({ id, value, options, onChange, onCreated, onBusyC
         }
         if (event.key === 'Enter' && open) { event.preventDefault(); void choose(activeIndex) }
       }} /></div></PopoverAnchor>
-    <PopoverContent id={listId} role="listbox" aria-label="Payees" aria-busy={busy}
+    <PopoverContent id={listId} role="listbox" aria-label={translate("Payees")} aria-busy={busy}
       className="max-h-[min(13rem,var(--radix-popover-content-available-height))] w-[var(--radix-popover-trigger-width)] overflow-y-auto overscroll-contain p-1"
       onOpenAutoFocus={event => event.preventDefault()}
       onCloseAutoFocus={event => event.preventDefault()}
@@ -98,7 +101,7 @@ export function PayeeCombobox({ id, value, options, onChange, onCreated, onBusyC
       onEscapeKeyDown={event => { event.preventDefault(); if (!busyRef.current) setOpen(false) }}>
       {choices.map((choice, index) => <div key={choice.id} id={`${listId}-${index}`} role="option" aria-selected={index === activeIndex} aria-disabled={busy} className={`flex cursor-pointer items-center gap-2 break-words rounded-sm px-3 py-2 text-sm ${index === activeIndex ? 'bg-soft text-ink' : ''}`} onMouseDown={event => event.preventDefault()} onMouseMove={() => setActive(index)} onClick={() => void choose(index)}><PayeeLogo id={choice.id} name={choice.label} assetId={options.find(p => p.id === choice.id)?.logo_asset_id} /><span className="min-w-0 break-words">{choice.label}</span></div>)}
     </PopoverContent>
-    <p id={`${listId}-help`} className="mt-1 text-xs text-muted">{busy ? 'Creating payee…' : exact?.is_archived ? 'This payee is archived. Restore it in Settings to use it.' : tooLong ? 'Use a name of at most 100 characters.' : 'Select a payee or choose Create. New payees are saved immediately.'}</p>
-    {error && <p role="alert" className="mt-1 text-sm text-red-700 dark:text-red-400">{error}</p>}
+    <p id={`${listId}-help`} className="mt-1 text-xs text-muted">{busy ? translate("Creating payee…") : exact?.is_archived ? translate("This payee is archived. Restore it in Settings to use it.") : tooLong ? translate("Use a name of at most 100 characters.") : translate("Select a payee or choose Create. New payees are saved immediately.")}</p>
+    {error && <p role="alert" className="mt-1 text-sm text-red-700 dark:text-red-400">{translate(error)}</p>}
   </div></Popover>
 }

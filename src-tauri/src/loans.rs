@@ -74,6 +74,7 @@ pub async fn get_loan_account(
     pool: tauri::State<'_, SqlitePool>,
     account_id: String,
 ) -> Result<Snapshot, String> {
+    let _database_operation = crate::backups::operation()?;
     let mut tx = pool.begin().await.map_err(err)?;
     let account = sqlx::query_as(&format!(
         "SELECT {} FROM accounts WHERE id=? AND type='loan'",
@@ -140,6 +141,7 @@ pub async fn save_loan_facility(
     credit_limit: String,
     currency_code: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     let limit = amount(&credit_limit)?;
     let mut tx = pool.begin().await.map_err(err)?;
     currency(&mut tx, &currency_code).await?;
@@ -290,6 +292,7 @@ pub async fn save_loan_contract(
     pool: tauri::State<'_, SqlitePool>,
     input: SaveContract,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     save(pool.inner(), input).await
 }
 
@@ -412,6 +415,7 @@ pub async fn record_loan_repayment(
     pool: tauri::State<'_, SqlitePool>,
     input: Repayment,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     repay(pool.inner(), input).await
 }
 
@@ -467,6 +471,7 @@ pub async fn delete_loan_contract(
     pool: tauri::State<'_, SqlitePool>,
     id: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     // Referenced contracts retain their audit trail. Stopping the schedule remains available.
     let result=sqlx::query("DELETE FROM loan_contracts WHERE id=? AND NOT EXISTS(SELECT 1 FROM loan_payment_parts WHERE contract_id=?)").bind(&id).bind(&id).execute(pool.inner()).await.map_err(err)?;
     if result.rows_affected() != 1 {

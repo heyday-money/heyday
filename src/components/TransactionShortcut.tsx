@@ -1,3 +1,4 @@
+import { t as translate, useLanguage } from "../lib/i18n"
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from './ui/button'
@@ -13,6 +14,8 @@ export const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
 export const transactionShortcutLabel = isMac ? '⌘N' : 'Ctrl+N'
 
 export function TransactionShortcut({ children }: { children: ReactNode }) {
+  useLanguage()
+
   const [requested, setRequested] = useState(false)
 
   useEffect(() => {
@@ -32,8 +35,9 @@ export function TransactionShortcut({ children }: { children: ReactNode }) {
 }
 
 export function AddTransactionButton() {
+  useLanguage()
+
   const { setRequested } = useContext(TransactionShortcutContext)
-  return <Button className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={!desktopAvailable} onClick={() => setRequested(true)} title={`Add transaction (${transactionShortcutLabel})`} aria-keyshortcuts={isMac ? 'Meta+N' : 'Control+N'}>
-    <Plus size={17} aria-hidden="true" />Add transaction
-  </Button>
+  return <Button className="bg-accent text-accent-foreground hover:bg-accent/90" disabled={!desktopAvailable} onClick={() => setRequested(true)} title={translate("Add transaction ({value0})", { value0: transactionShortcutLabel })} aria-keyshortcuts={isMac ? 'Meta+N' : 'Control+N'}>
+    <Plus size={17} aria-hidden="true" />{translate("Add transaction")}</Button>
 }

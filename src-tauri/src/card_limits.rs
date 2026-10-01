@@ -133,6 +133,7 @@ async fn remove(pool: &SqlitePool, id: &str) -> Result<(), String> {
 pub async fn list_card_limit_groups(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<Directory, String> {
+    let _database_operation = crate::backups::operation()?;
     list(pool.inner()).await
 }
 #[tauri::command]
@@ -140,6 +141,7 @@ pub async fn save_card_limit_group(
     pool: tauri::State<'_, SqlitePool>,
     input: SaveGroup,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     save(pool.inner(), input).await
 }
 #[tauri::command]
@@ -147,6 +149,7 @@ pub async fn delete_card_limit_group(
     pool: tauri::State<'_, SqlitePool>,
     id: String,
 ) -> Result<(), String> {
+    let _database_operation = crate::backups::operation()?;
     remove(pool.inner(), &id).await
 }
 
