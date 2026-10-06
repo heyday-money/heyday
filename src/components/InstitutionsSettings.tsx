@@ -44,8 +44,8 @@ export function InstitutionsSettings() {
     try { await deleteInstitution(deleting.id); setDeleting(null); toast.success(translate("Institution permanently deleted.")) }
     catch (e) { setError(String(e)) } finally { setBusy(false) }
   }
-  return <section className="rounded-2xl border border-line bg-card p-6">
-    <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-semibold">{translate("Institutions")}</h3><Button disabled={busy || directory.loading || directory.error} onClick={() => { setEditing('new'); setLogoChange(undefined); setName(''); setError(null); setDiscard(false) }}>{translate("Add institution")}</Button></div>
+  return <section className="min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-semibold">{translate("Institutions")}</h3><Button disabled={busy || directory.loading || directory.error} onClick={() => { setEditing('new'); setLogoChange(undefined); setName(''); setError(null); setDiscard(false) }}>{translate("Add institution")}</Button></div>
     <p className="my-3 text-sm">{translate("Renaming updates linked accounts and their institution labels throughout the app, including transaction history. Archiving hides an institution from new selections and keeps existing links.")}</p>
     <p className="mb-3 text-sm">{translate("Permanent deletion is available only when no accounts are linked, including archived accounts. Transaction history links through those accounts.")}</p>
     <Input aria-label={translate("Search institutions")} placeholder={translate("Search institutions")} value={search} onChange={e => setSearch(e.target.value)} />

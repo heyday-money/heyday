@@ -44,7 +44,7 @@ export function homeOverview(data: FinancialData, month: string, today: Date) {
   const recorded = data.transactions.filter(row => row.date <= todayKey)
   for (const row of recorded) {
     if (row.date < cycle.startKey || row.date >= cycle.endKey) continue
-    if (row.type === 'income') incomeReceived += BigInt(row.amount)
+    if (row.type === 'income' && row.salary_payment_role !== 'principal') incomeReceived += BigInt(row.amount)
     if (row.type === 'expense') spending += BigInt(row.amount)
   }
   const upcomingIncome = data.incomes.filter(source => source.is_active && accounts.has(source.destination_account_id)).map(source => {

@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
       { id: 'bank', name: 'Everyday bank', type: 'bank', opening_balance: '92000', current_balance: '100000' },
       { id: 'card', name: 'Credit card', type: 'credit_card', opening_balance: '20000', current_balance: '20000' },
       { id: 'fund', name: 'Investments', type: 'investment', opening_balance: '500000', current_balance: '500000' },
-    ].map(account => ({ ...account, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }))
+    ].map(account => ({ ...account, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: account.type === 'credit_card' ? 5 : null, interest_rate_ten_thousandths: null, monthly_installment: null }))
     const incomes = [{ id: 'salary', name: 'Salary', type: 'salary', destination_account_id: 'bank', destination_account_name: 'Everyday bank', estimated_amount: '30000', recurrence_frequency: 'monthly', recurrence_day_of_month: 25, is_active: true, is_auto_create_transaction: false, created_at: '', updated_at: '' }]
     const transactions = [{ id: 'received', type: 'income', amount: '10000' }, { id: 'spent', type: 'expense', amount: '2000' }].map(row => ({ ...row, account_id: 'bank', account_name: 'Everyday bank', destination_account_id: null, destination_account_name: null, date: '2026-01-10', description: '', payee_id: null, payee_name: null, category_id: 'housing', category_name: 'Housing' }))
     const plans = (): PaymentPlan[] => JSON.parse(localStorage.getItem('test-plans') ?? '[]')
@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
       switch (command) {
         case 'get_financial_data': {
           if (sessionStorage.getItem('fail-outlook')) throw 'Load failed'
-          return { accounts: sessionStorage.getItem('no-accounts') ? [] : accounts, settings: { currency: sessionStorage.getItem('no-currency') ? null : 'THB', period_start_day: 1 }, incomes, transactions, plans: plans(), categories } as FinancialData
+          return { accounts: sessionStorage.getItem('no-accounts') ? [] : sessionStorage.getItem('extra-debt') ? [...accounts, { ...accounts[1], id: 'unplanned-card', name: 'Unplanned card' }] : accounts, settings: { currency: sessionStorage.getItem('no-currency') ? null : 'THB', period_start_day: 1 }, incomes, transactions, subscriptions: JSON.parse(sessionStorage.getItem('calendar-subscriptions') ?? '[]'), plans: plans(), categories } as FinancialData
         }
         case 'get_settings': return { currency: 'THB', period_start_day: 1 }
         case 'list_accounts': return accounts
@@ -82,6 +82,11 @@ test('Outlook navigation preserves the Home hero and supports the full planning 
   await page.getByRole('button', { name: 'Save plan', exact: true }).click()
   await expect(closing).toContainText('1,150.00 THB')
   await expect(closing).toContainText('Forecast · known plans')
+  await page.evaluate(() => { sessionStorage.setItem('extra-debt', '1'); window.dispatchEvent(new Event('accounts-changed')) })
+  await expect(closing).toContainText('Partial forecast')
+  await expect(page.getByRole('row', { name: /^Debt repayments/ }).getByRole('cell').first()).toContainText('50.00 THB')
+  await page.evaluate(() => { sessionStorage.removeItem('extra-debt'); window.dispatchEvent(new Event('accounts-changed')) })
+  await expect(closing).toContainText('Forecast · known plans')
   await page.reload()
   await page.getByRole('tab', { name: 'Account-Based Outlook', exact: true }).click()
   await expect(closing).toContainText('1,150.00 THB')
@@ -134,4 +139,50 @@ test('outlook and net worth handle missing prerequisites and retry failed reads'
   await expect(page.getByText(/Add a cash, bank, or digital wallet account in/)).toBeVisible()
   await page.getByRole('navigation').getByRole('link', { name: 'Net Worth', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'No accounts yet' })).toBeVisible()
+})
+
+
+test('repayment calendar shows recurring due days, month navigation and account links', async ({ page }) => {
+  await page.goto('/#/')
+  const sections = page.locator('#repayment-calendar-title, #home-attention-title')
+  await expect(sections).toHaveText(['Payment Calendar', 'Needs attention (0)'])
+  const calendar = page.getByRole('region', { name: 'Monthly payment calendar' })
+  await expect(calendar.locator('td').filter({ has: page.locator('time[datetime="2026-01-05"]') }).getByRole('link', { name: /Credit card/ })).toBeVisible()
+  await expect(calendar.getByRole('link', { name: /Credit card/ })).toHaveAttribute('href', /accounts\/card\/details/)
+  await expect(calendar.locator('time[aria-current="date"]')).toHaveAttribute('datetime', '2026-01-15')
+  await page.getByRole('button', { name: 'Next month', exact: true }).click()
+  await expect(calendar.locator('td').filter({ has: page.locator('time[datetime="2026-02-05"]') }).getByRole('link', { name: /Credit card/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Current month', exact: true }).click()
+  await page.getByRole('button', { name: 'Previous month', exact: true }).click()
+  await expect(calendar.locator('td').filter({ has: page.locator('time[datetime="2025-12-05"]') }).getByRole('link', { name: /Credit card/ })).toBeVisible()
+  await page.setViewportSize({ width: 760, height: 700 })
+  expect(await calendar.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+  expect(await page.locator('main').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+})
+
+
+test('Home calendar combines subscriptions and repayments and filters without changing schedules', async ({ page }) => {
+  await page.goto('/#/')
+  await page.evaluate(() => {
+    sessionStorage.setItem('calendar-subscriptions', JSON.stringify([
+      { id: 'netflix', name: 'Netflix', provider_icon: 'netflix', account_id: 'card', account_name: 'Credit card', amount: '41900', frequency: 'monthly', first_billing_date: '2026-01-05', end_date: null, is_active: true },
+      { id: 'paused', name: 'Paused music', account_id: 'bank', amount: '100', frequency: 'monthly', first_billing_date: '2026-01-05', end_date: null, is_active: false }
+    ]))
+    window.dispatchEvent(new Event('plans-changed'))
+  })
+  const calendar = page.getByRole('region', { name: 'Monthly payment calendar' })
+  const day = calendar.locator('td').filter({ has: page.locator('time[datetime="2026-01-05"]') })
+  await expect(day.getByRole('link')).toHaveCount(2)
+  await expect(day.getByRole('link', { name: 'Netflix · Subscription billing' })).toHaveAttribute('href', /subscriptions$/)
+  await expect(calendar.getByRole('link', { name: /Paused music/ })).toHaveCount(0)
+  await page.getByLabel('Calendar type', { exact: true }).selectOption('subscriptions')
+  await expect(day.getByRole('link')).toHaveCount(1)
+  await expect(day.getByRole('link', { name: /Netflix/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Next month', exact: true }).click()
+  await expect(calendar.locator('td').filter({ has: page.locator('time[datetime="2026-02-05"]') }).getByRole('link', { name: /Netflix/ })).toBeVisible()
+  await page.getByLabel('Calendar type', { exact: true }).selectOption('repayments')
+  await expect(calendar.getByRole('link', { name: /Netflix/ })).toHaveCount(0)
+  await expect(calendar.getByRole('link', { name: /Credit card/ })).toBeVisible()
+  await page.getByLabel('Calendar type', { exact: true }).selectOption('all')
+  await expect(calendar.getByRole('link')).toHaveCount(2)
 })

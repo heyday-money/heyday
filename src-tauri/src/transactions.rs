@@ -23,8 +23,10 @@ pub struct Transaction {
     income_source_id: Option<String>,
     income_source_name: Option<String>,
     has_reconciliation_history: bool,
+    salary_payment_id: Option<String>,
+    salary_payment_role: Option<String>,
 }
-pub(crate) const SELECT: &str = "SELECT t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, linked_loan.id AS loan_account_id, linked_loan.name AS loan_account_name, t.category_id, c.name AS category_name, c.icon AS category_icon, t.income_source_id, (SELECT name FROM incomes WHERE id=t.income_source_id) AS income_source_name, EXISTS(SELECT 1 FROM reconciliation_entries re WHERE re.transaction_id=t.id) AS has_reconciliation_history FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN loan_payment_parts lp ON lp.transaction_id=t.id LEFT JOIN loan_contracts lc ON lc.id=lp.contract_id LEFT JOIN accounts linked_loan ON linked_loan.id=COALESCE(lp.loan_account_id,lc.account_id)";
+pub(crate) const SELECT: &str = "SELECT sp.payment_id AS salary_payment_id,sp.role AS salary_payment_role,t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, linked_loan.id AS loan_account_id, linked_loan.name AS loan_account_name, t.category_id, c.name AS category_name, c.icon AS category_icon, t.income_source_id, (SELECT name FROM incomes WHERE id=t.income_source_id) AS income_source_name, EXISTS(SELECT 1 FROM reconciliation_entries re WHERE re.transaction_id=t.id) AS has_reconciliation_history FROM transactions t LEFT JOIN salary_payment_transactions sp ON sp.transaction_id=t.id JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN loan_payment_parts lp ON lp.transaction_id=t.id LEFT JOIN loan_contracts lc ON lc.id=lp.contract_id LEFT JOIN accounts linked_loan ON linked_loan.id=COALESCE(lp.loan_account_id,lc.account_id)";
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct ExpenseAccount {
@@ -276,6 +278,11 @@ pub(crate) async fn insert(
             }
         }
     }
+    if let Some(source) = &input.income_source_id {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM salary_payments WHERE income_id=? AND (occurrence=substr(?,1,7) OR substr(date,1,7)=substr(?,1,7)))")
+            .bind(source).bind(&input.date).bind(&input.date).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
+        if exists { return Err("A salary payment already exists for this month. Review it in Income before adding another receipt.".into()); }
+    }
     let row = insert_in_connection(&mut tx, input).await?;
     crate::loans::validate_allocations(&mut tx).await?;
     tx.commit().await.map_err(|e| e.to_string())?;
@@ -293,7 +300,10 @@ pub(crate) async fn remove_confirmed(
     confirmed: bool,
 ) -> Result<(), String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    let ids = crate::loans::deletion_ids(&mut tx, id).await?;
+    let group = crate::salary_payments::group(&mut tx, id).await?;
+    let ids = if let Some(group) = &group {
+        sqlx::query_scalar("SELECT transaction_id FROM salary_payment_transactions WHERE payment_id=?").bind(group).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?
+    } else { crate::loans::deletion_ids(&mut tx, id).await? };
     for id in &ids {
         crate::loans::before_delete(&mut tx, id).await?;
         let row: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
@@ -323,6 +333,9 @@ pub(crate) async fn remove_confirmed(
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+    }
+    if let Some(group) = group {
+        sqlx::query("DELETE FROM salary_payments WHERE id=?").bind(group).execute(&mut *tx).await.map_err(|e|e.to_string())?;
     }
     crate::loans::validate_allocations(&mut tx).await?;
     tx.commit().await.map_err(|e| e.to_string())
@@ -413,6 +426,7 @@ mod tests {
             .await
             .unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0002_salary_payments.sql")).execute(&pool).await.unwrap();
         pool
     }
     #[tokio::test]
@@ -724,6 +738,7 @@ mod tests {
             .await
             .unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0002_salary_payments.sql")).execute(&pool).await.unwrap();
         let stored: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
             .bind("old")
             .fetch_one(&pool)

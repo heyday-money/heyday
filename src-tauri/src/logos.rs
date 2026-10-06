@@ -82,7 +82,7 @@ pub async fn asset(
 }
 
 pub async fn prune(conn: &mut SqliteConnection) -> Result<(), String> {
-    sqlx::query("DELETE FROM logo_assets WHERE NOT EXISTS(SELECT 1 FROM institutions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM payees WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscriptions WHERE logo_asset_id=logo_assets.id)")
+    sqlx::query("DELETE FROM logo_assets WHERE NOT EXISTS(SELECT 1 FROM institutions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM payees WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscriptions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscription_providers WHERE logo_asset_id=logo_assets.id)")
         .execute(conn).await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -296,6 +296,7 @@ mod tests {
             .await
             .unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0003_subscription_providers.sql")).execute(&pool).await.unwrap();
         let baseline: (String, Option<String>) =
             sqlx::query_as("SELECT logo_mode,logo_asset_id FROM institutions WHERE id='bank-002'")
                 .fetch_one(&pool)

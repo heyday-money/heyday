@@ -19,9 +19,9 @@ export function CurrencySetting({ settings, onChange }: { settings: Settings; on
     finally { setBusy(false) }
   }}>
     <h3 className="text-base font-semibold">{translate("Currency")}</h3>
-    <div className="mt-4 flex items-center justify-between gap-5 text-sm">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-5 text-sm">
       <label htmlFor="currency">{translate("Currency")}</label>
-      <div className="w-40 shrink-0"><NativeSelect id="currency" required disabled={busy} value={currency} onChange={event => { setCurrency(event.target.value); setError(null) }}>
+      <div className="w-40 max-w-full"><NativeSelect id="currency" required disabled={busy} value={currency} onChange={event => { setCurrency(event.target.value); setError(null) }}>
         <option value="" disabled>{translate("Select currency")}</option>
         {currencies.map(code => <option key={code}>{code}</option>)}
       </NativeSelect></div>

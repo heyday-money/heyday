@@ -46,8 +46,9 @@ export function AccountsPage() {
   }, [attempt])
   useEffect(() => {
     const refresh = () => setAttempt(value => value + 1)
-    window.addEventListener('accounts-changed', refresh)
-    return () => window.removeEventListener('accounts-changed', refresh)
+    const events = ['accounts-changed', 'incomes-changed']
+    events.forEach(event => window.addEventListener(event, refresh))
+    return () => events.forEach(event => window.removeEventListener(event, refresh))
   }, [])
   const currency = settings?.currency
   return <>

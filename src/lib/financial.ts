@@ -56,10 +56,10 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
     const fromKey = dateKey(from), toKey = dateKey(to)
     const month = dateKey(from).slice(0, 7)
     const excluded = (id: string) => !!exclusionFor(data.selective_defaults, id, month)
-    const hasDebt = data.accounts.some(account => isDebt(account) && accountValue(account) < 0n && !excluded(account.id))
     const remainingDays = dateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)) < toKey
     const inside = (date: string) => date >= fromKey && date < toKey
     const buckets = { income: flow(), expenses: flow(), repayments: flow(), other: flow() }
+    const plannedDebt = new Set<string>()
     if (index === 0) for (const row of data.transactions) {
       if (!inside(row.date) || row.date > todayString) continue
       const amount = BigInt(row.amount)
@@ -87,13 +87,36 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
     for (const plan of data.plans) {
       if (!inside(plan.date) || plan.date <= todayString || !cash.has(plan.account_id)) continue
       if (plan.type === 'expense') add(buckets.expenses, plan.category_id ?? 'uncategorized', plan.category_name ?? t('Uncategorized'), 'forecast', BigInt(plan.amount))
-      else if (plan.destination_account_id && debt.has(plan.destination_account_id) && !excluded(plan.destination_account_id)) add(buckets.repayments, plan.destination_account_id, plan.destination_account_name ?? t('Debt account'), 'forecast', BigInt(plan.amount))
+      else if (plan.destination_account_id && debt.has(plan.destination_account_id) && !excluded(plan.destination_account_id)) {
+        plannedDebt.add(plan.destination_account_id)
+        add(buckets.repayments, plan.destination_account_id, plan.destination_account_name ?? t('Debt account'), 'forecast', BigInt(plan.amount))
+      }
     }
     for (const payment of cardForecasts(data.card_billing,todayString)) {
-      if (inside(payment.date) && cash.has(payment.account_id) && debt.has(payment.card_id) && !excluded(payment.card_id)) add(buckets.repayments,payment.card_id,data.accounts.find(a=>a.id===payment.card_id)?.name??'Credit card','forecast',payment.amount)
+      if (inside(payment.date) && cash.has(payment.account_id) && debt.has(payment.card_id) && !excluded(payment.card_id)) {
+        plannedDebt.add(payment.card_id)
+        add(buckets.repayments,payment.card_id,data.accounts.find(a=>a.id===payment.card_id)?.name??'Credit card','forecast',payment.amount)
+      }
     }
-    for (const payment of scheduledRepayments) {
-      if (inside(payment.date) && payment.date > todayString && !excluded(payment.debtId)) add(buckets.repayments, payment.debtId, payment.debtName, 'forecast', BigInt(payment.amount))
+    const payroll = new Map<string, bigint>()
+    for (const deduction of data.income_deductions ?? []) {
+      const salary = data.incomes.find(i => i.id === deduction.income_id)
+      if (!deduction.debt_account_id || !salary?.is_active || !cash.has(salary.destination_account_id)) continue
+      if (!data.accounts.some(a => a.id === deduction.debt_account_id && a.type === 'loan')) continue
+      for (let offset = 0; offset <= 1; offset++) {
+        const date = dateKey(monthlyDate(from.getFullYear(), from.getMonth() + offset, salary.recurrence_day_of_month))
+        if (inside(date)) payroll.set(deduction.debt_account_id, (payroll.get(deduction.debt_account_id) ?? 0n) + BigInt(deduction.amount))
+      }
+    }
+    for (const payment of [...scheduledRepayments].sort((a, b) => a.date.localeCompare(b.date))) {
+      if (!inside(payment.date) || excluded(payment.debtId)) continue
+      const amount = BigInt(payment.amount), coverage = payroll.get(payment.debtId) ?? 0n
+      const covered = coverage > amount ? amount : coverage
+      payroll.set(payment.debtId, coverage - covered)
+      if (payment.date > todayString) {
+        plannedDebt.add(payment.debtId)
+        add(buckets.repayments, payment.debtId, payment.debtName, 'forecast', amount - covered)
+      }
     }
     for (const subscription of data.subscriptions ?? []) {
       if (!subscription.is_active || !cash.has(subscription.account_id)) continue
@@ -110,7 +133,11 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
     const opening = index === 0 ? currentCash - actualNet : previousClosing
     const closing = opening + actualNet + forecastNet
     const missingExpenses = remainingDays && buckets.expenses.plannedCount === 0
-    const missingRepayments = remainingDays && hasDebt && buckets.repayments.plannedCount === 0
+    // A plan for one debt must not hide another debt without a future payment.
+    // Zero forecast details can be intentional when payroll covers a schedule.
+    const missingRepayments = remainingDays && data.accounts.some(account =>
+      isDebt(account) && accountValue(account) < 0n && !excluded(account.id) &&
+      !plannedDebt.has(account.id))
     partial ||= missingExpenses || missingRepayments
     previousClosing = closing
     return { selectiveDefaults: data.selective_defaults, month, from, to, fromKey, toKey, remainingDays, buckets, opening, closing, actualNet, forecastNet, partial, missingExpenses, missingRepayments }

@@ -33,6 +33,7 @@ export const loanTypes = [
 ] as const
 export type LoanType = typeof loanTypes[number]['value']
 export interface Account {
+  payroll_linked?: boolean
   is_archived?: boolean
   paid_off_on?: string | null
   id: string
@@ -52,7 +53,7 @@ export interface Account {
   initial_loan_amount?: string | null
 }
 import type { LoanContract, LoanFacility } from './loans'
-export type NewAccount = Omit<Account, 'id' | 'current_balance' | 'paid_off_on' | 'is_archived'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null }
+export type NewAccount = Omit<Account, 'payroll_linked' | 'id' | 'current_balance' | 'paid_off_on' | 'is_archived'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null }
 
 export function listAccounts(includePaidOff = false, includeArchived = false): Promise<Account[]> {
   return invoke<Account[]>('list_accounts', { includePaidOff, includeArchived })
@@ -112,6 +113,8 @@ export async function saveSalaryDeductions(input: { income_id: string; currency:
 
 export type TransactionType = 'income' | 'expense' | 'transfer' | 'repayment'
 export interface Transaction {
+  salary_payment_id?: string | null
+  salary_payment_role?: string | null
   loan_account_id?: string | null
   loan_account_name?: string | null
   income_source_id?: string | null
@@ -172,6 +175,7 @@ export interface PaymentPlan {
 }
 export type SavePaymentPlan = Omit<PaymentPlan, 'id' | 'account_name' | 'destination_account_name' | 'category_name'> & { id: string | null; currency: string }
 export interface FinancialData {
+  income_deductions?: IncomeDeduction[]
   selective_defaults?: import('./selective-defaults').SelectiveDefault[]
   card_billing?: CardBillingData
   loan_contracts?: LoanContract[]
@@ -227,6 +231,8 @@ export async function deleteInstallment(id: string): Promise<void> {
 
 export type SubscriptionPlatform = 'apple_app_store' | 'google_play' | 'website' | 'in_app' | 'other'
 export interface Subscription {
+  provider_id?: string | null
+  provider_icon?: string | null
   logo_asset_id?: string | null
   managed_via?: SubscriptionPlatform | null
   management_url?: string | null
@@ -243,7 +249,7 @@ export interface Subscription {
   end_date: string | null
   is_active: boolean
 }
-export type SaveSubscription = Omit<Subscription, 'id' | 'account_name' | 'account_type' | 'category_name' | 'logo_asset_id'> & { id: string | null; currency: string; logo_change?: LogoChange }
+export type SaveSubscription = Omit<Subscription, 'id' | 'account_name' | 'account_type' | 'category_name' | 'logo_asset_id' | 'provider_icon'> & { id: string | null; currency: string; logo_change?: LogoChange }
 export async function saveSubscription(input: SaveSubscription): Promise<void> {
   await invoke('save_subscription', { input })
   window.dispatchEvent(new Event('plans-changed'))

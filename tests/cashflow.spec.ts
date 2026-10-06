@@ -363,3 +363,42 @@ test('selected payday cycle removes paid excluded loans from Forecast but retain
   expect(cycleTotals(input,'2026-11','forecast').buckets.debt).toBe(3236667n)
   expect(openingForCycle(input,'2026-11')).toBe(6033400n)
 })
+
+test('payroll covers saved installments once, preserving cycle overrides and carry-forward', () => {
+  const input = data()
+  input.incomes = [{ id: 'salary', name: 'Salary', estimated_amount: '5000000', recurrence_day_of_month: 25, is_active: true, destination_account_name: 'Bank', account_archived: false }]
+  input.debt_accounts = [['home', '920000'], ['education', '126000']].map(([id, amount]) => ({ id, name: id, monthly_installment: amount, loan_type: 'personal_loan', current_balance: '99999999', notes: null, is_archived: false }))
+  input.income_deductions = input.debt_accounts.map(a => ({ id: a.id, income_id: 'salary', name: a.name, description: '', amount: a.monthly_installment!, debt_account_id: a.id }))
+  input.opening = { month: '2026-01', amount: '0' }
+  expect(cycleTotals(input, '2026-01')).toMatchObject({ buckets: { deductions: 1046000n, debt: 0n }, surplus: 3954000n })
+  expect(openingForCycle(input, '2026-03')).toBe(7908000n)
+  input.amounts = [{ item_id: 'deduction:home', month: '2026-01', amount: '400000' }, { item_id: 'deduction:education', month: '2026-01', amount: '0' }]
+  expect(cycleTotals(input, '2026-01')).toMatchObject({ buckets: { deductions: 400000n, debt: 646000n }, surplus: 3954000n })
+  expect(openingForCycle(input, '2026-03')).toBe(7908000n)
+  input.amounts.push({ item_id: 'debt:home', month: '2026-01', amount: '10000' })
+  expect(cycleTotals(input, '2026-01').buckets.debt).toBe(136000n)
+  expect(openingForCycle(input, '2026-02')).toBe(cycleTotals(input, '2026-01').surplus)
+  input.amounts = [{ item_id: 'deduction:home', month: '2026-01', amount: '1000000' }]
+  expect(cycleTotals(input, '2026-01').buckets.debt).toBe(0n)
+  input.amounts = []; input.incomes[0].is_active = false
+  expect(cycleTotals(input, '2026-01')).toMatchObject({ buckets: { deductions: 0n, debt: 1046000n } })
+  input.incomes[0].is_active = true; input.incomes[0].account_archived = true
+  expect(cycleTotals(input, '2026-01').buckets.debt).toBe(1046000n)
+})
+
+test('payroll coverage follows clamped salary occurrences and exclusions without altering manual rows', () => {
+  const input = data(); input.period_start_day = 31
+  input.incomes = [{ id: 'salary', name: 'Salary', estimated_amount: '100000', recurrence_day_of_month: 30, is_active: true, destination_account_name: 'Bank', account_archived: false }]
+  input.debt_accounts = [{ id: 'loan', name: 'Loan', loan_type: 'personal_loan', current_balance: '100000', monthly_installment: '1000', notes: null, is_archived: false }]
+  input.income_deductions = [{ id: 'payroll', income_id: 'salary', name: 'Loan', amount: '600', description: '', debt_account_id: 'loan' }]
+  input.opening = { month: '2024-01', amount: '0' }
+  for (const month of ['2024-01', '2024-02', '2024-03']) {
+    const totals = cycleTotals(input, month)
+    expect(totals.buckets.debt).toBe(totals.buckets.deductions >= 1000n ? 0n : 1000n - totals.buckets.deductions)
+  }
+  expect(openingForCycle(input, '2024-04')).toBe(['2024-01', '2024-02', '2024-03'].reduce((sum, month) => sum + cycleTotals(input, month).surplus, 0n))
+  input.selective_defaults = [{ account_id: 'loan', start_month: '2024-02', end_month: '2024-03' }]
+  input.items = [{ ...item('manual', 'debt'), schedule_amount: '500', schedule_start: '2024-01', schedule_end: '2024-12' }]
+  expect(cycleTotals(input, '2024-02').buckets.debt).toBe(500n)
+  expect(openingForCycle(input, '2024-04')).toBe(['2024-01', '2024-02', '2024-03'].reduce((sum, month) => sum + cycleTotals(input, month).surplus, 0n))
+})

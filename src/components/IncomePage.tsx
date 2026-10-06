@@ -1,9 +1,14 @@
-import { t as translate, useLanguage } from "../lib/i18n"
+import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
+import { DataTable } from './ui/data-table'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from './ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
+import { SalaryPaymentDialog, SalaryPaymentHistory } from './SalaryPaymentDialog'
+import { t as translate, useLanguage, getLanguage } from "../lib/i18n"
 import { AccountLabel } from './InstitutionLogo'
 import { AccountSelect } from './AccountSelect'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowUpRight, Plus } from 'lucide-react'
+import { ArrowUpRight, Plus, Pencil, MoreHorizontal, ListMinus, History } from 'lucide-react'
 import { toast } from 'sonner'
 import { createIncome, updateIncome, desktopAvailable, getSettings, listAccounts, listIncomes, type Account, type Income, type IncomeType, type Settings } from '../lib/desktop'
 import { decimalToInteger, formatAmount, fractionDigits } from '../lib/money'
@@ -45,6 +50,8 @@ export function IncomePage() {
   const [deductions, setDeductions] = useState(initialDeductions)
   const [editingDeductions, setEditingDeductions] = useState<Income | null>(null)
   const [editing, setEditing] = useState<Income | null>(null)
+  const [recording, setRecording] = useState<Income | null>(null)
+  const [history, setHistory] = useState<Income | null>(null)
   const saveLock = useRef(false)
   const editTriggerRef = useRef<HTMLButtonElement | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -68,12 +75,12 @@ export function IncomePage() {
     else close()
   }
 
-  const beginEdit = (source: Income, trigger: HTMLButtonElement) => {
+  const beginEdit = useCallback((source: Income, trigger: HTMLButtonElement) => {
     editTriggerRef.current = trigger
     if (saveLock.current || !currency) return
     setEditing(source); setIncomeType(source.type); setGross(amountText(source.estimated_amount, currency))
     setDirty(false); setConfirmDiscard(false); setError(null); setOpen(true)
-  }
+  }, [currency])
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -146,13 +153,36 @@ export function IncomePage() {
           </form>
         </DialogContent>
         {!sources.length ? <section className="rounded-2xl border border-line bg-card p-12 text-center"><ArrowUpRight size={28} className="mx-auto mb-4 text-brand" /><h3 className="font-semibold">{translate("No income sources yet")}</h3><p className="mt-2 text-[14px]">{translate("Add salary, variable income, investments, or another source.")}</p></section>
-          : <ul className="space-y-3" aria-label={translate("Income sources")}>{sources.map(source => <li key={source.id} className="rounded-[18px] border border-line bg-card p-5">
-            <div className="flex items-start justify-between gap-4 max-[600px]:flex-col">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-semibold">{source.name}</h3><span className={`rounded-full px-2 py-0.5 text-[11px] ${source.is_active ? 'bg-soft text-brand' : 'bg-page text-muted'}`}>{source.is_active ? translate("Active") : translate("Inactive")}</span></div><p className="mt-2 break-words text-[13px]">{incomeTypes.find(type => type.value === source.type)?.label} {" "}{translate("· To")}{" "}<AccountLabel id={source.destination_account_id} name={source.destination_account_name} /></p><p className="mt-1 text-[12px]">{translate("Monthly · Day")}{" "}{source.recurrence_day_of_month}{source.recurrence_day_of_month > 28 ? translate(" (or month-end)") : ''}</p></div>
-              <div className="min-w-0 text-right tabular-nums max-[600px]:text-left"><Button className="mb-2" size="sm" variant="outline" aria-label={translate("Edit {value0}", { value0: source.name })} onClick={event => beginEdit(source, event.currentTarget)}>{translate("Edit")}</Button><p className="break-words text-[20px] font-semibold text-ink">{formatAmount(source.estimated_amount, currency)}</p><p className="text-[12px]">{source.type === 'salary' ? translate("Estimated gross per payment") : translate("Estimated per payment")}</p>{source.type === 'salary' && <><p className="mt-2 text-xs">{translate("Deductions:")}{" "}{formatAmount(source.deductions_total ?? '0', currency)}</p><p className="text-sm font-semibold text-ink">{translate("Net:")}{" "}{formatAmount((BigInt(source.estimated_amount) - BigInt(source.deductions_total ?? '0')).toString(), currency)}</p><Button className="mt-2" size="sm" variant="outline" onClick={() => setEditingDeductions(source)} aria-label={translate("Manage deductions for {value0}", { value0: source.name })}>{translate("Manage Deductions")}</Button></>}</div>
-            </div>
-          </li>)}</ul>}
+          : <IncomeTable sources={sources} accounts={accounts} currency={currency} onEdit={beginEdit} onRecord={setRecording} onDeductions={setEditingDeductions} onHistory={setHistory} />}
+
       </>}
+    {recording && currency && <SalaryPaymentDialog income={recording} currency={currency} onClose={() => setRecording(null)} />}
+    {history && currency && <SalaryPaymentHistory incomeId={history.id} currency={currency} onClose={() => setHistory(null)} />}
     {editingDeductions && currency && <SalaryDeductionsDialog income={editingDeductions} currency={currency} onSaved={income => setSources(current => current.map(source => source.id === income.id ? income : source))} onClose={() => setEditingDeductions(null)} />}
   </Dialog>
+}
+
+function IncomeTable({ sources, accounts, currency, onEdit, onRecord, onDeductions, onHistory }: {
+  sources: Income[]; accounts: Account[]; currency: string
+  onEdit: (source: Income, trigger: HTMLButtonElement) => void
+  onRecord: (source: Income) => void; onDeductions: (source: Income) => void; onHistory: (source: Income) => void
+}) {
+  useLanguage()
+  const meta = { headerClassName: 'px-4 py-3 font-medium whitespace-nowrap', cellClassName: 'px-4 py-4 align-middle' }
+  const moneyMeta = { headerClassName: `${meta.headerClassName} text-right`, cellClassName: `${meta.cellClassName} text-right whitespace-nowrap tabular-nums` }
+  const columns = useMemo<ColumnDef<Income>[]>(() => [
+    { id: 'source', header: translate('Income source'), meta: { ...meta, rowHeader: true, cellClassName: `${meta.cellClassName} min-w-44 max-w-64` }, cell: ({ row: { original: source } }) => <><h3 className="break-words font-semibold text-ink">{source.name}</h3><div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-normal text-muted"><span>{incomeTypes.find(type => type.value === source.type)?.label}</span><span className={`rounded-full px-2 py-0.5 ${source.is_active ? 'bg-soft text-brand' : 'bg-page text-muted'}`}>{source.is_active ? translate('Active') : translate('Inactive')}</span></div></> },
+    { id: 'gross', header: translate('Estimated gross'), meta: moneyMeta, cell: ({ row }) => formatAmount(row.original.estimated_amount, currency) },
+    { id: 'deductions', header: translate('Deductions'), meta: moneyMeta, cell: ({ row }) => row.original.type === 'salary' ? formatAmount(row.original.deductions_total ?? '0', currency) : '—' },
+    { id: 'net', header: translate('Estimated net'), meta: { ...moneyMeta, cellClassName: `${moneyMeta.cellClassName} font-semibold text-ink` }, cell: ({ row }) => formatAmount((BigInt(row.original.estimated_amount) - (row.original.type === 'salary' ? BigInt(row.original.deductions_total ?? '0') : 0n)).toString(), currency) },
+    { id: 'destination', header: translate('Destination account'), meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-36 max-w-56 break-words` }, cell: ({ row }) => <><AccountLabel id={row.original.destination_account_id} name={row.original.destination_account_name} />{!accounts.some(a => a.id === row.original.destination_account_id) && <span className="mt-1 block text-xs text-muted">{translate('Account unavailable')}</span>}</> },
+    { id: 'schedule', header: translate('Schedule'), meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap` }, cell: ({ row }) => <>{translate('Monthly · Day')} {row.original.recurrence_day_of_month}{row.original.recurrence_day_of_month > 28 && <span className="mt-1 block text-xs text-muted">{translate(' (or month-end)')}</span>}</> },
+    { id: 'actions', header: translate('Actions'), meta: { ...meta, headerClassName: `${meta.headerClassName} text-right` }, cell: ({ row: { original: source } }) => <div className="flex items-center justify-end gap-1">
+      {source.type === 'salary' && <Button size="sm" variant="outline" className="mr-1" aria-label={translate('Record salary payment')} disabled={!source.is_active || !accounts.some(a => a.id === source.destination_account_id && ['cash', 'bank', 'wallet'].includes(a.type))} onClick={() => onRecord(source)}>{translate('Record payment')}</Button>}
+      <Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={translate('Edit {value0}', { value0: source.name })} onClick={event => onEdit(source, event.currentTarget)}><Pencil aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{translate('Edit income source')}</TooltipContent></Tooltip>
+      {source.type === 'salary' && <DropdownMenu modal={false}><DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={translate('More actions for {value0}', { value0: source.name })}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem aria-label={translate('Manage deductions for {value0}', { value0: source.name })} onSelect={() => onDeductions(source)}><ListMinus aria-hidden="true" />{translate('Manage Deductions')}</DropdownMenuItem><DropdownMenuItem onSelect={() => onHistory(source)}><History aria-hidden="true" />{translate('Salary payment history')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+    </div> },
+  ], [currency, accounts, onEdit, onRecord, onDeductions, onHistory, getLanguage()])
+  const table = useReactTable({ data: sources, columns, getRowId: source => source.id, getCoreRowModel: getCoreRowModel() })
+  return <TooltipProvider><DataTable table={table} label={translate('Income sources')} className="min-w-[1050px]" headerClassName="border-b border-line bg-soft text-xs text-muted" bodyClassName="divide-y divide-line" rowClassName="hover:bg-soft/40" /><p className="mt-3 text-xs text-muted">{translate('Estimates per payment. Salary deductions are included in net income; record actual payments separately.')}</p></TooltipProvider>
 }

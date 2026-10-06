@@ -1,3 +1,4 @@
+import { repaymentDeadlines } from '../src/lib/repayment-calendar'
 import { expect, test } from '@playwright/test'
 import { dateKey, monthlyOutlook, netWorth } from '../src/lib/financial'
 import type { Account, FinancialData, Income, PaymentPlan, Transaction } from '../src/lib/desktop'
@@ -127,4 +128,55 @@ test('Selective Default retains account rows and actuals while removing linked r
   expect(JSON.stringify(input)).toBe(saved)
   input.transactions=[]
   expect(monthlyOutlook(input,new Date(2026,0,15))[0].buckets.repayments.details.has('card')).toBe(true)
+})
+
+test('account outlook covers loan schedules through payroll once and preserves separate plans', () => {
+  const input = data()
+  input.accounts.push(account('loan', 'loan', '100000'))
+  input.incomes = [{ ...income('salary', 'bank', 25, '50000'), deductions_total: '10000' }]
+  input.income_deductions = [{ id: 'deduction', income_id: 'salary', name: 'Loan', amount: '10000', description: '', debt_account_id: 'loan' }]
+  input.installments = [{ id: 'legacy', name: 'Loan payment', account_id: 'bank', account_name: 'bank', debt_account_id: 'loan', debt_account_name: 'loan', debt_account_type: 'loan', monthly_amount: '10000', installment_count: 3, first_due_date: '2026-01-28', interest_rate_millis: null, purchase_kind: 'existing_purchase', purchase_transaction_id: null }]
+  let periods = monthlyOutlook(input, new Date(2026, 0, 15))
+  expect(periods[0].buckets.income.forecast).toBe(40000n)
+  expect(periods[0].buckets.repayments.forecast).toBe(0n)
+  input.income_deductions[0].amount = '4000'; input.incomes[0].deductions_total = '4000'
+  input.plans = [{ ...plan('repayment', '2026-01-29', '2000'), destination_account_id: 'loan' }]
+  periods = monthlyOutlook(input, new Date(2026, 0, 15))
+  expect(periods[0].buckets.repayments.forecast).toBe(8000n)
+  input.incomes[0].is_active = false
+  expect(monthlyOutlook(input, new Date(2026, 0, 15))[0].buckets.repayments.forecast).toBe(12000n)
+})
+
+
+test('planning one debt does not hide missing plans for other debt accounts', () => {
+  const input = data()
+  input.accounts.push(account('loan', 'loan', '100000'))
+  input.plans = [plan('expense', '2026-01-20', '100'), plan('repayment', '2026-01-25', '500')]
+  let periods = monthlyOutlook(input, new Date(2026, 0, 15))
+  expect(periods[0]).toMatchObject({ missingRepayments: true, partial: true, closing: 11400n })
+  expect(periods[0].buckets.repayments.forecast).toBe(500n)
+  // Actual payments do not silently stand in for remaining plans.
+  input.transactions = [transaction('repayment', 'bank', '200', 'loan')]
+  expect(monthlyOutlook(input, new Date(2026, 0, 15))[0].missingRepayments).toBe(true)
+  input.plans.push({ ...plan('repayment', '2026-01-26', '200'), destination_account_id: 'loan' })
+  expect(monthlyOutlook(input, new Date(2026, 0, 15))[0].missingRepayments).toBe(false)
+  input.plans.pop()
+  input.selective_defaults = [{ account_id: 'loan', start_month: '2026-01', end_month: '2026-02' }]
+  periods = monthlyOutlook(input, new Date(2026, 0, 15))
+  expect(periods[0].missingRepayments).toBe(false)
+  expect(periods[1].missingRepayments).toBe(true)
+})
+
+
+test('repayment reminders clamp due days and exclude archived, paid-off and non-debt accounts', () => {
+  const card = { ...account('card', 'credit_card', '0'), payment_due_day: 31 }
+  const loan = { ...account('loan', 'loan', '100'), payment_due_day: 5 }
+  const accounts = [card, loan, { ...card, id: 'archived', is_archived: true },
+    { ...loan, id: 'paid', paid_off_on: '2024-01-01' }, account('unset', 'loan', '500'),
+    { ...account('bank', 'bank', '100'), payment_due_day: 5 }]
+  const before = JSON.stringify(accounts)
+  expect(repaymentDeadlines(accounts, 2024, 1).map(d => d.date)).toEqual(['2024-02-05', '2024-02-29'])
+  expect(repaymentDeadlines(accounts, 2025, 1).map(d => d.date)).toEqual(['2025-02-05', '2025-02-28'])
+  expect(repaymentDeadlines(accounts, 2025, 11).map(d => d.date)).toEqual(['2025-12-05', '2025-12-31'])
+  expect(JSON.stringify(accounts)).toBe(before)
 })

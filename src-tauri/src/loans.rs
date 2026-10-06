@@ -77,8 +77,8 @@ pub async fn get_loan_account(
     let _database_operation = crate::backups::operation()?;
     let mut tx = pool.begin().await.map_err(err)?;
     let account = sqlx::query_as(&format!(
-        "SELECT {} FROM accounts WHERE id=? AND type='loan'",
-        crate::accounts::COLUMNS
+        "SELECT {}, {} FROM accounts WHERE id=? AND type='loan'",
+        crate::accounts::COLUMNS, crate::accounts::PAYROLL_COLUMN
     ))
     .bind(&account_id)
     .fetch_optional(&mut *tx)
@@ -546,6 +546,7 @@ mod tests {
         sqlx::query("UPDATE loan_contracts SET remaining_principal=1800000").execute(&pool).await.unwrap();
         let before = balances(&pool).await;
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0002_salary_payments.sql")).execute(&pool).await.unwrap();
         assert_eq!(balances(&pool).await,before);
         let part: (String,Option<String>,Option<String>) = sqlx::query_as("SELECT transaction_id,contract_id,loan_account_id FROM loan_payment_parts").fetch_one(&pool).await.unwrap();
         assert_eq!(part,("old".into(),Some(contract.id.clone()),None));

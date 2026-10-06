@@ -83,7 +83,7 @@ function PeriodCell({ row, period, current, previousPartial, currency }: { row: 
       const bucket = period.buckets[row.flow]
       const missing = row.flow === 'expenses' ? period.missingExpenses : row.flow === 'repayments' ? period.missingRepayments : false
       return <>{current && <div>{money(bucket.actual)}<span className="ml-1 text-xs text-muted">{translate("Actual")}</span></div>}
-        <div className={current ? 'mt-2 text-xs text-muted' : ''}>{missing ? translate("Not planned") : money(bucket.forecast)}<span className="mt-1 block text-xs text-muted">{missing ? translate("Add a payment plan") : row.flow === 'income' ? translate("Expected after today") : row.flow === 'other' ? translate("No future transfers assumed") : !period.remainingDays ? translate("No days remaining") : translate("Planned")}</span></div>
+        <div className={current ? 'mt-2 text-xs text-muted' : ''}>{missing && bucket.forecast === 0n ? translate("Not planned") : money(bucket.forecast)}<span className="mt-1 block text-xs text-muted">{missing ? translate("Add a payment plan") : row.flow === 'income' ? translate("Expected after today") : row.flow === 'other' ? translate("No future transfers assumed") : !period.remainingDays ? translate("No days remaining") : translate("Planned")}</span></div>
       </>
     }
   }

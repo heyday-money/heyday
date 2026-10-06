@@ -9,6 +9,7 @@ mod logos;
 mod card_billing;
 mod cashflow;
 mod income_deductions;
+mod salary_payments;
 mod incomes;
 mod installments;
 mod loans;
@@ -17,6 +18,7 @@ mod reconciliation;
 mod reset;
 mod selective_defaults;
 mod subscriptions;
+mod subscription_providers;
 mod transaction_options;
 mod transactions;
 mod updates;
@@ -134,6 +136,8 @@ pub fn run() {
             cashflow::get_cashflow_planner,
             cashflow::save_cashflow_planner,
             planning::get_financial_data,
+            subscription_providers::list_subscription_providers,
+            subscription_providers::save_subscription_provider,
             subscriptions::save_subscription,
             subscriptions::delete_subscription,
             subscriptions::open_subscription_management,
@@ -161,6 +165,9 @@ pub fn run() {
             incomes::create_income,
             incomes::update_income,
             incomes::list_incomes,
+            salary_payments::record_salary_payment,
+            salary_payments::list_salary_payments,
+            salary_payments::delete_salary_payment,
             income_deductions::list_income_deductions,
             income_deductions::save_salary_deductions,
             transactions::create_transaction,
@@ -197,7 +204,12 @@ mod tests {
         let alpha = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
         let beta = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
         sqlx::migrate!("./tests/fixtures/alpha-migrations").run(&alpha).await.unwrap();
-        sqlx::migrate!("./migrations").run(&beta).await.unwrap();
+        for migration in sqlx::migrate!("./migrations").iter().filter(|m| m.version == 1) {
+            use sqlx::migrate::Migrate;
+            let mut conn = beta.acquire().await.unwrap();
+            conn.ensure_migrations_table().await.unwrap();
+            conn.apply(migration).await.unwrap();
+        }
         let query = "SELECT type,name,sql FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*' AND name<>'_sqlx_migrations' AND sql IS NOT NULL ORDER BY type,name";
         let expected: Vec<(String,String,String)> = sqlx::query_as(query).fetch_all(&alpha).await.unwrap();
         let actual: Vec<(String,String,String)> = sqlx::query_as(query).fetch_all(&beta).await.unwrap();

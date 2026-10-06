@@ -148,6 +148,7 @@ pub struct FinancialData {
     settings: crate::Settings,
     accounts: Vec<crate::accounts::Account>,
     incomes: Vec<crate::incomes::Income>,
+    income_deductions: Vec<crate::income_deductions::IncomeDeduction>,
     transactions: Vec<crate::transactions::Transaction>,
     plans: Vec<PaymentPlan>,
     installments: Vec<crate::installments::Installment>,
@@ -200,6 +201,7 @@ async fn snapshot(pool: &SqlitePool) -> Result<FinancialData, String> {
         .await
         .map_err(|e| e.to_string())?;
     let card_billing = crate::card_billing::snapshot(&mut tx).await.map_err(|e| e.to_string())?;
+    let income_deductions = sqlx::query_as(crate::income_deductions::SELECT).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
     let selective_defaults = crate::selective_defaults::periods(&mut tx).await.map_err(|e|e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(FinancialData {
@@ -210,6 +212,7 @@ async fn snapshot(pool: &SqlitePool) -> Result<FinancialData, String> {
         settings,
         accounts,
         incomes,
+        income_deductions,
         transactions,
         plans,
         installments,

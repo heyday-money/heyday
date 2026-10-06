@@ -1,4 +1,6 @@
 import { t as translate, useLanguage } from "../lib/i18n"
+import { useSubscriptionProviders } from '../lib/subscription-providers'
+import { ProviderLogo } from './SubscriptionProvidersSettings'
 import { LogoPicker } from './LogoPicker'
 import { useLogoAsset } from './LogoImage'
 import type { LogoChange } from '../lib/logos'
@@ -23,6 +25,9 @@ export function SubscriptionDialog({ data, subscription, onClose }: { data: Fina
   const currency = data.settings.currency!
   const digits = fractionDigits(currency), scale = 10n ** BigInt(digits)
   const initial = BigInt(subscription?.amount ?? '0')
+  const providers = useSubscriptionProviders()
+  const [providerId, setProviderId] = useState(subscription?.provider_id ?? '')
+  const provider = providers.providers.find(p => p.id === providerId)
   const [name, setName] = useState(subscription?.name ?? '')
   const [logoChange, setLogoChange] = useState<LogoChange>()
   const savedLogo = useLogoAsset(subscription?.logo_asset_id)
@@ -47,7 +52,7 @@ export function SubscriptionDialog({ data, subscription, onClose }: { data: Fina
     const form = new FormData(event.currentTarget)
     setSaving(true); setError(null)
     try {
-      const input = { logo_change: logoChange, managed_via: (String(form.get('managed_via')) || null) as Subscription['managed_via'], management_url: validateManagementUrl(String(form.get('management_url') ?? '')), id: subscription?.id ?? null, name: String(form.get('name')).trim(), amount: decimalToInteger(String(form.get('amount')), digits), frequency: String(form.get('frequency')) as Subscription['frequency'], first_billing_date: String(form.get('first')), end_date: String(form.get('end')) || null, is_active: form.get('active') === 'true', account_id: accountId, category_id: categoryId || null, currency }
+      const input = { provider_id: providerId || null, logo_change: logoChange, managed_via: (String(form.get('managed_via')) || null) as Subscription['managed_via'], management_url: validateManagementUrl(String(form.get('management_url') ?? '')), id: subscription?.id ?? null, name: String(form.get('name')).trim(), amount: decimalToInteger(String(form.get('amount')), digits), frequency: String(form.get('frequency')) as Subscription['frequency'], first_billing_date: String(form.get('first')), end_date: String(form.get('end')) || null, is_active: form.get('active') === 'true', account_id: accountId, category_id: categoryId || null, currency }
       if (BigInt(input.amount) <= 0n) throw new Error("Amount must be greater than zero.")
       subscriptionDates(input, input.first_billing_date, input.end_date ?? input.first_billing_date)
       const available = data.accounts.some(account => account.id === accountId && ['cash', 'bank', 'wallet', 'credit_card'].includes(account.type))
@@ -62,9 +67,18 @@ export function SubscriptionDialog({ data, subscription, onClose }: { data: Fina
       <form onSubmit={save} onChange={() => setDirty(true)} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 overflow-y-auto px-6 py-5">
           <fieldset disabled={saving} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2"><Field label={translate("Subscription provider")}><NativeSelect value={providerId} disabled={providers.loading || providers.error} onChange={event => {
+              const id = event.target.value, selected = providers.providers.find(p => p.id === id)
+              setProviderId(id); setLogoChange({ kind: 'none' }); setDirty(true)
+              if (selected) setName(selected.name)
+            }}><option value="">{translate("Custom subscription")}</option>{providerId && !provider && <option value={providerId}>{translate("Current provider")}</option>}{providers.providers.filter(p => !p.is_archived || p.id === subscription?.provider_id).map(p => <option key={p.id} value={p.id}>{p.name}{p.is_archived ? translate(" (archived)") : ''}</option>)}</NativeSelect></Field>
+              <p className="mt-2 text-xs">{translate("Manage provider names and icons in Settings → Subscriptions.")}</p>
+              {providers.loading && <p role="status">{translate("Loading providers…")}</p>}
+              {providers.error && <p role="alert">{translate("Could not load subscription providers.")} <Button type="button" variant="outline" onClick={providers.reload}>{translate("Retry")}</Button></p>}
+            </div>
             <Field label={translate("Subscription name")}><Input className="mt-2" name="name" required maxLength={100} value={name} onChange={event => setName(event.target.value)} placeholder={translate("e.g. Netflix or cloud storage")} /></Field>
             <Field label={translate("Amount per charge ({value0})", { value0: currency })}><Input className="mt-2" name="amount" inputMode="decimal" required defaultValue={subscription ? `${initial / scale}${digits ? '.' + (initial % scale).toString().padStart(digits, '0') : ''}` : ''} /></Field>
-            <div className="sm:col-span-2"><LogoPicker name={name} value={logoChange} savedSource={savedLogo} hasSavedLogo={!!subscription?.logo_asset_id} disabled={saving} onChange={change => { setLogoChange(change); setDirty(true) }} onBusyChange={busy => { logoBusyRef.current = busy; setLogoBusy(busy) }} /></div>
+            {providerId ? <div className="flex items-center gap-3 sm:col-span-2">{provider && <ProviderLogo provider={provider} />}<p className="text-xs">{translate("Uses the provider icon. No logo upload needed.")}</p></div> : <div className="sm:col-span-2"><LogoPicker name={name} value={logoChange} savedSource={savedLogo} hasSavedLogo={!!subscription?.logo_asset_id} disabled={saving} onChange={change => { setLogoChange(change); setDirty(true) }} onBusyChange={busy => { logoBusyRef.current = busy; setLogoBusy(busy) }} /></div>}
             <Field label={translate("Managed through")}><NativeSelect className="mt-2" name="managed_via" defaultValue={subscription?.managed_via ?? ''}><option value="">{translate("Not specified")}</option>{subscriptionPlatforms.map(platform => <option key={platform.value} value={platform.value}>{platform.label}</option>)}</NativeSelect></Field>
             <Field label={translate("Management link (optional)")}><Input className="mt-2" name="management_url" type="url" maxLength={2048} defaultValue={subscription?.management_url ?? ''} placeholder="https://…" /></Field>
             <p className="text-xs sm:col-span-2">{translate("Choose where you subscribed. Add an HTTPS link to open its subscription settings in your browser.")}</p>

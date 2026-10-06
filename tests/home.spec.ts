@@ -156,3 +156,9 @@ test('Home retains the island while first-run setup explains missing currency', 
   await expect(page.getByLabel('Home financial summary')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Choose currency', exact: true })).toHaveAttribute('href', /settings/)
 })
+
+test('payroll principal reduces debt without inflating Home income received', () => {
+  const data = example()
+  data.transactions.push({ ...transaction('Payroll principal', 'income', '2026-09-25', '700000', 'loan'), salary_payment_id: 'salary', salary_payment_role: 'principal' })
+  expect(homeOverview(data, '', new Date(2026, 9, 1)).incomeReceived).toBe(4500000n)
+})

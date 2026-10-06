@@ -426,7 +426,8 @@ mod tests {
         INSERT INTO transactions(id,type,account_id,destination_account_id,amount,date,description,income_source_id) VALUES('receipt','income','bank',NULL,490000,'2026-01-28','Salary','income'),('payment','repayment','bank','card',30000,'2026-02-13','Card payment',NULL);
         INSERT INTO transactions(id,type,account_id,amount,date,description,payee_id,category_id) VALUES('expense','expense','card',10000,'2026-01-10','Purchase','payee','planner-expense-0');
         INSERT INTO installments(id,name,account_id,debt_account_id,monthly_amount,installment_count,first_due_date,purchase_transaction_id) VALUES('installment','Phone','bank','card',1000,6,'2026-01-28','expense');
-        INSERT INTO subscriptions(id,name,account_id,amount,frequency,first_billing_date,logo_asset_id,managed_via,management_url) VALUES('subscription','Music','bank',1000,'monthly','2026-01-01','logo','apple_app_store','https://example.com/subscriptions');
+        INSERT INTO subscription_providers(id,name,name_key,logo_mode,logo_asset_id,is_archived) VALUES('music-provider','Music provider','music provider','custom','logo',1);
+        INSERT INTO subscriptions(id,name,account_id,amount,frequency,first_billing_date,logo_asset_id,managed_via,management_url,provider_id) VALUES('subscription','Music','bank',1000,'monthly','2026-01-01','logo','apple_app_store','https://example.com/subscriptions','music-provider');
         INSERT INTO payment_plans(id,name,type,account_id,amount,date) VALUES('plan','Rent','expense','bank',100000,'2099-01-01');
         INSERT INTO planner_items(id,category_id,name,schedule_amount,schedule_start,schedule_end) VALUES('manual','expenses','Cash expense',100,'2026-01','2026-12');
         INSERT INTO planner_amounts VALUES('manual','2026-02',0);
@@ -441,6 +442,8 @@ mod tests {
         INSERT INTO card_statement_installments VALUES('statement','installment','2026-01-28');
         INSERT INTO card_payment_plans VALUES('statement','bank','2026-02-13','full',100000);
         INSERT INTO card_payment_allocations VALUES('payment','statement');
+        INSERT INTO salary_payments VALUES('payroll','income','2026-01','2026-01-28',500000,490000,'[]');
+        INSERT INTO salary_payment_transactions VALUES('receipt','payroll','net');
         INSERT INTO card_limit_groups VALUES('group','Shared','shared',500000);
         INSERT INTO card_limit_members VALUES('card','group');
         INSERT INTO reconciliations(id,account_id,confirmed_balance,opening_balance) VALUES(30,'bank',9007199254740993,9007199254740993);
@@ -516,6 +519,27 @@ mod tests {
                 .unwrap(),
             25
         );
+    }
+    #[tokio::test]
+    async fn beta_one_backup_upgrades_staged_copy_and_preserves_original() {
+        let directory=tempfile::tempdir().unwrap();
+        let source=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(directory.path().join("source.db")).create_if_missing(true)).await.unwrap();
+        let baseline=sqlx::migrate::Migrator {
+            migrations: std::borrow::Cow::Owned(MIGRATOR.iter().filter(|m|m.version==1).cloned().collect()),
+            ..sqlx::migrate::Migrator::DEFAULT
+        };
+        baseline.run(&source).await.unwrap();
+        sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('bank','Bank','bank',9007199254740993,9007199254740993);").execute(&source).await.unwrap();
+        let file=directory.path().join("beta-one.db"); export(&source,&file).await.unwrap();
+        let original=std::fs::read(&file).unwrap();
+        let prepared=prepare(&file).await.unwrap();
+        let target=database(&directory.path().join("target.db")).await;
+        replace(&target,&prepared,&directory.path().join("recovery")).await.unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(),original);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&target).await.unwrap(),9007199254740993);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM salary_payments").fetch_one(&target).await.unwrap(),0);
+        let history:Vec<i64>=sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version").fetch_all(&target).await.unwrap();
+        assert_eq!(history,vec![1,2,3]);
     }
     #[tokio::test]
     async fn corrupt_foreign_newer_and_tampered_backups_are_rejected() {
