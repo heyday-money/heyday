@@ -111,7 +111,7 @@ export function AppLayout() {
     select: (state) => state.location.pathname,
   });
   const title =
-    navigation.find((item) => item.to === pathname)?.label ?? (pathname.endsWith("/billing") ? translate("Credit card billing") : pathname.endsWith("/loans") ? translate("Loan account") : pathname.startsWith("/accounts/") ? translate("Account transactions") : translate("Heyday"));
+    navigation.find((item) => item.to === pathname)?.label ?? (pathname.endsWith("/details") ? translate("Account details") : pathname.endsWith("/billing") ? translate("Credit card billing") : pathname.endsWith("/loans") ? translate("Loan account") : pathname.startsWith("/accounts/") ? translate("Account transactions") : translate("Heyday"));
 
   useEffect(() => {
     savePreference("sidebar-collapsed", String(collapsed));

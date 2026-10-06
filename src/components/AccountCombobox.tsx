@@ -29,6 +29,7 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
   const directory = useInstitutions()
   const listId = useId()
   const input = useRef<HTMLInputElement>(null)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
@@ -47,6 +48,10 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
     if (disabled) return
     onChange(account.id); setOpen(false); input.current?.focus()
   }
+  useEffect(() => {
+    // Keep wheel/touch events inside the modal's scroll-lock boundary.
+    setPortalContainer(input.current?.closest<HTMLElement>('[data-slot="dialog-content"]') ?? null)
+  }, [])
   useEffect(() => {
     input.current?.setCustomValidity(selected ? '' : translate("Choose an account from the list."))
   }, [selected])
@@ -83,7 +88,7 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
         }} />
       <ChevronDown className="pointer-events-none absolute top-2.5 right-2 size-4 text-muted" aria-hidden="true" />
     </div></PopoverAnchor>
-    <PopoverContent id={listId} role="listbox" aria-label={translate("Accounts")}
+    <PopoverContent container={portalContainer} collisionBoundary={portalContainer} id={listId} role="listbox" aria-label={translate("Accounts")}
       className="max-h-[min(13rem,var(--radix-popover-content-available-height))] w-[var(--radix-popover-trigger-width)] overflow-y-auto overscroll-contain p-1"
       onOpenAutoFocus={event => event.preventDefault()}
       onCloseAutoFocus={event => event.preventDefault()}

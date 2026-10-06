@@ -10,6 +10,7 @@ test.beforeEach(async ({ page }) => {
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: NewTransaction & SaveTransactionOption; id: string }) => {
       const rows = (): Transaction[] => JSON.parse(localStorage.getItem('transactions') ?? '[]')
       const accounts = [{ id: 'bank', name: 'Bank', type: 'bank', opening_balance: '10000', current_balance: '10000' }, { id: 'card', name: 'Card', type: 'credit_card', opening_balance: '5000', current_balance: '5000' }].map(account => ({ ...account, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }))
+      if (sessionStorage.getItem('loan-count') !== null) accounts.push({ ...accounts[0], id: 'loan', name: 'Home loan', type: 'loan', current_balance: '1000000' })
       const options = (): TransactionOptions => JSON.parse(localStorage.getItem('spending-options') ?? '{"payees":[],"categories":[]}')
       const enrichedRows = () => rows().map(row => ({ ...row, payee_name: options().payees.find(item => item.id === row.payee_id)?.name ?? null, category_name: options().categories.find(item => item.id === row.category_id)?.name ?? null }))
       switch (command) {
@@ -17,9 +18,16 @@ test.beforeEach(async ({ page }) => {
         case 'get_settings': return { currency: sessionStorage.getItem('no-currency') ? null : 'THB', period_start_day: 1 }
         case 'list_accounts':
           if (sessionStorage.getItem('fail-accounts')) throw 'Load failed'
+          if (sessionStorage.getItem('many-accounts')) return Array.from({ length: 40 }, (_, index) => ({ ...accounts[0], id: `bank-${index}`, name: `Bank ${String(index + 1).padStart(2, '0')}` }))
           return sessionStorage.getItem('no-accounts') ? [] : accounts.filter(a => !sessionStorage.getItem('hide-card') || a.id !== 'card')
         case 'get_financial_data': return { settings: { currency: 'THB', period_start_day: 1 }, accounts, transactions: enrichedRows(), incomes: [], plans: [], categories: options().categories }
         case 'list_incomes': return [{id:'salary',name:'Company salary',type:'salary',is_active:true,destination_account_id:'bank'}]
+        case 'get_loan_account':
+          if (sessionStorage.getItem('fail-loan-load')) throw 'Load failed'
+          return { contracts: Array.from({ length: Number(sessionStorage.getItem('loan-count')) }, (_, n) => ({ id: `contract-${n}`, name: `Contract ${n + 1}`, needs_review: false })) }
+        case 'record_loan_repayment':
+          if (sessionStorage.getItem('fail')) throw 'Save failed. Try again.'
+          localStorage.setItem('loan-payment', JSON.stringify(args.input)); return
         case 'list_transaction_options': return options()
         case 'save_transaction_option': {
           if (sessionStorage.getItem('hold-option')) await new Promise<void>(resolve => window.addEventListener('release-option', () => resolve(), { once: true }))
@@ -47,6 +55,94 @@ test.beforeEach(async ({ page }) => {
     } } })
   })
 })
+
+for (const count of [0, 1, 2]) {
+test(`quick loan repayment handles ${count} contracts and preserves failed drafts`, async ({ page }) => {
+  await page.addInitScript(count => sessionStorage.setItem('loan-count', String(count)), count)
+  await page.goto('/#/transactions')
+  await page.getByRole('button', { name: 'Add transaction', exact: true }).click()
+  await page.getByLabel('Amount (THB)', { exact: true }).fill('5000')
+  await page.getByLabel('Transaction type', { exact: true }).selectOption('repayment')
+  await page.getByLabel('To account', { exact: true }).fill('Home loan')
+  await page.getByLabel('To account', { exact: true }).press('Enter')
+  await expect(page.getByLabel('Total payment (THB)', { exact: true })).toHaveValue('5000')
+  await expect(page.getByRole('button', { name: 'Save transaction', exact: true })).toBeEnabled()
+  if (count > 1) await page.getByLabel('Contract', { exact: true }).selectOption('contract-1')
+  else await expect(page.getByRole('combobox', { name: 'Contract', exact: true })).toHaveCount(0)
+  await page.getByLabel('Interest', { exact: true }).fill('800')
+  await page.getByLabel('Fees', { exact: true }).fill('200')
+  await expect(page.getByLabel('Principal', { exact: true })).toHaveValue('4,000.00 THB')
+  await page.getByLabel('Description (optional)', { exact: true }).fill('Monthly loan')
+  await page.getByLabel('Cleared in from account', { exact: true }).check()
+  await page.evaluate(() => sessionStorage.setItem('fail', '1'))
+  await page.getByRole('button', { name: 'Save & add another', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Save failed')
+  await expect(page.getByLabel('Interest', { exact: true })).toHaveValue('800')
+  await page.evaluate(() => sessionStorage.removeItem('fail'))
+  await page.getByRole('button', { name: 'Save & add another', exact: true }).click()
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('loan-payment')!))
+  expect(saved).toMatchObject({ loan_account_id: 'loan', contract_id: count === 0 ? null : `contract-${count - 1}`, account_id: 'bank', total: '500000', principal: '400000', interest: '80000', fee: '20000', cleared: true, description: 'Monthly loan' })
+  await expect(page.getByLabel('Interest', { exact: true })).toHaveValue('0')
+  await expect(page.getByLabel('Fees', { exact: true })).toHaveValue('0')
+  await expect(page.getByLabel('Total payment (THB)', { exact: true })).toBeFocused()
+  await expect(page.getByLabel('To account', { exact: true })).toHaveValue('Home loan')
+  await page.getByLabel('Total payment (THB)', { exact: true }).fill('100')
+  await page.getByLabel('Interest', { exact: true }).fill('101')
+  await expect(page.getByRole('alert')).toContainText('Interest and fees cannot exceed')
+  await page.getByLabel('Interest', { exact: true }).fill('0')
+  await page.getByLabel('Total payment (THB)', { exact: true }).press('Enter')
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+})
+}
+
+test('loan detail load errors block saving and retry preserves entered charges', async ({ page }) => {
+  await page.addInitScript(() => { sessionStorage.setItem('loan-count', '0'); sessionStorage.setItem('fail-loan-load', '1') })
+  await page.goto('/#/transactions')
+  await page.getByRole('button', { name: 'Add transaction', exact: true }).click()
+  await page.getByLabel('Transaction type', { exact: true }).selectOption('repayment')
+  await page.getByLabel('To account', { exact: true }).fill('Home loan')
+  await page.getByLabel('To account', { exact: true }).press('Enter')
+  await expect(page.getByRole('alert')).toContainText('Could not load loan details')
+  await expect(page.getByRole('button', { name: 'Save transaction', exact: true })).toBeDisabled()
+  await page.getByLabel('Total payment (THB)', { exact: true }).fill('5000')
+  await page.getByLabel('Interest', { exact: true }).fill('800')
+  await page.evaluate(() => sessionStorage.removeItem('fail-loan-load'))
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Save transaction', exact: true })).toBeEnabled()
+  await expect(page.getByLabel('Interest', { exact: true })).toHaveValue('800')
+})
+
+for (const viewport of [{ width: 1200, height: 800 }, { width: 480, height: 600 }]) {
+test(`account dropdowns scroll with the wheel inside the transaction dialog at ${viewport.width}px`, async ({ page }) => {
+  await page.setViewportSize(viewport)
+  await page.addInitScript(() => sessionStorage.setItem('many-accounts', '1'))
+  await page.goto('/#/transactions')
+  await page.getByRole('button', { name: 'Add transaction', exact: true }).click()
+  await page.getByLabel('Amount (THB)', { exact: true }).fill('12.34')
+  for (const field of ['Account', 'From account', 'To account']) {
+    if (field === 'From account') await page.getByLabel('Transaction type', { exact: true }).selectOption('transfer')
+    const input = page.getByRole('combobox', { name: field, exact: true })
+    await input.click()
+    const list = page.getByRole('listbox', { name: 'Accounts', exact: true })
+    await expect(list).toBeVisible()
+    await list.hover()
+    await page.mouse.wheel(0, 250)
+    await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+    await page.mouse.wheel(0, 3000)
+    const last = list.getByRole('option', { name: 'Bank 40', exact: true })
+    await expect(last).toBeInViewport()
+    await last.click()
+    await expect(input).toHaveValue('Bank 40')
+    await expect(list).not.toBeVisible()
+    // Leave the last account available as a destination on the next pass.
+    if (field !== 'To account') {
+      await input.fill('Bank 01')
+      await input.press('Enter')
+    }
+  }
+  await expect(page.getByLabel('Amount (THB)', { exact: true })).toHaveValue('12.34')
+})
+}
 
 test('record activity, retain failed forms, filter, and confirm deletion', async ({ page }) => {
   await page.goto('/#/transactions')
@@ -88,6 +184,55 @@ test('record activity, retain failed forms, filter, and confirm deletion', async
 })
 
 for (const [platform, shortcut] of [['MacIntel', 'Meta+n'], ['Win32', 'Control+n']]) {
+  test(`${shortcut} and the header default a viewed loan to the repayment destination`, async ({ page }) => {
+    await page.addInitScript(platform => {
+      Object.defineProperty(navigator, 'platform', { value: platform })
+      sessionStorage.setItem('loan-count', '0')
+      localStorage.setItem('transaction-last-account', 'card')
+    }, platform)
+    await page.goto('/#/accounts/loan/details')
+    await page.getByRole('button', { name: 'Add transaction', exact: true }).click()
+    await expect(page.getByLabel('Transaction type', { exact: true })).toHaveValue('repayment')
+    await expect(page.getByLabel('From account', { exact: true })).toHaveValue('Bank')
+    await expect(page.getByLabel('To account', { exact: true })).toHaveValue('Home loan')
+    await expect(page.getByLabel('Total payment (THB)', { exact: true })).toBeEmpty()
+    await expect(page.getByLabel('Interest', { exact: true })).toHaveValue('0')
+    await expect(page.getByLabel('Fees', { exact: true })).toHaveValue('0')
+    await page.keyboard.press('Escape')
+    await page.keyboard.press(shortcut)
+    await expect(page.getByLabel('Transaction type', { exact: true })).toHaveValue('repayment')
+    await expect(page.getByLabel('To account', { exact: true })).toHaveValue('Home loan')
+    await page.getByLabel('Transaction type', { exact: true }).selectOption('expense')
+    await page.getByLabel('Amount (THB)', { exact: true }).fill('12')
+    await page.keyboard.press(shortcut)
+    await expect(page.getByLabel('Transaction type', { exact: true })).toHaveValue('expense')
+    await expect(page.getByLabel('Amount (THB)', { exact: true })).toHaveValue('12')
+  })
+
+  test(`${shortcut} and the header use the viewed account without resetting a draft`, async ({ page }) => {
+    await page.addInitScript(platform => {
+      Object.defineProperty(navigator, 'platform', { value: platform })
+      localStorage.setItem('transaction-last-account', 'bank')
+    }, platform)
+    await page.goto('/#/accounts/card/details')
+    await page.getByRole('button', { name: 'Add transaction', exact: true }).click()
+    await expect(page.getByLabel('Account', { exact: true })).toHaveValue('Card')
+    await page.getByLabel('Account', { exact: true }).fill('Bank')
+    await page.getByLabel('Account', { exact: true }).press('Enter')
+    await page.getByLabel('Description (optional)', { exact: true }).fill('Keep this choice')
+    await page.keyboard.press(shortcut)
+    await expect(page.getByLabel('Account', { exact: true })).toHaveValue('Bank')
+    await expect(page.getByLabel('Description (optional)', { exact: true })).toHaveValue('Keep this choice')
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+    await page.keyboard.press(shortcut)
+    await expect(page.getByLabel('Account', { exact: true })).toHaveValue('Card')
+    await page.keyboard.press('Escape')
+    await page.evaluate(() => sessionStorage.setItem('hide-card', '1'))
+    await page.keyboard.press(shortcut)
+    await expect(page.getByLabel('Account', { exact: true })).toHaveValue('Bank')
+  })
+
   test(`${shortcut} opens from Home and preserves existing drafts`, async ({ page }) => {
     await page.addInitScript(platform => Object.defineProperty(navigator, 'platform', { value: platform }), platform)
     await page.goto('/#/')

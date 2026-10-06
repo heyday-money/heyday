@@ -265,6 +265,15 @@ pub(crate) async fn insert(
     input: NewTransaction,
 ) -> Result<Transaction, String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    if matches!(input.kind.as_str(), "repayment" | "transfer") {
+        if let Some(destination) = &input.destination_account_id {
+            let has_contracts: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loan_contracts WHERE account_id=?)")
+                .bind(destination).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+            if has_contracts {
+                return Err("This loan has contracts. Choose Repayment and select a contract to separate principal, interest and fees.".into());
+            }
+        }
+    }
     let row = insert_in_connection(&mut tx, input).await?;
     crate::loans::validate_allocations(&mut tx).await?;
     tx.commit().await.map_err(|e| e.to_string())?;

@@ -142,7 +142,7 @@ test('legacy loan schedules appear once under debt and unavailable or non-THB sc
   expect(cycleTotals(input, '2026-12').expenses).toBe(100000n)
   input.debt_accounts[0].is_archived = true
   expect(cycleTotals(input, '2027-01').expenses).toBe(0n)
-  expect(cycleTotals(input, '2026-12').expenses).toBe(100000n)
+  expect(cycleTotals(input, '2026-12').expenses).toBe(0n)
   input.source_currency = 'USD'
   expect(cycleTotals(input, '2026-12').expenses).toBe(0n)
 })
@@ -277,9 +277,9 @@ test('loan monthly installments populate every cycle exactly and overrides repla
   expect(cycleTotals(input, '2026-12').buckets.debt).toBe(300000n)
   input.debt_accounts[0].monthly_installment = '100'
   input.debt_accounts[0].is_archived = true
-  expect(itemAmount(input, plannerItems(input)[0], '2026-12').value).toBeNull()
+  expect(itemAmount(input, plannerItems(input)[0], '2026-12').value).toBe(0n)
   input.amounts = [{ item_id: 'debt:loan', month: '2026-12', amount: '50' }]
-  expect(cycleTotals(input, '2026-12').buckets.debt).toBe(50n)
+  expect(cycleTotals(input, '2026-12').buckets.debt).toBe(0n)
   input.source_currency = 'USD'
   expect(cycleTotals(input, '2026-12').buckets.debt).toBe(0n)
 })
@@ -301,4 +301,65 @@ test('paid-off loans suppress current and future overrides without losing past e
   input.debt_accounts[0].paid_off_on = null
   input.debt_accounts[0].is_archived = false
   expect(itemAmount(input, item, '2024-12', 'forecast').value).toBe(100n)
+})
+
+test('Selective Default excludes saved schedules and overrides, preserves actual payments and resumes without rewriting history', () => {
+  const input = data()
+  input.period_start_day = 1
+  input.opening = { month: '2024-01', amount: '10000' }
+  input.debt_accounts = [{ id: 'loan', name: 'Loan', loan_type: 'mortgage', current_balance: '9000', monthly_installment: '100', notes: null, is_archived: false }]
+  input.credit_cards = [{ id: 'card', name: 'Visa', is_archived: false }]
+  input.installments = [linkedPlan('purchase', { first_due_date: '2024-01-10', installment_count: 6, monthly_amount: '200' })]
+  input.items = [ { ...item('salary', 'income'), schedule_amount: '1000', schedule_start: '2024-01', schedule_end: '2024-12' }, { ...item('manual', 'expenses'), schedule_amount: '50', schedule_start: '2024-01', schedule_end: '2024-12' }, { ...item('payroll', 'deductions'), schedule_amount: '10', schedule_start: '2024-01', schedule_end: '2024-12' } ]
+  input.selective_defaults = ['loan','card'].map(account_id => ({ account_id, start_month: '2024-01', end_month: '2024-03' }))
+  input.amounts = [{ item_id: 'debt:loan', month: '2024-01', amount: '555' }, { item_id: 'installment:purchase', month: '2024-01', amount: '777' }]
+  input.card_transactions = [cardPayment('actual', '7', '2024-01-10')]
+  const saved = JSON.stringify(input)
+  expect(cycleTotals(input,'2024-01','forecast')).toMatchObject({ netIncome: 990n, expenses: 50n })
+  expect(cycleTotals(input,'2024-02','forecast').expenses).toBe(50n)
+  expect(cycleTotals(input,'2024-03','forecast').expenses).toBe(350n)
+  expect(openingForCycle(input,'2024-04')).toBe(12520n)
+  expect(JSON.stringify(input)).toBe(saved)
+  input.ledger_transactions = [cardPayment('loan-actual','30','2024-01-10',{ destination_account_id:'loan', destination_account_type:'loan' }), cardPayment('fee','5','2024-01-10',{ type:'expense',destination_account_id:null,destination_account_type:null,loan_account_id:'loan',loan_component:'interest' }), ...input.card_transactions]
+  input.months = ['2024-01','2024-02','2024-03','2024-04'].map(month=>({month,status:'forecast'}))
+  expect(cycleTotals(input,'2024-01','forecast')).toMatchObject({expenses:50n,buckets:{debt:0n,cards:0n,installments:0n}})
+  expect(openingForCycle(input,'2024-04')).toBe(12520n)
+  expect(cycleTotals(input,'2024-01','actual').expenses).toBe(42n)
+})
+
+test('archived loan overrides do not inflate debt forecasts or carry-forward; recorded payments remain exact', () => {
+  const input = data()
+  input.period_start_day = 1
+  input.debt_accounts = [
+    { id:'old',name:'Archived loan',loan_type:'mortgage',current_balance:'10000',monthly_installment:'500',notes:null,is_archived:true },
+    { id:'active',name:'Active loan',loan_type:'mortgage',current_balance:'20000',monthly_installment:'200',notes:null,is_archived:false },
+  ]
+  input.amounts = [{item_id:'debt:old',month:'2024-01',amount:'9007199254740993'}]
+  input.opening = {month:'2024-01',amount:'10000'}
+  expect(cycleTotals(input,'2024-01','forecast').buckets.debt).toBe(200n)
+  expect(openingForCycle(input,'2024-03')).toBe(9600n)
+  input.ledger_transactions = [cardPayment('principal','30','2024-01-10',{destination_account_id:'old',destination_account_type:'loan'}),cardPayment('interest','5','2024-01-10',{type:'expense',destination_account_id:null,destination_account_type:null,loan_account_id:'old',loan_component:'interest'})]
+  input.months = [{month:'2024-01',status:'forecast'},{month:'2024-02',status:'forecast'}]
+  expect(cycleTotals(input,'2024-01','forecast').buckets.debt).toBe(235n)
+  expect(cycleTotals(input,'2024-01','actual').buckets.debt).toBe(35n)
+  expect(openingForCycle(input,'2024-03')).toBe(9565n)
+  expect(input.amounts[0].amount).toBe('9007199254740993')
+  input.debt_accounts[0].is_archived=false
+  expect(cycleTotals(input,'2024-01','forecast').buckets.debt).toBe(9007199254741193n)
+})
+
+test('selected payday cycle removes paid excluded loans from Forecast but retains them in Actual', () => {
+  const input=data()
+  input.period_start_day=28
+  input.debt_accounts=[['active','1983300'],['excluded-a','1080000'],['excluded-b','173367']].map(([id,monthly_installment])=>({id,name:id,monthly_installment,loan_type:'personal_loan',current_balance:'9999999',notes:null,is_archived:false}))
+  input.selective_defaults=['excluded-a','excluded-b'].map(account_id=>({account_id,start_month:'2026-09',end_month:'2026-11'}))
+  input.ledger_transactions=[cardPayment('a','1080000','2026-09-28',{destination_account_id:'excluded-a',destination_account_type:'loan'}),cardPayment('b','173367','2026-09-28',{destination_account_id:'excluded-b',destination_account_type:'loan'})]
+  input.months=[{month:'2026-09',status:'forecast'},{month:'2026-10',status:'forecast'}]
+  input.opening={month:'2026-09',amount:'10000000'}
+  expect(cycleTotals(input,'2026-08','forecast').buckets.debt).toBe(3236667n)
+  expect(cycleTotals(input,'2026-09','forecast').buckets.debt).toBe(1983300n)
+  expect(cycleTotals(input,'2026-09','actual').buckets.debt).toBe(1253367n)
+  expect(cycleTotals(input,'2026-10','forecast').buckets.debt).toBe(1983300n)
+  expect(cycleTotals(input,'2026-11','forecast').buckets.debt).toBe(3236667n)
+  expect(openingForCycle(input,'2026-11')).toBe(6033400n)
 })

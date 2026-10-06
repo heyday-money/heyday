@@ -170,6 +170,7 @@ export interface PaymentPlan {
 }
 export type SavePaymentPlan = Omit<PaymentPlan, 'id' | 'account_name' | 'destination_account_name' | 'category_name'> & { id: string | null; currency: string }
 export interface FinancialData {
+  selective_defaults?: import('./selective-defaults').SelectiveDefault[]
   card_billing?: CardBillingData
   loan_contracts?: LoanContract[]
   loan_facilities?: LoanFacility[]

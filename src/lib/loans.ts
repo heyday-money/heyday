@@ -12,10 +12,10 @@ export interface LoanContract {
 export interface LoanSnapshot {
  paid_off_on?: string | null
  account: Account; currency: string | null; facility: LoanFacility | null; contracts: LoanContract[]
- transactions: Transaction[]; payment_parts: { transaction_id: string; payment_id: string; contract_id: string; component: string; amount: string }[]
+ transactions: Transaction[]; payment_parts: { transaction_id: string; payment_id: string; contract_id: string | null; component: string; amount: string }[]
 }
 export type SaveLoanContract = Omit<LoanContract, 'id' | 'borrowing_transaction_id' | 'needs_review' | 'accounts_available'> & { id: string | null; currency: string; acknowledge_over_limit: boolean }
-export interface LoanRepayment { contract_id: string; account_id: string; date: string; total: string; principal: string; interest: string; fee: string; currency: string }
+export interface LoanRepayment { contract_id: string | null; loan_account_id?: string; description?: string; cleared?: boolean; account_id: string; date: string; total: string; principal: string; interest: string; fee: string; currency: string }
 export const getLoanAccount = (accountId: string) => invoke<LoanSnapshot>('get_loan_account', { accountId })
 async function mutate(command: string, args: Record<string, unknown>) {
  await invoke(command,args)

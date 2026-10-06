@@ -220,7 +220,8 @@ test('credit card reconciliation distinguishes owed balances from overpayments a
 test('digital wallet account links, cleared entry, and reconciliation use wallet balances', async ({ page }) => {
   await page.goto('/#/accounts')
   const wallet = page.getByRole('table', { name: 'Accounts', exact: true }).getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'TrueMoney', exact: true }) })
-  await wallet.getByRole('link', { name: 'Transactions & reconciliation' }).click()
+  await wallet.getByRole('link', { name: 'TrueMoney', exact: true }).click()
+  await page.getByRole('link', { name: 'Transactions & reconciliation' }).click()
   await expect(page.getByRole('heading', { name: 'TrueMoney', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Record missing entry', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Add transaction', exact: true })

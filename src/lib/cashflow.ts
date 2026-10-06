@@ -1,3 +1,4 @@
+import { exclusionFor, excludedOnDate, includedCycleCount, type SelectiveDefault } from './selective-defaults'
 import { t as translate } from "./i18n"
 import { getLocale } from "./i18n"
 import { localToday, cardForecasts, installmentCovered, type CardBillingData } from './card-billing'
@@ -24,6 +25,8 @@ export interface PlannerInstallment {
 }
 export interface PlannerCreditCard { id: string; name: string; is_archived: boolean }
 export interface PlannerCardTransaction {
+  loan_account_id?: string | null
+  loan_component?: string | null
   account_name?: string
   income_source_id?: string | null
   income_source_name?: string | null
@@ -43,6 +46,7 @@ export interface PlannerItem {
   transaction_category_id: string | null; schedule_amount: string | null; schedule_start: string | null; schedule_end: string | null
 }
 export interface PlannerData {
+  selective_defaults?: SelectiveDefault[]
   ledger_transactions?: PlannerCardTransaction[]
   card_billing?: CardBillingData
   loan_contracts?: LoanContract[]
@@ -187,11 +191,11 @@ function usesRecordedCardTotal(data: PlannerData, item: PlannerItem, month: stri
 }
 export function cardPlannedBetween(data: PlannerData, cardId: string, from: string, to: string) {
   const start=boundaryKey(from,data.period_start_day),end=boundaryKey(to,data.period_start_day)
-  return cardForecasts(data.card_billing).filter(p=>p.card_id===cardId&&p.date>=start&&p.date<end).reduce((n,p)=>n+p.amount,0n)
+  return cardForecasts(data.card_billing).filter(p=>p.card_id===cardId&&p.date>=start&&p.date<end&&!excludedOnDate(data.selective_defaults,cardId,p.date,data.period_start_day)).reduce((n,p)=>n+p.amount,0n)
 }
 export function loanContractAmount(data: PlannerData, contract: LoanContract, from: string, to = addMonths(from,1)) {
   const start=boundaryKey(from,data.period_start_day), end=boundaryKey(to,data.period_start_day)
-  return loanSchedule(contract).filter(p => p.date >= start && p.date < end).reduce((n,p) => n+BigInt(p.amount),0n)
+  return loanSchedule(contract).filter(p => p.date >= start && p.date < end && !excludedOnDate(data.selective_defaults,contract.account_id,p.date,data.period_start_day)).reduce((n,p) => n+BigInt(p.amount),0n)
 }
 function linkedPaymentsBetween(data: PlannerData, item: PlannerItem, from: string, to: string): bigint | null {
   if (item.debt_account?.is_archived) return null
@@ -199,14 +203,14 @@ function linkedPaymentsBetween(data: PlannerData, item: PlannerItem, from: strin
     return (data.loan_contracts ?? []).filter(c => c.account_id === item.debt_account!.id).reduce((n,c) => n + loanContractAmount(data,c,from,to),0n)
   }
   if (item.debt_account?.monthly_installment != null) {
-    return BigInt(monthIndex(to) - monthIndex(from)) * BigInt(item.debt_account.monthly_installment)
+    return BigInt(includedCycleCount(data.selective_defaults, item.debt_account.id, from, to)) * BigInt(item.debt_account.monthly_installment)
   }
   const plans = item.installment ? [item.installment] : data.installments.filter(plan => plan.debt_account_type === 'loan' && plan.debt_account_id === item.debt_account?.id)
   const available = plans.filter(plan => plan.accounts_available)
   if (!available.length) return null
   const start = boundaryKey(from, data.period_start_day), end = boundaryKey(to, data.period_start_day)
   return available.reduce((total, plan) => total + installmentSchedule(plan)
-    .filter(payment => payment.date >= start && payment.date < end && !installmentCovered(data.card_billing,plan.id,payment.date))
+    .filter(payment => payment.date >= start && payment.date < end && !excludedOnDate(data.selective_defaults,plan.debt_account_id,payment.date,data.period_start_day) && !installmentCovered(data.card_billing,plan.id,payment.date))
     .reduce((sum, payment) => sum + BigInt(payment.amount), 0n), 0n)
 }
 function generatedAmount(data: PlannerData, item: PlannerItem, month: string) {
@@ -220,7 +224,22 @@ function paidOffForCycle(data: PlannerData, item: PlannerItem, month: string) {
   const [year, m, day] = date.split('-').map(Number)
   return month >= currentCycle(data.period_start_day, new Date(year, m - 1, day, 12))
 }
+export function itemExclusion(data: PlannerData, item: PlannerItem, month: string) {
+  return exclusionFor(data.selective_defaults, item.debt_account?.id ?? item.credit_card?.id ?? item.installment?.debt_account_id, month)
+}
+function archivedForecastAccount(data: PlannerData, item: PlannerItem) {
+  // Paid-off loans retain their separate date-based historical forecast rules.
+  if (item.debt_account) return item.debt_account.is_archived && !item.debt_account.paid_off_on
+  if (item.credit_card) return item.credit_card.is_archived
+  return !!item.installment && [...data.credit_cards, ...data.debt_accounts].some(account => account.id === item.installment!.debt_account_id && account.is_archived)
+}
+function recordedItemPayments(data: PlannerData, item: PlannerItem, from: string, to: string) {
+  if (item.credit_card) return recordedCardPayments(data, item.credit_card.id, from, to).amount
+  return item.debt_account ? actualBetween(data, from, to).values.get(`debt:${item.debt_account.id}`) ?? 0n : 0n
+}
 function forecastItemAmount(data: PlannerData, item: PlannerItem, month: string) {
+  if (itemExclusion(data, item, month)) return { value: 0n, source: 'Selective Default' }
+  if (archivedForecastAccount(data, item)) return { value: recordedItemPayments(data, item, month, addMonths(month, 1)), source: 'Recorded payments' }
   if (paidOffForCycle(data, item, month)) return { value: 0n, source: 'Loan paid off' }
   if (item.credit_card) {
     const start = boundaryKey(month,data.period_start_day), end = boundaryKey(addMonths(month,1),data.period_start_day)
@@ -248,8 +267,23 @@ function forecastOpeningForCycle(data: PlannerData, month: string): bigint | nul
   const from = monthIndex(data.opening.month), to = monthIndex(month)
   for (const item of plannerItems(data)) {
     const sign = item.category_id === 'income' ? 1n : -1n
+    if (archivedForecastAccount(data, item)) {
+      cash -= recordedItemPayments(data, item, data.opening.month, month)
+      const accountId = item.debt_account?.id ?? item.credit_card?.id
+      for (const p of data.selective_defaults ?? []) if (p.account_id === accountId) {
+        const begin = p.start_month > data.opening.month ? p.start_month : data.opening.month
+        const end = p.end_month && p.end_month < month ? p.end_month : month
+        if (begin < end) cash += recordedItemPayments(data,item,begin,end)
+      }
+      continue
+    }
     if (item.credit_card) {
       cash -= recordedCardPayments(data, item.credit_card.id, data.opening.month, month).amount + cardPlannedBetween(data,item.credit_card.id,data.opening.month,month)
+      for (const p of data.selective_defaults ?? []) if (p.account_id === item.credit_card.id) {
+        const begin = p.start_month > data.opening.month ? p.start_month : data.opening.month
+        const end = p.end_month && p.end_month < month ? p.end_month : month
+        if (begin < end) cash += recordedCardPayments(data,item.credit_card.id,begin,end).amount
+      }
     } else if (item.income) {
       cash += sign * (expectedIncomeBetween(item.income, data.opening.month, month, data.period_start_day) ?? 0n)
     } else if (item.debt_account || item.installment) {
@@ -264,7 +298,7 @@ function forecastOpeningForCycle(data: PlannerData, month: string): bigint | nul
       cash += sign * BigInt(count) * BigInt(item.schedule_amount)
     }
     for (const entry of data.amounts) if (entry.item_id === item.id && entry.month >= data.opening.month && entry.month < month) {
-      if (paidOffForCycle(data, item, entry.month) || usesRecordedCardTotal(data, item, entry.month) || coveredInstallmentCycle(data,item,entry.month)) continue
+      if (itemExclusion(data, item, entry.month) || paidOffForCycle(data, item, entry.month) || usesRecordedCardTotal(data, item, entry.month) || coveredInstallmentCycle(data,item,entry.month)) continue
       cash += sign * (BigInt(entry.amount) - (generatedAmount(data, item, entry.month) ?? 0n))
     }
   }
@@ -285,11 +319,14 @@ export function isActualCycle(data: PlannerData, month: string) {
 }
 const cashType = (type: string | null) => type !== null && ['cash', 'bank', 'wallet'].includes(type)
 const actualIncomeKey = (t: PlannerCardTransaction) => t.income_source_id ? `actual:income:source:${t.income_source_id}` : `actual:income:${t.account_id}`
+function linkedLoanCharge(t: PlannerCardTransaction) {
+  return t.type === 'expense' && !!t.loan_account_id && (t.loan_component === 'interest' || t.loan_component === 'fee')
+}
 function actualRows(data: PlannerData): PlannerItem[] {
   if (data.source_currency !== 'THB') return []
   const rows = new Map<string, PlannerItem>()
   for (const t of data.ledger_transactions ?? []) {
-    if (!cashType(t.account_type) || !['income', 'expense'].includes(t.type)) continue
+    if (!cashType(t.account_type) || !['income', 'expense'].includes(t.type) || linkedLoanCharge(t)) continue
     const key = t.type === 'income' ? actualIncomeKey(t) : `actual:expense:${t.category_id ?? 'uncategorized'}`
     rows.set(key, { id: key, actual_key: key, category_id: t.type === 'income' ? 'income' : 'expenses', name: (t.type === 'income' ? translate("Received · {value0}", { value0: t.income_source_name ?? `Unassigned · ${t.account_name ?? t.account_id}` }) : (t.category_name ?? 'Uncategorized')), description: translate("Actual cash, bank and wallet transactions. Read-only; edit the underlying transactions. Forecast amounts are kept separately."), card_name: '', transaction_category_id: t.type === 'expense' ? t.category_id ?? null : null, schedule_amount: null, schedule_start: null, schedule_end: null })
   }
@@ -298,13 +335,24 @@ function actualRows(data: PlannerData): PlannerItem[] {
 function actualBetween(data: PlannerData, from: string, to: string) {
   const values = new Map<string, bigint>()
   const buckets: Record<PlannerCategoryId, bigint> = { income: 0n, deductions: 0n, debt: 0n, installments: 0n, cards: 0n, expenses: 0n }
+  const loanSplits = new Map<string, { principal: bigint; interest: bigint; fee: bigint; other: bigint }>()
   let otherIn = 0n, otherOut = 0n
   const start = boundaryKey(from, data.period_start_day), end = boundaryKey(to, data.period_start_day), today = localToday()
   const add = (key: string, bucket: PlannerCategoryId, amount: bigint) => { values.set(key, (values.get(key) ?? 0n) + amount); buckets[bucket] += amount }
   if (data.source_currency === 'THB') for (const t of data.ledger_transactions ?? []) {
     if (t.date < start || t.date >= end || t.date > today) continue
     const source = cashType(t.account_type), destination = cashType(t.destination_account_type), amount = BigInt(t.amount)
-    if (t.type === 'income' && source) add(actualIncomeKey(t), 'income', amount)
+    if (source && (linkedLoanCharge(t) || ((t.type === 'repayment' || t.type === 'transfer') && t.destination_account_type === 'loan'))) {
+      const loanId = linkedLoanCharge(t) ? t.loan_account_id! : t.destination_account_id!
+      const split = loanSplits.get(loanId) ?? { principal: 0n, interest: 0n, fee: 0n, other: 0n }
+      if (t.loan_component === 'principal') split.principal += amount
+      else if (linkedLoanCharge(t) && t.loan_component === 'interest') split.interest += amount
+      else if (linkedLoanCharge(t)) split.fee += amount
+      else split.other += amount
+      loanSplits.set(loanId, split)
+    }
+    if (source && linkedLoanCharge(t)) add(`debt:${t.loan_account_id}`, 'debt', amount)
+    else if (t.type === 'income' && source) add(actualIncomeKey(t), 'income', amount)
     else if (t.type === 'expense' && source) add(`actual:expense:${t.category_id ?? 'uncategorized'}`, 'expenses', amount)
     else if (t.type === 'transfer' || t.type === 'repayment') {
       if (source && destination) continue
@@ -315,7 +363,10 @@ function actualBetween(data: PlannerData, from: string, to: string) {
     }
   }
   const expenses = buckets.expenses + buckets.cards + buckets.debt
-  return { values, buckets, netIncome: buckets.income, expenses, otherIn, otherOut, outflows: expenses + otherOut, surplus: buckets.income + otherIn - expenses - otherOut }
+  return { values, buckets, loanSplits, netIncome: buckets.income, expenses, otherIn, otherOut, outflows: expenses + otherOut, surplus: buckets.income + otherIn - expenses - otherOut }
+}
+export function loanRepaymentSplit(data: PlannerData, month: string, loanId: string) {
+  return actualBetween(data, month, addMonths(month, 1)).loanSplits.get(loanId)
 }
 export type PlannerView = 'forecast' | 'actual'
 export function itemAmount(data: PlannerData, item: PlannerItem, month: string, view?: PlannerView) {

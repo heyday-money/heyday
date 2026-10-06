@@ -71,6 +71,8 @@ pub struct AccountBilling {
 }
 #[derive(Serialize)]
 pub struct CardOverview {
+    selective_defaults: Vec<crate::selective_defaults::Exclusion>,
+    period_start_day: i64,
     accounts: Vec<crate::accounts::Account>,
     archived_ids: Vec<String>,
     currency: Option<String>,
@@ -84,8 +86,10 @@ async fn overview_snapshot(pool: &SqlitePool) -> Result<CardOverview, String> {
     let currency = sqlx::query_scalar("SELECT currency FROM settings WHERE id=1").fetch_one(&mut *tx).await.map_err(err)?;
     let billing = snapshot(&mut tx).await.map_err(err)?;
     let transactions = sqlx::query_as(&format!("{} WHERE a.type='credit_card' OR d.type='credit_card' ORDER BY t.date DESC,t.id",crate::transactions::SELECT)).fetch_all(&mut *tx).await.map_err(err)?;
+    let selective_defaults = crate::selective_defaults::periods(&mut tx).await.map_err(err)?;
+    let period_start_day = sqlx::query_scalar("SELECT period_start_day FROM settings WHERE id=1").fetch_one(&mut *tx).await.map_err(err)?;
     tx.commit().await.map_err(err)?;
-    Ok(CardOverview { accounts, archived_ids, currency, billing, transactions })
+    Ok(CardOverview { selective_defaults, period_start_day, accounts, archived_ids, currency, billing, transactions })
 }
 #[tauri::command]
 pub async fn get_card_overview(pool: tauri::State<'_, SqlitePool>) -> Result<CardOverview, String> {

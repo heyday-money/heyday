@@ -55,7 +55,7 @@ pub async fn facilities(conn: &mut SqliteConnection) -> Result<Vec<Facility>, sq
 pub struct PaymentPart {
     transaction_id: String,
     payment_id: String,
-    contract_id: String,
+    contract_id: Option<String>,
     component: String,
     amount: String,
 }
@@ -100,8 +100,8 @@ pub async fn get_loan_account(
         .into_iter()
         .filter(|c| c.account_id == account_id)
         .collect();
-    let transactions=sqlx::query_as(&format!("{} WHERE t.account_id=? OR t.destination_account_id=? OR t.id IN (SELECT p.transaction_id FROM loan_payment_parts p JOIN loan_contracts c ON c.id=p.contract_id WHERE c.account_id=?) ORDER BY t.date DESC,t.created_at DESC",crate::transactions::SELECT)).bind(&account_id).bind(&account_id).bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
-    let payment_parts=sqlx::query_as("SELECT p.transaction_id,p.payment_id,p.contract_id,p.component,CAST(p.amount AS TEXT) AS amount FROM loan_payment_parts p JOIN loan_contracts c ON c.id=p.contract_id WHERE c.account_id=?").bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
+    let transactions=sqlx::query_as(&format!("{} WHERE t.account_id=? OR t.destination_account_id=? OR t.id IN (SELECT p.transaction_id FROM loan_payment_parts p LEFT JOIN loan_contracts c ON c.id=p.contract_id WHERE COALESCE(p.loan_account_id,c.account_id)=?) ORDER BY t.date DESC,t.created_at DESC",crate::transactions::SELECT)).bind(&account_id).bind(&account_id).bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
+    let payment_parts=sqlx::query_as("SELECT p.transaction_id,p.payment_id,p.contract_id,p.component,CAST(p.amount AS TEXT) AS amount FROM loan_payment_parts p LEFT JOIN loan_contracts c ON c.id=p.contract_id WHERE COALESCE(p.loan_account_id,c.account_id)=?").bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
     let paid_off_on = sqlx::query_scalar("SELECT paid_off_on FROM loan_payoffs WHERE account_id=?").bind(&account_id).fetch_optional(&mut *tx).await.map_err(err)?;
     tx.commit().await.map_err(err)?;
     Ok(Snapshot {
@@ -322,7 +322,12 @@ pub async fn validate_allocations(conn: &mut SqliteConnection) -> Result<(), Str
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Repayment {
-    contract_id: String,
+    contract_id: Option<String>,
+    loan_account_id: Option<String>,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    cleared: bool,
     account_id: String,
     date: String,
     total: String,
@@ -346,27 +351,44 @@ async fn repay(pool: &SqlitePool, input: Repayment) -> Result<(), String> {
     }
     let mut tx = pool.begin().await.map_err(err)?;
     currency(&mut tx, &input.currency).await?;
-    cash(&mut tx, &input.account_id).await?;
-    let contract: Contract = sqlx::query_as(&format!("{SELECT} WHERE c.id=?"))
-        .bind(&input.contract_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(err)?
-        .ok_or("Contract not found.")?;
-    active_loan(&mut tx, &contract.account_id).await?;
-    if contract.needs_review || input.date < contract.borrowing_date {
-        return Err("Review the borrowing before recording this repayment.".into());
-    }
-    let remaining = amount(&contract.remaining_principal)?
-        .checked_sub(principal)
-        .filter(|n| *n >= 0)
-        .ok_or("Principal payment exceeds this contract's remaining principal.")?;
-    sqlx::query("UPDATE loan_contracts SET remaining_principal=? WHERE id=?")
-        .bind(remaining)
-        .bind(&contract.id)
-        .execute(&mut *tx)
-        .await
-        .map_err(err)?;
+    let source_ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type IN ('cash','bank','wallet') AND is_archived=0)")
+        .bind(&input.account_id).fetch_one(&mut *tx).await.map_err(err)?;
+    if !source_ok { return Err("Choose an active cash, bank or wallet account.".into()); }
+    let (loan_id, name) = if let Some(contract_id) = &input.contract_id {
+        let contract: Contract = sqlx::query_as(&format!("{SELECT} WHERE c.id=?"))
+            .bind(contract_id).fetch_optional(&mut *tx).await.map_err(err)?.ok_or("Contract not found.")?;
+        active_loan(&mut tx, &contract.account_id).await?;
+        if input.loan_account_id.as_ref().is_some_and(|id| id != &contract.account_id) {
+            return Err("Choose a contract belonging to this loan account.".into());
+        }
+        if contract.needs_review || input.date < contract.borrowing_date {
+            return Err("Review the borrowing before recording this repayment.".into());
+        }
+        let remaining = amount(&contract.remaining_principal)?.checked_sub(principal)
+            .filter(|n| *n >= 0).ok_or("Principal payment exceeds this contract's remaining principal.")?;
+        sqlx::query("UPDATE loan_contracts SET remaining_principal=? WHERE id=?")
+            .bind(remaining).bind(&contract.id).execute(&mut *tx).await.map_err(err)?;
+        (contract.account_id, contract.name)
+    } else {
+        let id = input.loan_account_id.as_ref().ok_or("Choose a loan account.")?;
+        let (name, balance): (String, i64) = sqlx::query_as("SELECT name,current_balance FROM accounts WHERE id=? AND type='loan' AND is_archived=0")
+            .bind(id).fetch_optional(&mut *tx).await.map_err(err)?.ok_or("Choose an active loan account.")?;
+        let has_contracts: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loan_contracts WHERE account_id=?)")
+            .bind(id).fetch_one(&mut *tx).await.map_err(err)?;
+        if has_contracts { return Err("Choose a contract for this loan repayment.".into()); }
+        if principal > balance.max(0) { return Err("Principal payment exceeds this loan's balance.".into()); }
+        (id.clone(), name)
+    };
+    // Recreate the default after a data reset, or if its previous name was edited.
+    // Existing archived categories stay archived and normal expense validation applies.
+    let charge_category: Option<String> = if interest > 0 || fee > 0 {
+        sqlx::query("INSERT INTO categories(id,name,name_key,icon) VALUES(lower(hex(randomblob(16))),'Fee/Interest','fee/interest','tag') ON CONFLICT(name_key) DO NOTHING")
+            .execute(&mut *tx).await.map_err(err)?;
+        Some(sqlx::query_scalar("SELECT id FROM categories WHERE name_key='fee/interest'")
+            .fetch_one(&mut *tx).await.map_err(err)?)
+    } else {
+        None
+    };
     let group: String = sqlx::query_scalar("SELECT lower(hex(randomblob(16)))")
         .fetch_one(&mut *tx)
         .await
@@ -390,22 +412,22 @@ async fn repay(pool: &SqlitePool, input: Repayment) -> Result<(), String> {
                 .into(),
                 account_id: input.account_id.clone(),
                 destination_account_id: if component == "principal" {
-                    Some(contract.account_id.clone())
+                    Some(loan_id.clone())
                 } else {
                     None
                 },
                 amount: value.to_string(),
                 date: input.date.clone(),
-                description: format!("{} · {} (linked loan payment)", contract.name, component),
+                description: if input.description.trim().is_empty() { format!("{} · {} (linked loan payment)", name, component) } else { input.description.trim().to_owned() },
                 currency: input.currency.clone(),
                 payee_id: None,
-                category_id: None,
+                category_id: if component == "principal" { None } else { charge_category.clone() },
                 income_source_id: None,
-                cleared_account_ids: vec![],
+                cleared_account_ids: if input.cleared { vec![input.account_id.clone()] } else { vec![] },
             },
         )
         .await?;
-        sqlx::query("INSERT INTO loan_payment_parts(transaction_id,payment_id,contract_id,component,amount) VALUES(?,?,?,?,?)").bind(row.id).bind(&group).bind(&contract.id).bind(component).bind(value).execute(&mut *tx).await.map_err(err)?;
+        sqlx::query("INSERT INTO loan_payment_parts(transaction_id,payment_id,contract_id,component,amount,loan_account_id) VALUES(?,?,?,?,?,?)").bind(row.id).bind(&group).bind(&input.contract_id).bind(component).bind(value).bind(if input.contract_id.is_none() { Some(&loan_id) } else { None }).execute(&mut *tx).await.map_err(err)?;
     }
     validate_allocations(&mut tx).await?;
     tx.commit().await.map_err(err)
@@ -429,7 +451,7 @@ pub async fn deletion_ids(conn: &mut SqliteConnection, id: &str) -> Result<Vec<S
     })
 }
 pub async fn before_delete(conn: &mut SqliteConnection, id: &str) -> Result<(), String> {
-    let part:Option<(String,i64)>=sqlx::query_as("SELECT contract_id,amount FROM loan_payment_parts WHERE transaction_id=? AND component='principal'").bind(id).fetch_optional(&mut *conn).await.map_err(err)?;
+    let part:Option<(String,i64)>=sqlx::query_as("SELECT contract_id,amount FROM loan_payment_parts WHERE transaction_id=? AND component='principal' AND contract_id IS NOT NULL").bind(id).fetch_optional(&mut *conn).await.map_err(err)?;
     if let Some((contract, value)) = part {
         // remaining + principal cannot exceed the original principal; CHECK catches stale/corrupt data.
         sqlx::query(
@@ -504,6 +526,73 @@ mod tests {
     fn payment(id: &str) -> Repayment {
         serde_json::from_value(json!({"contract_id":id,"account_id":"bank","date":"2024-03-01","total":"210000","principal":"200000","interest":"9000","fee":"1000","currency":"THB"})).unwrap()
     }
+    fn standalone_payment() -> Repayment {
+        serde_json::from_value(json!({"contract_id":null,"loan_account_id":"loan","account_id":"bank","date":"2024-03-01","total":"500000","principal":"400000","interest":"80000","fee":"20000","currency":"THB","description":"Monthly payment","cleared":true})).unwrap()
+    }
+    #[tokio::test]
+    async fn repayment_migration_preserves_existing_contract_parts() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1)
+            .connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(":memory:").foreign_keys(true)).await.unwrap();
+        for migration in sqlx::migrate!("./migrations").iter().filter(|m| m.version < 38) {
+            sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
+        }
+        sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,loan_type,current_balance) VALUES('loan','Loan','loan','personal_loan',2000000),('bank','Bank','bank',NULL,5000000); INSERT INTO loan_facilities VALUES('loan',3000000);").execute(&pool).await.unwrap();
+        let mut draft = input();
+        draft.borrowing_kind = "existing".into();
+        save(&pool,draft).await.unwrap();
+        let contract = rows(&pool).await.remove(0);
+        sqlx::query("INSERT INTO transactions(id,type,account_id,destination_account_id,amount,date,description) VALUES('old','repayment','bank','loan',200000,'2024-03-01','Existing payment')").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO loan_payment_parts VALUES('old','payment',?,'principal',200000)").bind(&contract.id).execute(&pool).await.unwrap();
+        sqlx::query("UPDATE loan_contracts SET remaining_principal=1800000").execute(&pool).await.unwrap();
+        let before = balances(&pool).await;
+        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        assert_eq!(balances(&pool).await,before);
+        let part: (String,Option<String>,Option<String>) = sqlx::query_as("SELECT transaction_id,contract_id,loan_account_id FROM loan_payment_parts").fetch_one(&pool).await.unwrap();
+        assert_eq!(part,("old".into(),Some(contract.id.clone()),None));
+        assert_eq!(rows(&pool).await[0].remaining_principal,"1800000");
+        crate::transactions::remove(&pool,"old").await.unwrap();
+        assert_eq!(rows(&pool).await[0].remaining_principal,"2000000");
+    }
+    #[tokio::test]
+    async fn standalone_split_reduces_only_principal_and_reverses_as_a_group() {
+        let pool = database().await;
+        sqlx::raw_sql("DELETE FROM loan_facilities; UPDATE accounts SET loan_type='mortgage',current_balance=1000000 WHERE id='loan';").execute(&pool).await.unwrap();
+        let before = balances(&pool).await;
+        repay(&pool, standalone_payment()).await.unwrap();
+        assert_eq!(balances(&pool).await, vec![("bank".into(),4500000),("loan".into(),600000)]);
+        let parts: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT component,contract_id,loan_account_id FROM loan_payment_parts ORDER BY component").fetch_all(&pool).await.unwrap();
+        assert_eq!(parts, vec![("fee".into(),None,"loan".into()),("interest".into(),None,"loan".into()),("principal".into(),None,"loan".into())]);
+        let cleared: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transaction_verifications WHERE account_id='bank'").fetch_one(&pool).await.unwrap();
+        assert_eq!(cleared,3);
+        let id: String = sqlx::query_scalar("SELECT transaction_id FROM loan_payment_parts WHERE component='interest'").fetch_one(&pool).await.unwrap();
+        crate::transactions::remove_confirmed(&pool,&id,true).await.unwrap();
+        assert_eq!(balances(&pool).await,before);
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM loan_payment_parts").fetch_one(&pool).await.unwrap();
+        assert_eq!(count,0);
+    }
+    #[tokio::test]
+    async fn standalone_split_validates_and_rolls_back_every_component() {
+        let pool = database().await;
+        sqlx::query("UPDATE accounts SET current_balance=1000000 WHERE id='loan'").execute(&pool).await.unwrap();
+        let before = balances(&pool).await;
+        for (field,value) in [("interest","-1"),("total","0"),("total","499999"),("total","9223372036854775808"),("principal","1000001"),("currency","USD"),("date","9999-01-01"),("account_id","loan")] {
+            let mut input = json!({"contract_id":null,"loan_account_id":"loan","account_id":"bank","date":"2024-03-01","total":"500000","principal":"400000","interest":"80000","fee":"20000","currency":"THB"});
+            input[field]=json!(value);
+            assert!(repay(&pool,serde_json::from_value(input).unwrap()).await.is_err(),"{field}");
+            assert_eq!(balances(&pool).await,before);
+        }
+        sqlx::query("CREATE TRIGGER reject_fee BEFORE INSERT ON loan_payment_parts WHEN NEW.component='fee' BEGIN SELECT RAISE(ABORT,'injected'); END").execute(&pool).await.unwrap();
+        assert!(repay(&pool,standalone_payment()).await.is_err());
+        assert_eq!(balances(&pool).await,before);
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions").fetch_one(&pool).await.unwrap();
+        assert_eq!(count,0);
+        sqlx::query("DROP TRIGGER reject_fee").execute(&pool).await.unwrap();
+        save(&pool,input()).await.unwrap();
+        assert!(repay(&pool,standalone_payment()).await.err().unwrap().contains("Choose a contract"));
+        let mut wrong = payment(&rows(&pool).await[0].id);
+        wrong.loan_account_id=Some("bank".into());
+        assert!(repay(&pool,wrong).await.err().unwrap().contains("belonging"));
+    }
     async fn balances(pool: &SqlitePool) -> Vec<(String, i64)> {
         sqlx::query_as("SELECT id,current_balance FROM accounts ORDER BY id")
             .fetch_all(pool)
@@ -515,6 +604,31 @@ mod tests {
             .await
             .unwrap()
     }
+    #[tokio::test]
+    async fn fee_interest_backfill_preserves_ledger_and_user_categories() {
+        let pool = database().await;
+        // Repayment must also recreate the category after Clear all data.
+        sqlx::query("DELETE FROM categories WHERE name_key='fee/interest'")
+            .execute(&pool).await.unwrap();
+        save(&pool, input()).await.unwrap();
+        let contract = rows(&pool).await.remove(0);
+        repay(&pool, payment(&contract.id)).await.unwrap();
+        let before = balances(&pool).await;
+        sqlx::raw_sql("INSERT INTO categories(id,name,name_key,icon) VALUES('custom','Custom','custom','tag'); UPDATE transactions SET category_id='custom' WHERE id IN (SELECT transaction_id FROM loan_payment_parts WHERE component='fee'); UPDATE transactions SET category_id=NULL WHERE id IN (SELECT transaction_id FROM loan_payment_parts WHERE component='interest'); UPDATE categories SET name='Fee/Interest',icon='percent' WHERE name_key='fee/interest'; INSERT INTO transactions(id,type,account_id,amount,date,description) VALUES('unrelated','expense','bank',123,'2024-03-01','interest');")
+            .execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0037_loan_fee_interest_category.sql"))
+            .execute(&pool).await.unwrap();
+        let categories: Vec<(String, Option<String>)> = sqlx::query_as("SELECT p.component,c.name FROM loan_payment_parts p JOIN transactions t ON t.id=p.transaction_id LEFT JOIN categories c ON c.id=t.category_id ORDER BY p.component")
+            .fetch_all(&pool).await.unwrap();
+        assert_eq!(categories, vec![("fee".into(),Some("Custom".into())),("interest".into(),Some("Fee/Interest".into())),("principal".into(),None)]);
+        let unrelated: Option<String> = sqlx::query_scalar("SELECT category_id FROM transactions WHERE id='unrelated'").fetch_one(&pool).await.unwrap();
+        assert_eq!(unrelated, None);
+        let icon: String = sqlx::query_scalar("SELECT icon FROM categories WHERE name_key='fee/interest'").fetch_one(&pool).await.unwrap();
+        assert_eq!(icon, "percent");
+        assert_eq!(balances(&pool).await, before);
+        assert_eq!(rows(&pool).await[0].remaining_principal, "1800000");
+    }
+
     #[tokio::test]
     async fn multiple_draws_split_repayment_and_group_reversal() {
         let pool = database().await;
@@ -541,6 +655,14 @@ mod tests {
                 .await
                 .is_err()
         );
+        let parts: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT p.component,c.name FROM loan_payment_parts p JOIN transactions t ON t.id=p.transaction_id LEFT JOIN categories c ON c.id=t.category_id ORDER BY p.component",
+        ).fetch_all(&pool).await.unwrap();
+        assert_eq!(parts, vec![
+            ("fee".into(), Some("Fee/Interest".into())),
+            ("interest".into(), Some("Fee/Interest".into())),
+            ("principal".into(), None),
+        ]);
         let fee: String = sqlx::query_scalar(
             "SELECT transaction_id FROM loan_payment_parts WHERE component='fee'",
         )
@@ -798,6 +920,21 @@ mod tests {
                 .unwrap();
         assert!(review);
     }
+    #[tokio::test]
+    async fn general_payments_cannot_bypass_contract_split_with_unassigned_debt() {
+        let pool = database().await;
+        save(&pool, input()).await.unwrap();
+        sqlx::query("UPDATE accounts SET current_balance=current_balance+100000 WHERE id='loan'").execute(&pool).await.unwrap();
+        let before = balances(&pool).await;
+        for kind in ["repayment", "transfer"] {
+            let input = NewTransaction { kind:kind.into(),account_id:"bank".into(),destination_account_id:Some("loan".into()),amount:"100".into(),date:"2024-03-01".into(),description:"Payment".into(),currency:"THB".into(),payee_id:None,category_id:None,income_source_id:None,cleared_account_ids:vec![] };
+            let error = crate::transactions::insert(&pool,input).await.err().unwrap();
+            assert!(error.contains("This loan has contracts"));
+            assert_eq!(balances(&pool).await,before);
+        }
+        assert_eq!(rows(&pool).await[0].remaining_principal,"2000000");
+    }
+
     #[tokio::test]
     async fn account_creation_can_enable_revolving_credit_atomically() {
         let pool = database().await;

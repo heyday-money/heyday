@@ -88,6 +88,7 @@ test('language switches immediately, preserves settings draft, survives restart 
   await page.getByRole('navigation').getByRole('link', { name: 'บัญชี', exact: true }).click()
   await expect(page.getByText('Home', { exact: true })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'ยอดคงเหลือ', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Home', exact: true }).click()
   await page.getByRole('button', { name: 'เก็บถาวร บัญชี Home', exact: true }).click()
   await expect(page.getByRole('dialog')).toContainText('การเก็บถาวรนำยอดนี้ออกจากมูลค่าสุทธิ')
   await page.getByRole('dialog').getByRole('button', { name: 'เก็บบัญชีถาวร', exact: true }).click()

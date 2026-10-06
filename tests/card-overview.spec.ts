@@ -33,11 +33,11 @@ test('month-end clamping, leap years, closing-day inclusion and year boundaries'
   expect(cardOverview(data,'2025-03-01').rows[0]).toMatchObject({end:'2025-02-28',nextEnd:'2025-03-31'})
   expect(cardOverview(data,'2026-01-01').rows[0]).toMatchObject({end:'2025-12-31',nextEnd:'2026-01-31'})
 })
-test('missing dates remain unavailable; archived debt and exact overpayments stay visible',()=>{
+test('archived cards are hidden from rows and totals; active overpayments stay exact',()=>{
   const data=example();data.accounts=[account('a',null,'9223372036854775807'),account('b',15,'-9007199254740993')];data.archived_ids=['a']
   const r=cardOverview(data,'2026-10-23')
-  expect(r.rows[0]).toMatchObject({archived:true,latestSpending:null,nextSpending:null,estimatedClosing:null})
-  expect(r.unconfigured).toBe(1);expect(r.owed).toBe(9223372036854775807n);expect(r.credit).toBe(9007199254740993n)
+  expect(r.rows.map(row=>row.account.id)).toEqual(['b'])
+  expect(r.unconfigured).toBe(0);expect(r.owed).toBe(0n);expect(r.credit).toBe(9007199254740993n)
 })
 
 test('Outlook credit cards shows cycle totals, partial payments, details, refresh and bank review link',async({page})=>{

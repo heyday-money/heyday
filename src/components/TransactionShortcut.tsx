@@ -1,5 +1,6 @@
 import { t as translate, useLanguage } from "../lib/i18n"
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useParams } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { Button } from './ui/button'
 import { AddTransactionDialog } from './AddTransactionDialog'
@@ -16,7 +17,13 @@ export const transactionShortcutLabel = isMac ? '⌘N' : 'Ctrl+N'
 export function TransactionShortcut({ children }: { children: ReactNode }) {
   useLanguage()
 
-  const [requested, setRequested] = useState(false)
+  const accountId = useParams({ strict: false, select: params => params.accountId })
+  const [entry, setEntry] = useState<{ accountId?: string } | null>(null)
+  const requested = entry !== null
+  // Capture the page context only when opening; later navigation cannot reset a draft.
+  const setRequested = useCallback((next: boolean) => {
+    setEntry(current => next ? current ?? { accountId } : null)
+  }, [accountId])
 
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
@@ -29,9 +36,9 @@ export function TransactionShortcut({ children }: { children: ReactNode }) {
     }
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
-  }, [])
+  }, [setRequested])
 
-  return <TransactionShortcutContext.Provider value={{ requested, setRequested }}>{children}{requested && <AddTransactionDialog onClose={() => setRequested(false)} />}</TransactionShortcutContext.Provider>
+  return <TransactionShortcutContext.Provider value={{ requested, setRequested }}>{children}{entry && <AddTransactionDialog initialAccountId={entry.accountId} onClose={() => setRequested(false)} />}</TransactionShortcutContext.Provider>
 }
 
 export function AddTransactionButton() {

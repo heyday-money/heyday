@@ -1,3 +1,5 @@
+import { SelectiveDefaultWarning } from './SelectiveDefault'
+import { exclusionFor } from '../lib/selective-defaults'
 import { t as translate, useLanguage, getLanguage } from "../lib/i18n"
 import { CategoryIcon } from './CategoryIcon'
 import { AccountLabel } from './InstitutionLogo'
@@ -12,7 +14,7 @@ import { ChevronDown, ChevronRight, ReceiptText, Trash2 } from 'lucide-react'
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem } from './ui/context-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { desktopAvailable } from '../lib/desktop'
-import { comparisonViews, plannerComparison, loanContractAmount, addMonths, currentCycle, cycleLabel, editableSatang, getPlanner, itemAmount, monthIndex, monthLabel, parsePlannerAmount, plannerItems, plannerMoney, savePlanner, type PlannerView, type PlannerCategoryId, type PlannerChange, type PlannerData, type PlannerItem } from '../lib/cashflow'
+import { itemExclusion, loanRepaymentSplit, comparisonViews, plannerComparison, loanContractAmount, addMonths, currentCycle, cycleLabel, editableSatang, getPlanner, itemAmount, monthIndex, monthLabel, parsePlannerAmount, plannerItems, plannerMoney, savePlanner, type PlannerView, type PlannerCategoryId, type PlannerChange, type PlannerData, type PlannerItem } from '../lib/cashflow'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
@@ -129,7 +131,8 @@ function PlannerTable({ data, selected, activeCycle, busy, edit }: { data: Plann
   const collapseControl = (id: string, label: string) => <Button type="button" variant="ghost" size="icon-xs" aria-label={translate("{value0} {value1}", { value0: collapsed.has(id) ? translate("Expand") : translate("Collapse"), value1: label })} aria-expanded={!collapsed.has(id)} onClick={() => toggleSection(id)}>{collapsed.has(id) ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}</Button>
   const cycles = plannerComparison(data, selected, activeCycle)
   const rows = useMemo<Row[]>(() => {
-    const items = plannerItems(data)
+    const archivedIds = new Set([...data.debt_accounts, ...data.credit_cards].filter(account => account.is_archived).map(account => account.id))
+    const items = plannerItems(data).filter(item => !archivedIds.has(item.debt_account?.id ?? item.credit_card?.id ?? item.installment?.debt_account_id ?? ''))
     const categoryRows = (ids: PlannerCategoryId[]): Row[] => ids.flatMap(id => {
       const category = data.categories.find(category => category.id === id)
       if (!category) return []
@@ -173,18 +176,20 @@ function PlannerTable({ data, selected, activeCycle, busy, edit }: { data: Plann
       if (entry.kind === 'category') return <div className="flex items-center gap-1 text-brand">{collapseControl(entry.id, entry.label)}<span className="min-w-0 flex-1">{entry.label}</span><HelpTooltip label={entry.label} text={categoryHelp[entry.category!]} />{entry.category === 'deductions' ? <Button asChild size="xs" variant="outline"><Link to="/income" aria-label={translate("Manage salary deductions in Income")}>{translate("Manage")}</Link></Button> : <Button size="xs" variant="outline" disabled={busy} aria-label={translate("Add item to {value0}", { value0: entry.label })} onClick={() => edit({ kind: 'item', category: entry.category! })}>{translate("Add")}</Button>}</div>
       if (!entry.item) return <div className="flex items-center justify-between gap-1 font-semibold"><span>{entry.label}</span><HelpTooltip label={entry.label} text={entry.total ? `Calculated: ${summaryHelp[entry.total]}` : translate("Calculated sum of the amounts entered or scheduled in this category.")} /></div>
       const item = entry.item
+      const excluded = cycles.map(c => itemExclusion(data,item,c.month)).find(Boolean)
+      const warning = <SelectiveDefaultWarning period={excluded} />
       const expenseIcon = item.category_id === 'expenses' ? <CategoryIcon name={data.expense_categories.find(category => category.id === item.transaction_category_id)?.icon} /> : null
       if (item.actual_key?.startsWith('actual:income:') && !item.actual_key.startsWith('actual:income:source:')) {
         const accountId = item.actual_key.slice('actual:income:'.length)
-        return <Link to="/transactions" className="font-medium text-brand">{translate("Received · Unassigned ·")}{" "}<AccountLabel id={accountId} name={data.ledger_transactions?.find(t => t.account_id === accountId)?.account_name ?? translate("Account")} /></Link>
+        return <Link to="/accounts/$accountId/details" params={{ accountId }} className="font-medium text-brand">{translate("Received · Unassigned ·")}{" "}<AccountLabel id={accountId} name={data.ledger_transactions?.find(t => t.account_id === accountId)?.account_name ?? translate("Account")} /></Link>
       }
       if (item.actual_key) return <div className="flex items-center gap-1">{expenseIcon}<Link to="/transactions" className={`font-medium text-brand ${item.category_id === 'expenses' ? 'min-w-0 flex-1' : ''}`}>{translate(item.name)}</Link><HelpTooltip label={translate(item.name)} text={item.description}/></div>
-      if (item.debt_account && data.loan_facilities?.some(f => f.account_id === item.debt_account!.id)) return <div className="flex items-center gap-2"><Button size="icon-xs" variant="ghost" aria-label={translate("Expand {value0} contracts", { value0: item.name })} aria-expanded={expandedLoans.has(item.debt_account.id)} onClick={() => setExpandedLoans(current => {const next=new Set(current);if(next.has(item.debt_account!.id))next.delete(item.debt_account!.id);else next.add(item.debt_account!.id);return next})}>{expandedLoans.has(item.debt_account.id)?'−':'+'}</Button><Link to="/accounts/$accountId/loans" params={{accountId:item.debt_account.id}}><AccountLabel id={item.debt_account.id} name={item.name} /></Link><HelpTooltip label={item.name} text={item.description}/></div>
-      if (item.credit_card) return <Link className="font-medium text-brand" to="/accounts/$accountId/billing" params={{accountId:item.credit_card.id}}><AccountLabel id={item.credit_card.id} name={item.name} /></Link>
-      if (item.income || item.debt_account || item.installment) {
-        const route = item.income ? '/income' : item.debt_account ? '/accounts' : '/installments'
-        const source = item.income ? translate("Income") : item.debt_account ? translate("Accounts") : translate("Installments")
-        return <div className="flex items-center justify-between gap-1"><Link to={route} className="min-w-0 truncate border-b border-dashed border-transparent pb-0.5 font-medium text-ink no-underline hover:border-current focus-visible:border-current dark:text-white">{item.debt_account ? <AccountLabel id={item.debt_account.id} name={item.name} /> : <>{item.card_name ? <><AccountLabel id={item.installment?.debt_account_id} name={item.card_name} /> · </> : ''}{item.name}</>}</Link><HelpTooltip label={item.name} text={translate("{value0}. {value1}. Managed on {value2}; {value3}.", { value0: item.name, value1: item.description, value2: source, value3: item.credit_card ? translate("calculated from recorded transactions") : translate("individual cycle amounts can be overridden") })} /></div>
+      if (item.debt_account) return <div className="flex items-center gap-2">{data.loan_facilities?.some(f => f.account_id === item.debt_account!.id) && <Button size="icon-xs" variant="ghost" aria-label={translate("Expand {value0} contracts", { value0: item.name })} aria-expanded={expandedLoans.has(item.debt_account.id)} onClick={() => setExpandedLoans(current => {const next=new Set(current);if(next.has(item.debt_account!.id))next.delete(item.debt_account!.id);else next.add(item.debt_account!.id);return next})}>{expandedLoans.has(item.debt_account.id)?'−':'+'}</Button>}<Link className="font-medium text-brand" to="/accounts/$accountId/details" params={{accountId:item.debt_account.id}}><AccountLabel id={item.debt_account.id} name={item.name} /></Link>{warning}<HelpTooltip label={item.name} text={item.description}/></div>
+      if (item.credit_card) return <div className="flex items-center gap-1"><Link className="font-medium text-brand" to="/accounts/$accountId/details" params={{accountId:item.credit_card.id}}><AccountLabel id={item.credit_card.id} name={item.name} /></Link>{warning}</div>
+      if (item.income || item.installment) {
+        const route = item.income ? '/income' : '/installments'
+        const source = item.income ? translate("Income") : translate("Installments")
+        return <div className="flex items-center justify-between gap-1"><Link to={route} className="min-w-0 truncate border-b border-dashed border-transparent pb-0.5 font-medium text-ink no-underline hover:border-current focus-visible:border-current dark:text-white"><>{item.card_name ? <><AccountLabel id={item.installment?.debt_account_id} name={item.card_name} /> · </> : ''}{item.name}</></Link>{warning}<HelpTooltip label={item.name} text={translate("{value0}. {value1}. Managed on {value2}; {value3}.", { value0: item.name, value1: item.description, value2: source, value3: item.credit_card ? translate("calculated from recorded transactions") : translate("individual cycle amounts can be overridden") })} /></div>
       }
       const category = item.transaction_category_id ? ` Transaction category: ${data.expense_categories.find(c => c.id === item.transaction_category_id)?.name ?? translate("Unavailable")}.` : ''
       const itemHelp = <HelpTooltip label={item.name} text={`${item.card_name ? `${item.card_name} · ` : ''}${item.name}. ${item.description || translate("Select the item name to edit its details.")}${category}`} />
@@ -201,11 +206,17 @@ function PlannerTable({ data, selected, activeCycle, busy, edit }: { data: Plann
         cell: ({ row }) => {
           const entry = row.original, values = cycle[view]
           if (entry.kind === 'category' || entry.kind === 'section') return null
+          if (entry.contract && view === 'forecast' && exclusionFor(data.selective_defaults, entry.contract.account_id, cycle.month)) return <span title={translate("Excluded by Selective Default")}>—</span>
           if (entry.contract && view === 'actual') return <span title={translate("Recorded repayments appear once on the parent loan account row.")}>—</span>
           if (entry.contract) return <span className="text-muted" title={translate("Reference schedule only; included in the parent loan row.")}>{data.amounts.some(a => a.item_id === entry.parentId && a.month === cycle.month) ? translate("Account override") : plannerMoney(loanContractAmount(data,entry.contract,cycle.month))}</span>
           if (entry.item) {
             const amount = itemAmount(data, entry.item, cycle.month, view)
+            if (view === 'forecast' && itemExclusion(data,entry.item,cycle.month)) return <Tooltip><TooltipTrigger asChild><button type="button" className="block w-full rounded px-2 text-right text-xs text-muted" aria-label={translate("{value0} {value1}: Excluded", { value0: entry.item.name, value1: cycle.month })}>—</button></TooltipTrigger><TooltipContent>{translate("Excluded by Selective Default")}. {translate("Recorded payments remain in Actual only during excluded cycles. Balances and saved plans are unchanged.")}</TooltipContent></Tooltip>
             if (view === 'actual' || entry.item.actual_key) {
+              if (view === 'actual' && entry.item.debt_account) {
+                const split = loanRepaymentSplit(data, cycle.month, entry.item.debt_account.id)
+                if (split) return <Tooltip><TooltipTrigger asChild><button type="button" className="block w-full rounded px-2 text-right text-xs tabular-nums" aria-label={translate("Total repayment") + ': ' + plannerMoney(amount.value ?? 0n)}>{plannerMoney(amount.value ?? 0n)}</button></TooltipTrigger><TooltipContent><p className="font-semibold">{translate("Total repayment")}</p><p>{translate("Principal")}: {plannerMoney(split.principal)}</p><p>{translate("Interest")}: {plannerMoney(split.interest)}</p><p>{translate("Fees")}: {plannerMoney(split.fee)}</p>{split.other !== 0n && <p>{translate("Other repayments")}: {plannerMoney(split.other)}</p>}<p>{translate("Linked interest and fees are included here, not counted again in General Expenses.")}</p></TooltipContent></Tooltip>
+              }
               const unrecorded = view === 'actual' && (entry.item.category_id === 'income' || entry.item.category_id === 'deductions') && !entry.item.actual_key
               return <span className="block px-2 text-xs tabular-nums" aria-label={translate("{value0} {value1}: {value2}", { value0: entry.item.name, value1: cycle.month, value2: amount.source })} title={unrecorded ? translate("Not recorded separately. Actual net receipts appear below; no gross salary or payroll deduction is inferred.") : translate("{value0}. Actuals come from Transactions; forecasts are preserved.", { value0: amount.source })}>{amount.value === null ? '—' : plannerMoney(amount.value)}</span>
             }

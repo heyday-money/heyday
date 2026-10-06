@@ -84,6 +84,8 @@ pub struct PlannerCreditCard {
 }
 #[derive(Serialize, sqlx::FromRow)]
 pub struct PlannerCardTransaction {
+    loan_account_id: Option<String>,
+    loan_component: Option<String>,
     id: String,
     #[serde(rename = "type")]
     kind: String,
@@ -101,6 +103,7 @@ pub struct PlannerCardTransaction {
 }
 #[derive(Serialize)]
 pub struct Planner {
+    selective_defaults: Vec<crate::selective_defaults::Exclusion>,
     ledger_transactions: Vec<PlannerCardTransaction>,
     card_billing: crate::card_billing::BillingData,
     loan_contracts: Vec<crate::loans::Contract>,
@@ -122,13 +125,14 @@ pub struct Planner {
 }
 async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sqlx::Error> {
     Ok(Planner {
-        ledger_transactions: sqlx::query_as("SELECT t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
+        selective_defaults: crate::selective_defaults::periods(conn).await?,
+        ledger_transactions: sqlx::query_as("SELECT (SELECT COALESCE(lp.loan_account_id,c.account_id) FROM loan_payment_parts lp LEFT JOIN loan_contracts c ON c.id=lp.contract_id WHERE lp.transaction_id=t.id) AS loan_account_id,(SELECT component FROM loan_payment_parts WHERE transaction_id=t.id) AS loan_component,t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
         card_billing: crate::card_billing::snapshot(conn).await?,
         loan_contracts: crate::loans::contracts(conn).await?,
         loan_facilities: crate::loans::facilities(conn).await?,
         income_deductions: sqlx::query_as(&format!("{} ORDER BY rowid",crate::income_deductions::SELECT)).fetch_all(&mut *conn).await?,
         credit_cards: sqlx::query_as("SELECT id,name,is_archived FROM accounts WHERE type='credit_card' ORDER BY name,id").fetch_all(&mut *conn).await?,
-        card_transactions: sqlx::query_as("SELECT t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id WHERE a.type='credit_card' OR d.type='credit_card' ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
+        card_transactions: sqlx::query_as("SELECT (SELECT COALESCE(lp.loan_account_id,c.account_id) FROM loan_payment_parts lp LEFT JOIN loan_contracts c ON c.id=lp.contract_id WHERE lp.transaction_id=t.id) AS loan_account_id,(SELECT component FROM loan_payment_parts WHERE transaction_id=t.id) AS loan_component,t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id WHERE a.type='credit_card' OR d.type='credit_card' ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
         incomes: sqlx::query_as("SELECT i.id,i.name,CAST(i.estimated_amount AS TEXT) AS estimated_amount,i.recurrence_day_of_month,i.is_active,a.name AS destination_account_name,a.is_archived AS account_archived FROM incomes i JOIN accounts a ON a.id=i.destination_account_id ORDER BY i.created_at,i.id").fetch_all(&mut *conn).await?,
         debt_accounts: sqlx::query_as("SELECT id,name,loan_type,CAST(current_balance AS TEXT) AS current_balance,CAST(monthly_installment AS TEXT) AS monthly_installment,notes,is_archived,(SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts WHERE type='loan' ORDER BY name,id").fetch_all(&mut *conn).await?,
         installments: sqlx::query_as("SELECT i.id,i.name,i.debt_account_id,d.name AS debt_account_name,d.type AS debt_account_type,a.name AS account_name,CAST(i.monthly_amount AS TEXT) AS monthly_amount,i.installment_count,i.first_due_date,(a.is_archived=0 AND d.is_archived=0 AND a.type IN ('cash','bank','wallet') AND d.type IN ('credit_card','loan')) AS accounts_available FROM installments i JOIN accounts a ON a.id=i.account_id JOIN accounts d ON d.id=i.debt_account_id ORDER BY i.first_due_date,i.id").fetch_all(&mut *conn).await?,
@@ -466,7 +470,8 @@ mod tests {
         let initial = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert_eq!(initial.items.len(), 10);
         assert!(initial.amounts.is_empty() && initial.opening.is_none());
-        assert_eq!(initial.expense_categories.len(), 10);
+        assert_eq!(initial.expense_categories.len(), 11);
+        assert!(initial.expense_categories.iter().any(|category| category.name == "Fee/Interest"));
         let category_id = &initial.expense_categories[0].id;
         sqlx::query("UPDATE categories SET icon='coffee' WHERE id=?")
             .bind(category_id).execute(&pool).await.unwrap();
@@ -627,6 +632,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let data = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert_eq!(data.period_start_day, 31);
         assert_eq!(
@@ -782,6 +789,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "income-0"));
         assert!(result
@@ -991,6 +1000,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -1002,6 +1013,19 @@ mod tests {
             .iter()
             .any(|i| i.id == "debt-1" || i.id == "installments-1"));
         assert_eq!(result.amounts[0].amount, "0");
+    }
+
+    #[tokio::test]
+    async fn snapshot_identifies_linked_loan_charges_independently_of_category() {
+        let pool = database().await;
+        sqlx::raw_sql("INSERT INTO accounts(id,name,type,loan_type) VALUES('bank','Bank','bank',NULL),('loan','Loan','loan','personal_loan'); INSERT INTO loan_facilities VALUES('loan',2000000); INSERT INTO loan_contracts(id,account_id,name,principal,remaining_principal,borrowing_date,receiving_account_id,payment_account_id,interest_rate,monthly_amount,installment_count,first_due_date,borrowing_kind) VALUES('contract','loan','Contract',2000000,2000000,'2024-01-01','bank','bank',0,173367,12,'2024-02-01','existing'); INSERT INTO transactions(id,type,account_id,amount,date,description) VALUES('charge','expense','bank',77754,'2024-02-01',''),('other','expense','bank',100,'2024-02-01',''); INSERT INTO loan_payment_parts(transaction_id,payment_id,contract_id,component,amount) VALUES('charge','payment','contract','interest',77754);")
+            .execute(&pool).await.unwrap();
+        let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
+        let charge = result.ledger_transactions.iter().find(|t|t.id=="charge").unwrap();
+        assert_eq!(charge.loan_account_id.as_deref(), Some("loan"));
+        assert_eq!(charge.loan_component.as_deref(), Some("interest"));
+        let other = result.ledger_transactions.iter().find(|t|t.id=="other").unwrap();
+        assert!(other.loan_account_id.is_none() && other.loan_component.is_none());
     }
 
     #[tokio::test]
@@ -1111,6 +1135,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -1246,6 +1272,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "deductions-0"));
         assert!(result.items.iter().any(|i| i.name == "My social security"));
