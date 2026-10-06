@@ -3,7 +3,7 @@ import { AccountLabel } from './InstitutionLogo'
 import { InstallmentCalendar } from './InstallmentCalendar'
 import { useMemo, useState } from 'react'
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
-import { Plus } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { deleteInstallment, type FinancialData, type Installment } from '../lib/desktop'
 import { dateKey, isCash, isDebt } from '../lib/financial'
@@ -12,6 +12,7 @@ import { formatAmount } from '../lib/money'
 import { InstallmentDialog } from './InstallmentDialog'
 import { DataTable } from './ui/data-table'
 import { Button } from './ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog'
 
 type DisplayInstallment = Installment & { last: string; next: string | null; status: string }
@@ -43,7 +44,10 @@ export function InstallmentsTable({ data, today, loading }: { data: FinancialDat
       { id: 'next', header: translate("Next scheduled date"), meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap tabular-nums` }, cell: ({ row }) => row.original.next ?? '—' },
       { id: 'source', header: translate("Pay from"), meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-32 max-w-60 break-words` }, cell: ({ row }) => <AccountLabel id={row.original.account_id} name={row.original.account_name} /> },
       { id: 'status', header: translate("Schedule status"), meta, cell: ({ row }) => row.original.status },
-      { id: 'actions', header: translate("Actions"), meta, cell: ({ row }) => <div className="flex gap-2">{row.original.debt_account_type !== 'loan' && <Button size="sm" variant="outline" disabled={loading} aria-label={translate("Edit installment {value0}", { value0: row.original.name })} onClick={() => setEditing({ plan: row.original })}>{translate("Edit")}</Button>}<Button size="sm" variant="outline" disabled={loading} aria-label={translate("Remove installment {value0}", { value0: row.original.name })} onClick={() => { setError(null); setDeleting(row.original) }}>{translate("Remove")}</Button></div> },
+      { id: 'actions', header: translate("Actions"), meta, cell: ({ row }) => <TooltipProvider><div className="flex items-center gap-1">
+        {row.original.debt_account_type !== 'loan' && <Tooltip><TooltipTrigger asChild><Button type="button" size="icon-sm" variant="ghost" disabled={loading} aria-label={translate("Edit installment {value0}", { value0: row.original.name })} onClick={() => setEditing({ plan: row.original })}><Pencil aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{translate("Edit")}</TooltipContent></Tooltip>}
+        <Tooltip><TooltipTrigger asChild><Button type="button" size="icon-sm" variant="ghost" disabled={loading} aria-label={translate("Remove installment {value0}", { value0: row.original.name })} onClick={() => { setError(null); setDeleting(row.original) }}><Trash2 aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{translate("Remove")}</TooltipContent></Tooltip>
+      </div></TooltipProvider> },
     ]
   }, [currency, loading, getLanguage()])
   const table = useReactTable({ data: rows, columns, getRowId: row => row.id, getCoreRowModel: getCoreRowModel() })

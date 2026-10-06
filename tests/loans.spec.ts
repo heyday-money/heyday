@@ -40,17 +40,36 @@ test('loan account UI creates a draft, preserves failed saves, and supports spli
    if(command==='list_accounts')return accounts
    if(command==='create_account'){sessionStorage.setItem('created-account',JSON.stringify(args.input));return {...args.input,id:'new',current_balance:args.input.opening_balance}}
    if(command==='list_transaction_options')return {payees:[],categories:[]}
-   if(command==='get_loan_account')return {account:accounts[0],currency:'THB',facility:{account_id:'loan',credit_limit:'10000000'},contracts:[contract],transactions:[],payment_parts:[]}
+   if(command==='get_loan_account')return {account:accounts[0],currency:'THB',facility:{account_id:'loan',credit_limit:sessionStorage.getItem('facility-limit') ?? '10000000'},contracts:[contract],transactions:[],payment_parts:[]}
+   if(command==='save_loan_facility'){if(sessionStorage.getItem('fail-save'))throw 'Save failed. Please retry.';sessionStorage.setItem('facility-limit',args.creditLimit);return}
    if(command==='save_loan_contract'||command==='record_loan_repayment'){
     sessionStorage.setItem(command,JSON.stringify(args.input));if(sessionStorage.getItem('fail-save'))throw 'Save failed. Please retry.';return
    }
    throw new Error(command)
   }}})
  },{contract})
- await page.goto('/#/accounts/loan/loans')
- await expect(page.getByRole('heading',{name:'Cash card ··7878'})).toBeVisible()
+ await page.goto('/#/accounts/loan/details')
  await expect(page.getByText('70,000.00',{exact:false})).toBeVisible()
- await page.getByRole('tab',{name:'Contracts (1)'}).click()
+ await page.getByRole('button',{name:'Edit shared credit limit'}).click()
+ await page.getByLabel('Shared credit limit (THB)').fill('120000')
+ await page.evaluate(()=>sessionStorage.setItem('fail-save','1'))
+ await page.getByRole('button',{name:'Save',exact:true}).click()
+ await expect(page.getByRole('dialog').getByRole('alert')).toHaveText('Save failed. Please retry.')
+ await expect(page.getByLabel('Shared credit limit (THB)')).toHaveValue('120000')
+ await page.getByRole('button',{name:'Cancel',exact:true}).click()
+ await expect(page.getByText('Discard unsaved changes?')).toBeVisible()
+ await page.getByRole('button',{name:'Keep editing'}).click()
+ await page.evaluate(()=>sessionStorage.removeItem('fail-save'))
+ await page.getByRole('button',{name:'Save',exact:true}).click()
+ await expect(page.getByRole('dialog')).toHaveCount(0)
+ await expect(page.getByText('90,000.00',{exact:false})).toBeVisible()
+ await page.screenshot({path:'/tmp/heyday-loan-details.png',fullPage:true})
+ await page.getByRole('link',{name:'Borrowings & schedules',exact:true}).click()
+ await expect(page.getByRole('heading',{name:'Borrowings & schedules',exact:true,level:2})).toBeVisible()
+ await expect(page.getByRole('tab')).toHaveCount(0)
+ await page.getByRole('navigation',{name:'Breadcrumb'}).getByRole('link',{name:'Cash card · •••• 7878'}).click()
+ await expect(page).toHaveURL(/#\/accounts\/loan\/details$/)
+ await page.getByRole('link',{name:'Borrowings & schedules',exact:true}).click()
  await page.getByRole('button',{name:'Add borrowing'}).click()
  await page.getByLabel('Borrowing entry').selectOption('new')
  await page.getByLabel('Contract name / reference').fill('Borrowing 2')

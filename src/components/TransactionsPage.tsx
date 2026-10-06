@@ -1,5 +1,6 @@
 import { t as translate, useLanguage, getLanguage } from "../lib/i18n"
-import { PayeeLabel } from './PayeeLogo'
+import { TransactionPayee } from './TransactionPayee'
+import { transactionPayeeKey } from '../lib/transaction-payee'
 import { AccountLabel } from './InstitutionLogo'
 import { AccountSelect } from './AccountSelect'
 import { CategoryIcon } from './CategoryIcon'
@@ -7,7 +8,7 @@ import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-
 import { DataTable } from './ui/data-table'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearch } from '@tanstack/react-router'
-import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { deleteTransaction, desktopAvailable, getSettings, listAccounts, listTransactions, type Account, type Transaction, type TransactionType } from '../lib/desktop'
 import { formatAmount } from '../lib/money'
@@ -73,19 +74,21 @@ export function TransactionsPage() {
     } catch (error) { setError(message(error)); if (message(error).includes('reconciliation history')) setNeedsConfirmation(true) } finally { setSaving(false) }
   }
   const visible = useMemo(() => records.filter(row =>
-    (!filter || row.account_id === filter || row.destination_account_id === filter) && (!typeFilter || row.type === typeFilter) &&
-    (!payeeFilter || (row.type === 'expense' && (payeeFilter === 'unassigned' ? !row.payee_id : row.payee_id === payeeFilter))) &&
+    (!filter || row.account_id === filter || row.destination_account_id === filter || row.loan_account_id === filter) && (!typeFilter || row.type === typeFilter) &&
+    (!payeeFilter || (payeeFilter === 'unassigned' ? row.type === 'expense' && !transactionPayeeKey(row) : transactionPayeeKey(row) === payeeFilter)) &&
     (!categoryFilter || (row.type === 'expense' && (categoryFilter === 'unassigned' ? !row.category_id : row.category_id === categoryFilter)))), [records, filter, typeFilter, payeeFilter, categoryFilter, getLanguage()])
   const spending = visible.filter(row => row.type === 'expense').reduce((total, row) => total + BigInt(row.amount), 0n)
   const payeeOptions = new Map<string, string>()
   const categoryOptions = new Map<string, string>()
   for (const row of records) {
-    if (row.payee_id) payeeOptions.set(row.payee_id, row.payee_name!)
+    const recipient = transactionPayeeKey(row)
+    if (recipient) payeeOptions.set(recipient, row.payee_id ? row.payee_name! : row.loan_account_name!)
     if (row.category_id) categoryOptions.set(row.category_id, row.category_name!)
   }
   const accountOptions = new Map(accounts.map(account => [account.id, account.name]))
   for (const row of records) {
     accountOptions.set(row.account_id, row.account_name)
+    if (row.loan_account_id) accountOptions.set(row.loan_account_id, row.loan_account_name!)
     if (row.destination_account_id) accountOptions.set(row.destination_account_id, row.destination_account_name!)
   }
   const columns = useMemo<ColumnDef<Transaction>[]>(() => [
@@ -93,7 +96,7 @@ export function TransactionsPage() {
     { id: 'description', header: translate("Description"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-40 max-w-72 break-words px-3 py-1.5 align-middle font-medium text-ink', rowHeader: true }, cell: ({ row: { original: row } }) => <>{row.description || labels[row.type]}{row.type === 'income' && row.income_source_name && <span className="block text-xs font-normal text-muted">{row.income_source_name}</span>}</> },
     { id: 'type', header: translate("Type"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <><TransactionFlow row={row} accountFilter={filter} /></> },
     { id: 'account', header: translate("Account"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-36 max-w-60 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <><AccountLabel id={row.account_id} name={row.account_name} />{row.destination_account_name && <><span aria-hidden="true"> → </span><span className="sr-only"> {" "}{translate("to")}{" "}</span><AccountLabel id={row.destination_account_id} name={row.destination_account_name} /></>}</> },
-    { id: 'payee', header: translate("Payee"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-28 max-w-48 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <>{row.type === 'expense' ? row.payee_id ? <PayeeLabel id={row.payee_id} name={row.payee_name || translate("Payee")} /> : translate("No payee") : '—'}</> },
+    { id: 'payee', header: translate("Payee"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-28 max-w-48 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <TransactionPayee transaction={row} /> },
     { id: 'category', header: translate("Category"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap', cellClassName: 'min-w-28 max-w-48 break-words px-3 py-1.5 align-middle' }, cell: ({ row: { original: row } }) => <>{row.type === 'expense' ? <span className="inline-flex items-center gap-2"><CategoryIcon name={row.category_icon} />{row.category_name || translate("Uncategorized")}</span> : '—'}</> },
     { id: 'amount', header: translate("Amount"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap text-right', cellClassName: 'whitespace-nowrap px-3 py-1.5 text-right align-middle font-semibold tabular-nums text-ink' }, cell: ({ row: { original: row } }) => {
       const flow = moneyFlow(row, filter)
@@ -103,7 +106,19 @@ export function TransactionsPage() {
   ], [currency, filter, getLanguage()])
   const table = useReactTable({ data: visible, columns, getRowId: row => row.id, getCoreRowModel: getCoreRowModel() })
   const clearFilters = () => { setFilter(''); setTypeFilter(''); setPayeeFilter(''); setCategoryFilter('') }
+  const historyAccountDetails = accounts.find(account => account.id === historyAccount)
   return <>
+      {historyAccount && <nav aria-label={translate("Breadcrumb")} className="mb-4 text-sm">
+        <ol className="flex flex-wrap items-center gap-2 text-muted">
+          <li><Link to="/accounts" className="text-brand hover:underline">{translate("Accounts")}</Link></li>
+          <li aria-hidden="true"><ChevronRight size={14} /></li>
+          <li className="min-w-0 break-words"><Link to="/accounts/$accountId/details" params={{ accountId: historyAccount }} className="text-brand hover:underline">
+            {accountOptions.get(historyAccount) || translate("Account details")}{historyAccountDetails?.last_four && ` · •••• ${historyAccountDetails.last_four}`}
+          </Link></li>
+          <li aria-hidden="true"><ChevronRight size={14} /></li>
+          <li aria-current="page">{translate("Transaction history")}</li>
+        </ol>
+      </nav>}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div><h2 className="text-2xl font-semibold">{translate("Your money in motion.")}</h2><p className="mt-2 text-sm">{translate("Record actual activity. Saved transactions update your account balances.")}</p></div>
       </div>

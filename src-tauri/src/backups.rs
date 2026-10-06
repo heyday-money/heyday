@@ -421,7 +421,7 @@ mod tests {
         INSERT INTO transactions(id,type,account_id,destination_account_id,amount,date,description,income_source_id) VALUES('receipt','income','bank',NULL,490000,'2026-01-28','Salary','income'),('payment','repayment','bank','card',30000,'2026-02-13','Card payment',NULL);
         INSERT INTO transactions(id,type,account_id,amount,date,description,payee_id,category_id) VALUES('expense','expense','card',10000,'2026-01-10','Purchase','payee','planner-expense-0');
         INSERT INTO installments(id,name,account_id,debt_account_id,monthly_amount,installment_count,first_due_date,purchase_transaction_id) VALUES('installment','Phone','bank','card',1000,6,'2026-01-28','expense');
-        INSERT INTO subscriptions(id,name,account_id,amount,frequency,first_billing_date) VALUES('subscription','Music','bank',1000,'monthly','2026-01-01');
+        INSERT INTO subscriptions(id,name,account_id,amount,frequency,first_billing_date,logo_asset_id,managed_via,management_url) VALUES('subscription','Music','bank',1000,'monthly','2026-01-01','logo','apple_app_store','https://example.com/subscriptions');
         INSERT INTO payment_plans(id,name,type,account_id,amount,date) VALUES('plan','Rent','expense','bank',100000,'2099-01-01');
         INSERT INTO planner_items(id,category_id,name,schedule_amount,schedule_start,schedule_end) VALUES('manual','expenses','Cash expense',100,'2026-01','2026-12');
         INSERT INTO planner_amounts VALUES('manual','2026-02',0);

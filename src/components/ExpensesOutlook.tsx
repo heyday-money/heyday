@@ -1,5 +1,5 @@
 import { t as translate, useLanguage, getLanguage } from "../lib/i18n"
-import { PayeeLabel } from './PayeeLogo'
+import { TransactionPayee } from './TransactionPayee'
 import { AccountLabel } from './InstitutionLogo'
 import { AccountSelect } from './AccountSelect'
 import { CategoryIcon } from './CategoryIcon'
@@ -82,7 +82,7 @@ function ExpenseTable({ result, currency, day, loading }: { result: ReturnType<t
   const columns: ColumnDef<ExpenseRow>[] = [
     { id: 'category', header: translate("Category / transaction"), meta: { rowHeader: true, headerClassName: 'sticky left-0 z-20 min-w-52 bg-card px-3 py-2', cellClassName: 'sticky left-0 z-10 min-w-52 max-w-72 border-t border-line bg-card px-3 py-1.5' }, cell: ({ row }) => {
       const t = row.original.transaction
-      if (t) return <div className="pl-5 text-xs font-normal"><p className="break-words font-medium">{row.original.name}</p><p className="mt-1 text-muted">{t.date} · <AccountLabel id={t.account_id} name={t.account_name} /></p><p className="text-muted">{t.payee_id ? <PayeeLabel id={t.payee_id} name={t.payee_name ?? translate("Payee")} /> : translate("No payee")}</p></div>
+      if (t) return <div className="pl-5 text-xs font-normal"><p className="break-words font-medium">{row.original.name}</p><p className="mt-1 text-muted">{t.date} · <AccountLabel id={t.account_id} name={t.account_name} /></p><p className="text-muted"><TransactionPayee transaction={t} /></p></div>
       return row.getCanExpand() ? <Button variant="ghost" size="xs" className="h-auto min-h-6 w-full justify-start whitespace-normal px-1 py-0.5 text-left text-xs" aria-expanded={row.getIsExpanded()} aria-label={translate("{value0} {value1}", { value0: row.getIsExpanded() ? translate("Collapse") : translate("Expand"), value1: row.original.name })} onClick={row.getToggleExpandedHandler()}>{row.getIsExpanded() ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<CategoryIcon name={row.original.icon} />{row.original.name}</Button> : <span className="font-semibold">{row.original.name}</span>
     } },
     ...result.cycles.map((cycle, index) => ({ cycle, index })).reverse().map(({ cycle, index }): ColumnDef<ExpenseRow> => ({ id: cycle.month, header: () => <><span className="block">{monthLabel(cycle.month)}{index === result.cycles.length - 1 ? translate(" · Selected") : ''}</span><span className="mt-1 block text-[10px] font-normal">{cycleLabel(cycle.month, day)}</span></>, meta: { headerClassName: 'min-w-40 px-3 py-2 text-right', cellClassName: `border-t border-line px-3 py-1.5 text-right tabular-nums whitespace-nowrap ${index === result.cycles.length - 1 ? 'bg-soft' : ''}` }, cell: ({ row }) => row.original.transaction && row.original.amounts[index] === 0n ? '—' : formatAmount(row.original.amounts[index].toString(), currency) })),

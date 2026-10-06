@@ -15,6 +15,8 @@ pub struct Transaction {
     description: String,
     payee_id: Option<String>,
     payee_name: Option<String>,
+    loan_account_id: Option<String>,
+    loan_account_name: Option<String>,
     category_id: Option<String>,
     category_name: Option<String>,
     category_icon: Option<String>,
@@ -22,7 +24,7 @@ pub struct Transaction {
     income_source_name: Option<String>,
     has_reconciliation_history: bool,
 }
-pub(crate) const SELECT: &str = "SELECT t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, t.category_id, c.name AS category_name, c.icon AS category_icon, t.income_source_id, (SELECT name FROM incomes WHERE id=t.income_source_id) AS income_source_name, EXISTS(SELECT 1 FROM reconciliation_entries re WHERE re.transaction_id=t.id) AS has_reconciliation_history FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id";
+pub(crate) const SELECT: &str = "SELECT t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, linked_loan.id AS loan_account_id, linked_loan.name AS loan_account_name, t.category_id, c.name AS category_name, c.icon AS category_icon, t.income_source_id, (SELECT name FROM incomes WHERE id=t.income_source_id) AS income_source_name, EXISTS(SELECT 1 FROM reconciliation_entries re WHERE re.transaction_id=t.id) AS has_reconciliation_history FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN loan_payment_parts lp ON lp.transaction_id=t.id LEFT JOIN loan_contracts lc ON lc.id=lp.contract_id LEFT JOIN accounts linked_loan ON linked_loan.id=COALESCE(lp.loan_account_id,lc.account_id)";
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct ExpenseAccount {
@@ -405,10 +407,12 @@ mod tests {
         sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0031_institutions.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0032_custom_logos.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0007_loan_types.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
         pool
     }
     #[tokio::test]
@@ -714,10 +718,12 @@ mod tests {
             .unwrap();
         sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0007_loan_types.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
         let stored: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
             .bind("old")
             .fetch_one(&pool)

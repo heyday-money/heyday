@@ -22,6 +22,7 @@ test('account details require review, preserve failed drafts, and persist exclus
       switch(command){
         case 'get_settings':return {currency:'THB',period_start_day:25}
         case 'list_accounts':return [account]
+        case 'get_loan_account':return {account,currency:'THB',facility:null,contracts:[],transactions:[],payment_parts:[]}
         case 'list_institutions':return {institutions:[],accounts:[]}
         case 'list_card_limit_groups':return {currency:'THB',groups:[],cards:[]}
         case 'get_selective_default':return {periods,period_start_day:25,linked_items:[{kind:'Loan schedule',name:'SCB Loan'},{kind:'Saved cycle override',name:'2026-09'}]}
