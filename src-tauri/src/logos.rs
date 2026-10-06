@@ -284,18 +284,18 @@ mod tests {
         ));
         std::fs::create_dir_all(&directory).unwrap();
         let pool = SqlitePool::connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(directory.join("live.db")).create_if_missing(true).foreign_keys(true)).await.unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 32)
         {
             sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
         }
         sqlx::raw_sql("INSERT INTO payees(id,name,name_key,is_archived) VALUES('p','Shop','shop',1); INSERT INTO accounts(id,name,type,institution_id,institution,opening_balance,current_balance) VALUES('a','Savings','bank','bank-002','Bangkok Bank Public Company Limited',9007199254740993,9007199254740990); INSERT INTO transactions(id,type,account_id,amount,date,description,payee_id) VALUES('t','expense','a',3,'2026-01-01','','p');").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0032_custom_logos.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0032_custom_logos.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
         let baseline: (String, Option<String>) =
             sqlx::query_as("SELECT logo_mode,logo_asset_id FROM institutions WHERE id='bank-002'")
                 .fetch_one(&pool)
@@ -327,7 +327,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(saved.logo_asset_id, shop.logo_asset_id);
-        crate::updates::backup_database(&pool, &directory)
+        crate::updates::backup_database(&pool)
             .await
             .unwrap();
         pool.close().await;

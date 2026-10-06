@@ -78,11 +78,13 @@ async fn update_currency(
     save_currency(pool.inner(), &currency).await
 }
 
+// Stable schema generation, independent of app version: beta and later v1 releases
+// leave alpha databases in their original locations and share this new location.
 fn data_directory(base: std::path::PathBuf, development: bool) -> std::path::PathBuf {
     if development {
-        base.join("development")
+        base.join("development").join("v1")
     } else {
-        base
+        base.join("v1")
     }
 }
 
@@ -180,12 +182,66 @@ mod tests {
     #[test]
     fn development_storage_never_uses_production_database() {
         let base = std::path::PathBuf::from("app-data/money.heyday.desktop");
-        assert_eq!(data_directory(base.clone(), false), base);
-        assert_eq!(data_directory(base.clone(), true), base.join("development"));
+        assert_eq!(data_directory(base.clone(), false), base.join("v1"));
+        assert_eq!(data_directory(base.clone(), true), base.join("development/v1"));
         assert_ne!(
             data_directory(base.clone(), true).join("heyday.db"),
-            base.join("heyday.db")
+            data_directory(base.clone(), false).join("heyday.db")
         );
+        assert_ne!(data_directory(base.clone(), false), base);
+        assert_ne!(data_directory(base.clone(), true), base.join("development"));
+    }
+
+    #[tokio::test]
+    async fn beta_baseline_matches_final_alpha_schema_and_reference_data() {
+        let alpha = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        let beta = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./tests/fixtures/alpha-migrations").run(&alpha).await.unwrap();
+        sqlx::migrate!("./migrations").run(&beta).await.unwrap();
+        let query = "SELECT type,name,sql FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*' AND name<>'_sqlx_migrations' AND sql IS NOT NULL ORDER BY type,name";
+        let expected: Vec<(String,String,String)> = sqlx::query_as(query).fetch_all(&alpha).await.unwrap();
+        let actual: Vec<(String,String,String)> = sqlx::query_as(query).fetch_all(&beta).await.unwrap();
+        assert_eq!(actual, expected);
+        let tables: Vec<String> = sqlx::query_scalar("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT GLOB 'sqlite_*' AND name<>'_sqlx_migrations'").fetch_all(&alpha).await.unwrap();
+        for table in tables {
+            let columns: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info(?)").bind(&table).fetch_all(&alpha).await.unwrap();
+            let values = columns.iter().map(|column| {
+                if table == "categories" && column == "id" {
+                    "CASE WHEN name_key='fee/interest' THEN 'default-fee-interest' ELSE id END".to_owned()
+                } else { format!("\"{}\"", column) }
+            }).collect::<Vec<_>>().join(",");
+            let query = format!("SELECT json_array({values}) FROM \"{table}\" ORDER BY 1");
+            let expected: Vec<String> = sqlx::query_scalar(&query).fetch_all(&alpha).await.unwrap();
+            let actual: Vec<String> = sqlx::query_scalar(&query).fetch_all(&beta).await.unwrap();
+            assert_eq!(actual, expected, "Seed data differs for {table}");
+        }
+        let history: Vec<i64> = sqlx::query_scalar("SELECT version FROM _sqlx_migrations").fetch_all(&beta).await.unwrap();
+        assert_eq!(history, vec![1]);
+    }
+
+    #[tokio::test]
+    async fn beta_first_launch_leaves_alpha_databases_and_backups_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        for development in [false, true] {
+            let alpha_dir = if development { dir.path().join("development") } else { dir.path().to_owned() };
+            std::fs::create_dir_all(alpha_dir.join("backups")).unwrap();
+            let alpha_path = alpha_dir.join("heyday.db");
+            let alpha = SqlitePool::connect_with(SqliteConnectOptions::new().filename(&alpha_path).create_if_missing(true)).await.unwrap();
+            sqlx::migrate!("./tests/fixtures/alpha-migrations").run(&alpha).await.unwrap();
+            sqlx::query("INSERT INTO accounts(id,name,type,current_balance) VALUES('alpha','Alpha account','bank',12345)").execute(&alpha).await.unwrap();
+            alpha.close().await;
+            let before = std::fs::read(&alpha_path).unwrap();
+            let backup = alpha_dir.join("backups/alpha.db");
+            std::fs::write(&backup, &before).unwrap();
+            let beta_dir = data_directory(dir.path().to_owned(), development);
+            std::fs::create_dir_all(&beta_dir).unwrap();
+            let beta = SqlitePool::connect_with(SqliteConnectOptions::new().filename(beta_dir.join("heyday.db")).create_if_missing(true).foreign_keys(true)).await.unwrap();
+            sqlx::migrate!("./migrations").run(&beta).await.unwrap();
+            assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM accounts").fetch_one(&beta).await.unwrap(), 0);
+            assert_eq!(std::fs::read(&alpha_path).unwrap(), before);
+            assert_eq!(std::fs::read(&backup).unwrap(), before);
+            beta.close().await;
+        }
     }
 
     #[tokio::test]

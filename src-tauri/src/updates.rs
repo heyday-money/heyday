@@ -1,8 +1,7 @@
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::{path::Path, time::Duration};
-use tauri::Manager;
+use std::time::Duration;
 use tauri_plugin_updater::UpdaterExt;
 
 const REPOSITORY: &str = "https://api.github.com/repos/heyday-money/heyday/releases?per_page=100";
@@ -110,8 +109,9 @@ pub async fn check_app_update(app: tauri::AppHandle) -> Result<UpdateInfo, Strin
 }
 
 // VACUUM INTO creates a consistent snapshot even when SQLite uses WAL.
-pub async fn backup_database(pool: &SqlitePool, directory: &Path) -> Result<(), String> {
-    let directory = directory.join("backups");
+pub async fn backup_database(pool: &SqlitePool) -> Result<(), String> {
+    let options = pool.connect_options();
+    let directory = options.get_filename().parent().ok_or("Database folder unavailable.")?.join("backups");
     std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -168,8 +168,7 @@ pub async fn install_app_update(
         .download(|_, _| {}, || {})
         .await
         .map_err(|e| e.to_string())?;
-    let directory = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    backup_database(pool.inner(), &directory).await?;
+    backup_database(pool.inner()).await?;
     update
         .install(bytes)
         .map_err(|e| format!("Could not install update. Your database backup is retained: {e}"))?;
@@ -236,7 +235,7 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        backup_database(&pool, &directory).await.unwrap();
+        backup_database(&pool).await.unwrap();
         let path = std::fs::read_dir(directory.join("backups"))
             .unwrap()
             .next()

@@ -625,7 +625,7 @@ mod tests {
             .connect_with(options.clone())
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 22)
         {
@@ -635,7 +635,7 @@ mod tests {
         sqlx::raw_sql("INSERT INTO transactions(id,type,account_id,destination_account_id,amount,date,description) VALUES ('legacy','transfer','bank','card',500,'2026-01-01','Old payment'); UPDATE accounts SET current_balance=current_balance-500 WHERE id IN ('bank','card');").execute(&pool).await.unwrap();
         let before = balances(&pool).await;
         let mut tx = pool.begin().await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0022_reconciliation.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0022_reconciliation.sql"))
             .execute(&mut *tx)
             .await
             .unwrap();

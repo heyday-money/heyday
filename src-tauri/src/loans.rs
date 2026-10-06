@@ -533,7 +533,7 @@ mod tests {
     async fn repayment_migration_preserves_existing_contract_parts() {
         let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1)
             .connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(":memory:").foreign_keys(true)).await.unwrap();
-        for migration in sqlx::migrate!("./migrations").iter().filter(|m| m.version < 38) {
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations").iter().filter(|m| m.version < 38) {
             sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
         }
         sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,loan_type,current_balance) VALUES('loan','Loan','loan','personal_loan',2000000),('bank','Bank','bank',NULL,5000000); INSERT INTO loan_facilities VALUES('loan',3000000);").execute(&pool).await.unwrap();
@@ -545,7 +545,7 @@ mod tests {
         sqlx::query("INSERT INTO loan_payment_parts VALUES('old','payment',?,'principal',200000)").bind(&contract.id).execute(&pool).await.unwrap();
         sqlx::query("UPDATE loan_contracts SET remaining_principal=1800000").execute(&pool).await.unwrap();
         let before = balances(&pool).await;
-        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
         assert_eq!(balances(&pool).await,before);
         let part: (String,Option<String>,Option<String>) = sqlx::query_as("SELECT transaction_id,contract_id,loan_account_id FROM loan_payment_parts").fetch_one(&pool).await.unwrap();
         assert_eq!(part,("old".into(),Some(contract.id.clone()),None));
@@ -649,7 +649,7 @@ mod tests {
         let before = balances(&pool).await;
         sqlx::raw_sql("INSERT INTO categories(id,name,name_key,icon) VALUES('custom','Custom','custom','tag'); UPDATE transactions SET category_id='custom' WHERE id IN (SELECT transaction_id FROM loan_payment_parts WHERE component='fee'); UPDATE transactions SET category_id=NULL WHERE id IN (SELECT transaction_id FROM loan_payment_parts WHERE component='interest'); UPDATE categories SET name='Fee/Interest',icon='percent' WHERE name_key='fee/interest'; INSERT INTO transactions(id,type,account_id,amount,date,description) VALUES('unrelated','expense','bank',123,'2024-03-01','interest');")
             .execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0037_loan_fee_interest_category.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0037_loan_fee_interest_category.sql"))
             .execute(&pool).await.unwrap();
         let categories: Vec<(String, Option<String>)> = sqlx::query_as("SELECT p.component,c.name FROM loan_payment_parts p JOIN transactions t ON t.id=p.transaction_id LEFT JOIN categories c ON c.id=t.category_id ORDER BY p.component")
             .fetch_all(&pool).await.unwrap();
@@ -864,14 +864,14 @@ mod tests {
             .create_if_missing(true)
             .foreign_keys(true);
         let pool = SqlitePool::connect_with(options.clone()).await.unwrap();
-        for m in sqlx::migrate!("./migrations")
+        for m in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 25)
         {
             sqlx::raw_sql(&m.sql).execute(&pool).await.unwrap();
         }
         sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,loan_type,opening_balance,current_balance) VALUES('loan','Loan','loan','personal_loan',3000000,3000000),('bank','Bank','bank',NULL,0,0); INSERT INTO planner_debt_amounts VALUES('loan','2024-02',0);").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
             .unwrap();

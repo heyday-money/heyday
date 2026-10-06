@@ -46,7 +46,8 @@ uses that name. Quit and relaunch after changing native icons or metadata.
 - `src/`: React dashboard, TanStack routes, styling, and typed native calls.
 - `public/`: bundled branding and artwork.
 - `src-tauri/src/`: native startup, database setup, and Rust commands.
-- `src-tauri/migrations/`: versioned SQL migrations.
+- `src-tauri/migrations/`: beta baseline and future versioned SQL migrations.
+- `src-tauri/tests/fixtures/alpha-migrations/`: frozen alpha SQL used only by regression tests.
 - `src-tauri/tauri.conf.json`: window, build, and bundle configuration, following
   the [Tauri Vite guide](https://v2.tauri.app/start/frontend/vite/).
 - `AGENTS.md`: requirements and implementation guidance.
@@ -68,10 +69,20 @@ Currency starts unset and the period starts on day 1 (calendar month).
 Next: account editing/archiving, income editing, dashboard period summaries, and safe
 backup/restore. Transactions and automatic transaction creation remain TODO.
 
-The database is `heyday.db` under Tauri's application data directory for
-`money.heyday.desktop`, normally
-`~/Library/Application Support/money.heyday.desktop/heyday.db` on macOS. It is
-created on first launch and migrations run at startup.
+Starting with `0.0.1-beta.1`, the release database is `v1/heyday.db` under
+Tauri's application data directory for `money.heyday.desktop`, normally
+`~/Library/Application Support/money.heyday.desktop/v1/heyday.db` on macOS.
+Beta deliberately starts empty; alpha was the MVP data format. Existing alpha
+databases and backups are not moved, copied, overwritten, or deleted. Alpha
+backups cannot be restored into beta, and restore explains this explicitly.
+
+`src-tauri/migrations/0001_initial.sql` creates the complete current schema and
+bundled reference records in one migration. Currency starts unset and no personal
+records or balances are seeded. Future releases must append migrations rather
+than rewrite this baseline. The `v1` storage directory is a stable schema
+generation, not an app version: subsequent beta and v1 releases reuse it.
+The 40 alpha migrations remain only as test fixtures for schema equivalence and
+historical regression checks; they are not part of application startup.
 
 Lockfiles are included. The project is licensed under Apache-2.0; see `LICENSE`.
 Developer ID signing and notarization remain to be configured before public distribution.
@@ -214,12 +225,13 @@ window follows the current payday cycle, refreshing every 30 seconds and on focu
 or visibility changes. Explicitly selected cycles remain selected; Current cycle
 returns to following the computer date. Settings shows the computer date.
 
-Debug builds (`bun run desktop:dev`) use `development/heyday.db` under the app data
-directory. On macOS this is
-`~/Library/Application Support/money.heyday.desktop/development/heyday.db`.
-Release builds retain `~/Library/Application Support/money.heyday.desktop/heyday.db`.
-No existing database is moved or copied; development starts with a separate empty
-database and runs the same migrations. `tauri dev --release` is a release build
+Debug builds (`bun run desktop:dev`) use `development/v1/heyday.db` under the app
+data directory. On macOS this is
+`~/Library/Application Support/money.heyday.desktop/development/v1/heyday.db`.
+Release builds use `~/Library/Application Support/money.heyday.desktop/v1/heyday.db`.
+Alpha files remain at `heyday.db` and `development/heyday.db` under the same app
+data directory, including their sibling backup folders. No existing database is
+moved or copied; both beta environments start empty and run the same baseline. `tauri dev --release` is a release build
 and uses production storage; use the normal debug dev command for isolation.
 
 ## In-app release checks and signed updates

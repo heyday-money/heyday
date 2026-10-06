@@ -577,7 +577,7 @@ mod tests {
             )
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 12)
         {
@@ -589,51 +589,51 @@ mod tests {
             .unwrap();
         sqlx::query("INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('bank','Bank','bank',10000,9000)").execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO categories(id,name,name_key,is_archived) VALUES('existing-water','WATER','water',1)").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0012_cashflow_planner.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0012_cashflow_planner.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0013_planner_income.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0013_planner_income.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0014_planner_debt_sources.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0014_planner_debt_sources.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0017_salary_deductions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0017_salary_deductions.sql"))
             .execute(&pool)
             .await
             .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0018_deduction_debt_account.sql"
+            "../tests/fixtures/alpha-migrations/0018_deduction_debt_account.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0024_loan_monthly_installment.sql"
+            "../tests/fixtures/alpha-migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0027_card_billing.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0028_card_billing_review.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let data = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert_eq!(data.period_start_day, 31);
         assert_eq!(
@@ -736,7 +736,7 @@ mod tests {
             )
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 13)
         {
@@ -750,47 +750,47 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0013_planner_income.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0013_planner_income.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0014_planner_debt_sources.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0014_planner_debt_sources.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0017_salary_deductions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0017_salary_deductions.sql"))
             .execute(&pool)
             .await
             .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0018_deduction_debt_account.sql"
+            "../tests/fixtures/alpha-migrations/0018_deduction_debt_account.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0024_loan_monthly_installment.sql"
+            "../tests/fixtures/alpha-migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0027_card_billing.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0028_card_billing_review.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "income-0"));
         assert!(result
@@ -951,7 +951,7 @@ mod tests {
             )
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 14)
         {
@@ -965,43 +965,43 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0014_planner_debt_sources.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0014_planner_debt_sources.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0017_salary_deductions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0017_salary_deductions.sql"))
             .execute(&pool)
             .await
             .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0018_deduction_debt_account.sql"
+            "../tests/fixtures/alpha-migrations/0018_deduction_debt_account.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0024_loan_monthly_installment.sql"
+            "../tests/fixtures/alpha-migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0027_card_billing.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0028_card_billing_review.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -1080,7 +1080,7 @@ mod tests {
             )
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 15)
         {
@@ -1095,48 +1095,48 @@ mod tests {
             .await
             .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0015_planner_card_transactions.sql"
+            "../tests/fixtures/alpha-migrations/0015_planner_card_transactions.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0016_planner_titles.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0016_planner_titles.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0017_salary_deductions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0017_salary_deductions.sql"))
             .execute(&pool)
             .await
             .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0018_deduction_debt_account.sql"
+            "../tests/fixtures/alpha-migrations/0018_deduction_debt_account.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0024_loan_monthly_installment.sql"
+            "../tests/fixtures/alpha-migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0027_card_billing.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0028_card_billing_review.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -1227,7 +1227,7 @@ mod tests {
             )
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 17)
         {
@@ -1241,39 +1241,39 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0017_salary_deductions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0017_salary_deductions.sql"))
             .execute(&pool)
             .await
             .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0018_deduction_debt_account.sql"
+            "../tests/fixtures/alpha-migrations/0018_deduction_debt_account.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0024_loan_monthly_installment.sql"
+            "../tests/fixtures/alpha-migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0025_loan_contracts.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0025_loan_contracts.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0027_card_billing.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0027_card_billing.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0028_card_billing_review.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0028_card_billing_review.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0029_transaction_income_source.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0030_category_icons.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "deductions-0"));
         assert!(result.items.iter().any(|i| i.name == "My social security"));
