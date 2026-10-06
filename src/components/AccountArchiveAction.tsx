@@ -31,7 +31,7 @@ export function AccountArchiveAction({ account, currency }: { account: Account; 
         </DialogDescription></DialogHeader>
         <p className="text-sm">{['credit_card', 'loan'].includes(archiveTarget.type) ? translate("Outstanding balance (negative means credit)") : translate("Current balance")}: <strong>{formatAmount(archiveTarget.current_balance, currency)}</strong></p>
         <p className="text-sm text-muted">{translate("Balances, transactions, references, reconciliation history and shared credit-limit membership remain intact. Archived card balances still count toward shared availability and remain in Credit Cards Outlook. Explicit planner entries remain; review manual rows for duplicates.")}</p>
-        {archiveTarget.type === 'loan' && <p className="text-sm text-muted">{translate("Mark as paid off is a separate action on the loan overview and requires zero balance.")}</p>}
+        {archiveTarget.type === 'loan' && <p className="text-sm text-muted">{translate("Mark as paid off is a separate action in Account details and requires zero balance.")}</p>}
         {archiveError && <p role="alert" className="text-sm text-red-600">{translate(archiveError)}</p>}
         <DialogFooter><Button variant="outline" disabled={archiveBusy} onClick={() => setArchiveTarget(null)}>{translate("Cancel")}</Button><Button disabled={archiveBusy} onClick={() => void saveArchive()}>{archiveBusy ? translate("Saving…") : archiveTarget.is_archived ? translate("Restore account") : translate("Archive account")}</Button></DialogFooter>
       </DialogContent>

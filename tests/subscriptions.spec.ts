@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { validateManagementUrl } from '../src/lib/subscription-management'
 import type { SaveSubscription, Subscription } from '../src/lib/desktop'
 
 test.beforeEach(async ({ page }) => {
@@ -20,10 +21,18 @@ test.beforeEach(async ({ page }) => {
           return { settings: settings(), accounts: active, incomes: [], transactions: [], plans: [], installments: [], subscriptions: rows(), categories: [{ id: 'services', name: 'Services', is_archived: false }] }
         case 'save_subscription': {
           if (sessionStorage.getItem('fail-save')) throw 'Could not save subscription.'
-          const input = args.input, account = accounts.find(account => account.id === input.account_id)!
-          const row = { ...input, id: input.id ?? crypto.randomUUID(), account_name: account.name, account_type: account.type, category_name: input.category_id ? 'Services' : null }
+          const { logo_change, ...input } = args.input, account = accounts.find(account => account.id === input.account_id)!
+          const row = { ...rows().find(row => row.id === input.id), ...input, id: input.id ?? crypto.randomUUID(), account_name: account.name, account_type: account.type, category_name: input.category_id ? 'Services' : null }
+          if (logo_change) {
+            row.logo_asset_id = logo_change.kind === 'custom' ? crypto.randomUUID() : null
+            if (logo_change.kind === 'custom' && row.logo_asset_id) localStorage.setItem(row.logo_asset_id, logo_change.data)
+          }
           localStorage.setItem('subscriptions', JSON.stringify([...rows().filter(item => item.id !== row.id), row])); return
         }
+        case 'get_logo_asset': return localStorage.getItem(args.id)
+        case 'open_subscription_management':
+          if (sessionStorage.getItem('fail-open')) throw 'Could not open the management link. Please try again.'
+          sessionStorage.setItem('opened-subscription', args.id); return
         case 'delete_subscription': localStorage.setItem('subscriptions', JSON.stringify(rows().filter(row => row.id !== args.id))); return
         default: throw new Error(command)
       }
@@ -125,4 +134,62 @@ test('subscriptions handle missing prerequisites, failed loads and ended schedul
   })
   await page.reload()
   await expect(page.getByRole('table', { name: 'Subscription plans' })).toContainText('Schedule ended')
+})
+
+
+test('service icons and management destinations persist with protected drafts', async ({ page }) => {
+  await page.goto('/#/subscriptions')
+  await page.getByRole('button', { name: 'Add subscription', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await page.getByLabel('Subscription name', { exact: true }).fill('Music service')
+  await page.getByLabel('Amount per charge (THB)').fill('199')
+  await page.getByLabel('Pay from').selectOption('bank')
+  await page.getByLabel('Managed through').selectOption('apple_app_store')
+  await page.getByLabel('Management link (optional)').fill('https://example.com/subscriptions')
+  const encoded = await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128
+    const context = canvas.getContext('2d')!; context.fillStyle = '#743ae8'; context.fillRect(0, 0, 128, 128)
+    return canvas.toDataURL().split(',')[1]
+  })
+  await page.getByLabel('Choose logo file').setInputFiles({ name: 'service.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64') })
+  await expect(dialog.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/)
+  await page.evaluate(() => sessionStorage.setItem('fail-save', '1'))
+  await page.getByRole('button', { name: 'Save subscription', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Could not save subscription.')
+  await expect(page.getByLabel('Managed through')).toHaveValue('apple_app_store')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toContainText('Discard unsaved subscription changes?')
+  await page.getByRole('button', { name: 'Keep editing' }).click()
+  await page.evaluate(() => sessionStorage.removeItem('fail-save'))
+  await page.getByRole('button', { name: 'Save subscription', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await page.reload()
+  const row = page.getByRole('row').filter({ hasText: 'Music service' })
+  await expect(row).toContainText('Apple App Store')
+  await expect(row.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/)
+  await row.getByRole('button', { name: 'Manage subscription Music service' }).click()
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('subscriptions')!)[0])
+  expect(await page.evaluate(() => sessionStorage.getItem('opened-subscription'))).toBe(saved.id)
+  await page.evaluate(() => sessionStorage.setItem('fail-open', '1'))
+  await row.getByRole('button', { name: 'Manage subscription Music service' }).click()
+  await expect(page.getByText('Could not open the management link. Please try again.', { exact: true })).toBeVisible()
+  await row.getByRole('button', { name: 'Edit subscription Music service' }).click()
+  await expect(page.getByLabel('Management link (optional)')).toHaveValue('https://example.com/subscriptions')
+  await page.getByLabel('Managed through').selectOption('in_app')
+  await page.getByLabel('Management link (optional)').fill('http://example.com/settings')
+  await page.getByRole('button', { name: 'Save subscription', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Enter an HTTPS management link')
+  await page.getByLabel('Management link (optional)').fill('')
+  await page.getByRole('button', { name: 'Remove logo', exact: true }).click()
+  await page.getByRole('button', { name: 'Save subscription', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(row).toContainText('In-app')
+  await expect(row.locator('img')).toHaveCount(0)
+  await expect(row.getByRole('button', { name: 'Manage subscription Music service' })).toHaveCount(0)
+})
+
+test('management URL validation only accepts HTTPS browser destinations', () => {
+  for (const url of ['file:///tmp/file', 'javascript:alert(1)', 'http://example.com', 'https://user:pass@example.com', 'https://user@example.com', 'bad']) expect(() => validateManagementUrl(url)).toThrow()
+  expect(validateManagementUrl(' https://example.com/settings ')).toBe('https://example.com/settings')
+  expect(validateManagementUrl('')).toBeNull()
 })

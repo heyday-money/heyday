@@ -554,6 +554,39 @@ mod tests {
         assert_eq!(rows(&pool).await[0].remaining_principal,"2000000");
     }
     #[tokio::test]
+    async fn repayment_history_resolves_the_same_loan_for_every_component() {
+        for standalone in [true, false] {
+            let pool = database().await;
+            if standalone {
+                sqlx::query("UPDATE accounts SET current_balance=1000000 WHERE id='loan'").execute(&pool).await.unwrap();
+                repay(&pool, standalone_payment()).await.unwrap();
+            } else {
+                save(&pool, input()).await.unwrap();
+                let contract = rows(&pool).await.remove(0);
+                repay(&pool, payment(&contract.id)).await.unwrap();
+            }
+            // Resolve existing records from their stable loan links, including archived/renamed loans.
+            sqlx::query("UPDATE accounts SET name='Sample',last_four='2342',is_archived=1 WHERE id='loan'").execute(&pool).await.unwrap();
+            let before = balances(&pool).await;
+            let history: Vec<crate::transactions::Transaction> = sqlx::query_as(&format!("{} WHERE lp.transaction_id IS NOT NULL", crate::transactions::SELECT)).fetch_all(&pool).await.unwrap();
+            assert_eq!(history.len(), 3);
+            for row in history {
+                let row = serde_json::to_value(row).unwrap();
+                assert_eq!(row["loan_account_id"], "loan");
+                assert_eq!(row["loan_account_name"], "Sample");
+                assert_eq!(row["account_id"], "bank");
+                assert!(row["payee_id"].is_null());
+                if row["type"] == "expense" {
+                    assert_eq!(row["category_name"], "Fee/Interest");
+                    assert!(row["destination_account_id"].is_null());
+                } else {
+                    assert_eq!(row["destination_account_id"], "loan");
+                }
+            }
+            assert_eq!(balances(&pool).await, before);
+        }
+    }
+    #[tokio::test]
     async fn standalone_split_reduces_only_principal_and_reverses_as_a_group() {
         let pool = database().await;
         sqlx::raw_sql("DELETE FROM loan_facilities; UPDATE accounts SET loan_type='mortgage',current_balance=1000000 WHERE id='loan';").execute(&pool).await.unwrap();

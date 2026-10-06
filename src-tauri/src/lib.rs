@@ -90,6 +90,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(backups::BackupState::default())
         .setup(|app| {
             let directory = data_directory(app.path().app_data_dir()?, cfg!(debug_assertions));
@@ -133,6 +134,7 @@ pub fn run() {
             planning::get_financial_data,
             subscriptions::save_subscription,
             subscriptions::delete_subscription,
+            subscriptions::open_subscription_management,
             loans::get_loan_account,
             loans::save_loan_facility,
             loans::save_loan_contract,

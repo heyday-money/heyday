@@ -112,6 +112,8 @@ export async function saveSalaryDeductions(input: { income_id: string; currency:
 
 export type TransactionType = 'income' | 'expense' | 'transfer' | 'repayment'
 export interface Transaction {
+  loan_account_id?: string | null
+  loan_account_name?: string | null
   income_source_id?: string | null
   income_source_name?: string | null
   has_reconciliation_history?: boolean
@@ -130,7 +132,7 @@ export interface Transaction {
   category_icon?: string | null
   category_name: string | null
 }
-export type NewTransaction = Omit<Transaction, 'category_icon' | 'id' | 'income_source_name' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name' | 'has_reconciliation_history'> & { currency: string; cleared_account_ids?: string[] }
+export type NewTransaction = Omit<Transaction, 'loan_account_id' | 'loan_account_name' | 'category_icon' | 'id' | 'income_source_name' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name' | 'has_reconciliation_history'> & { currency: string; cleared_account_ids?: string[] }
 export function listTransactions(): Promise<Transaction[]> { return invoke('list_transactions') }
 export async function createTransaction(input: NewTransaction): Promise<Transaction> {
   const result = await invoke<Transaction>('create_transaction', { input })
@@ -223,7 +225,11 @@ export async function deleteInstallment(id: string): Promise<void> {
   window.dispatchEvent(new Event('plans-changed'))
 }
 
+export type SubscriptionPlatform = 'apple_app_store' | 'google_play' | 'website' | 'in_app' | 'other'
 export interface Subscription {
+  logo_asset_id?: string | null
+  managed_via?: SubscriptionPlatform | null
+  management_url?: string | null
   id: string
   name: string
   account_id: string
@@ -237,11 +243,12 @@ export interface Subscription {
   end_date: string | null
   is_active: boolean
 }
-export type SaveSubscription = Omit<Subscription, 'id' | 'account_name' | 'account_type' | 'category_name'> & { id: string | null; currency: string }
+export type SaveSubscription = Omit<Subscription, 'id' | 'account_name' | 'account_type' | 'category_name' | 'logo_asset_id'> & { id: string | null; currency: string; logo_change?: LogoChange }
 export async function saveSubscription(input: SaveSubscription): Promise<void> {
   await invoke('save_subscription', { input })
   window.dispatchEvent(new Event('plans-changed'))
 }
+export const openSubscriptionManagement = (id: string) => invoke<void>('open_subscription_management', { id })
 export async function deleteSubscription(id: string): Promise<void> {
   await invoke('delete_subscription', { id })
   window.dispatchEvent(new Event('plans-changed'))

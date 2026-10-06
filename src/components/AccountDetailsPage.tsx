@@ -11,6 +11,9 @@ import { AccountFormDialog, accountTypes } from './AccountFormDialog'
 import { AccountArchiveAction } from './AccountArchiveAction'
 import { CardCredit } from './SharedCreditLimits'
 import { Button } from './ui/button'
+import { getLoanAccount, type LoanSnapshot } from '../lib/loans'
+import { LoanAccountSummary } from './LoanAccountSummary'
+import { MarkLoanPaidOffDialog } from './MarkLoanPaidOffDialog'
 
 export function AccountDetailsPage() {
   const { accountId } = useParams({ from: '/accounts/$accountId/details' })
@@ -26,18 +29,26 @@ function AccountDetails({ accountId }: { accountId: string }) {
   const [error, setError] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [editing, setEditing] = useState(false)
+  const [loan, setLoan] = useState<LoanSnapshot | null>(null)
+  const [markingPaidOff, setMarkingPaidOff] = useState(false)
   useEffect(() => {
     if (!desktopAvailable) return
     let active = true
     setLoading(true); setError(false)
-    Promise.all([getSettings(), listAccounts(true, true)]).then(([settings, accounts]) => {
-      if (active) { setCurrency(settings.currency); setAccount(accounts.find(a => a.id === accountId) ?? null) }
+    Promise.all([getSettings(), listAccounts(true, true)]).then(async ([settings, accounts]) => {
+      const found = accounts.find(a => a.id === accountId) ?? null
+      const snapshot = found?.type === 'loan' ? await getLoanAccount(accountId) : null
+      if (active) {
+        setCurrency(snapshot ? snapshot.currency : settings.currency)
+        setAccount(snapshot ? { ...snapshot.account, paid_off_on: snapshot.paid_off_on ?? null } : found)
+        setLoan(snapshot)
+      }
     }).catch(() => { if (active) setError(true) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [accountId, attempt])
   useEffect(() => {
     const refresh = () => setAttempt(n => n + 1)
-    const events = ['accounts-changed', 'transactions-changed', 'focus']
+    const events = ['accounts-changed', 'transactions-changed', 'plans-changed', 'focus']
     events.forEach(event => window.addEventListener(event, refresh))
     return () => events.forEach(event => window.removeEventListener(event, refresh))
   }, [])
@@ -60,9 +71,11 @@ function AccountDetails({ accountId }: { accountId: string }) {
     ...(account.interest_rate_ten_thousandths != null ? [[translate("Annual interest rate"), `${interestRateText(String(account.interest_rate_ten_thousandths), 4)}%`]] : []),
   ]
   return <section className="space-y-6">
-    <Link to="/accounts" className="text-brand">{translate("← Accounts")}</Link>
+    <nav aria-label={translate("Breadcrumb")} className="pb-2">
+      <Link to="/accounts" className="text-brand">{translate("← Accounts")}</Link>
+    </nav>
     <div className="flex flex-wrap items-center justify-between gap-4">
-      <div><h2 className="text-2xl font-semibold"><AccountLabel id={account.id} name={account.name} /></h2><p className="mt-1 text-sm text-muted">{account.paid_off_on ? `${translate("Paid off")} ${account.paid_off_on}` : account.is_archived ? translate("Archived") : translate("Account details")}</p></div>
+      <div><h2 className="text-2xl font-semibold"><AccountLabel id={account.id} name={account.name} iconSize="lg" /></h2>{(account.paid_off_on || account.is_archived) && <p className="mt-1 text-sm text-muted">{account.paid_off_on ? `${translate("Paid off")} ${account.paid_off_on}` : translate("Archived")}</p>}</div>
       <div className="flex flex-wrap gap-2">
         {editable && <Button variant="outline" disabled={loading} onClick={() => setEditing(true)} aria-label={translate("Edit account {value0}", { value0: account.name })}>{translate("Edit account")}</Button>}
         <Button asChild variant="outline"><Link to="/transactions" search={{ account: account.id }}>{translate("Transaction history")}</Link></Button>
@@ -73,16 +86,20 @@ function AccountDetails({ accountId }: { accountId: string }) {
       {account.type === 'credit_card' && <CardCredit id={account.id} individualLimit={account.credit_limit} balance={account.current_balance} currency={currency} limits={limits} />}
       {account.notes && <p className="mt-5 break-words whitespace-pre-wrap text-sm">{account.notes}</p>}
     </div>
-    <nav aria-label={translate("Account management")} className="flex flex-wrap gap-3">
+    {loan && <LoanAccountSummary data={loan} onSaved={() => setAttempt(n => n + 1)} />}
+    {account.type !== 'loan' && <nav aria-label={translate("Account management")} className="flex flex-wrap gap-3">
       {['bank', 'wallet', 'credit_card'].includes(account.type) && <Button asChild variant="outline"><Link to="/accounts/$accountId" params={{ accountId }}>{translate("Transactions & reconciliation")}</Link></Button>}
       {account.type === 'credit_card' && <Button asChild variant="outline"><Link to="/accounts/$accountId/billing" params={{ accountId }}>{translate("Billing & payments")}</Link></Button>}
-      {account.type === 'loan' && <Button asChild variant="outline"><Link to="/accounts/$accountId/loans" params={{ accountId }}>{translate("Overview, contracts & transactions")}</Link></Button>}
-    </nav>
+    </nav>}
     {['loan', 'credit_card'].includes(account.type) && <SelectiveDefaultSettings account={account} />}
     {!account.paid_off_on && <section className="rounded-2xl border border-line p-6">
       <h3 className="mb-3 font-semibold">{translate("Account status")}</h3>
+      <div className="flex flex-wrap gap-3">
+      {account.type === 'loan' && editable && <Button variant="outline" disabled={loading} onClick={() => setMarkingPaidOff(true)}>{translate("Mark as paid off")}</Button>}
       <AccountArchiveAction account={account} currency={currency} />
+      </div>
     </section>}
     {editing && <AccountFormDialog account={account} initialType={account.type} currency={currency} onClose={() => setEditing(false)} onSaved={() => setAttempt(n => n + 1)} />}
+    {markingPaidOff && <MarkLoanPaidOffDialog account={account} currency={currency} onClose={() => setMarkingPaidOff(false)} />}
   </section>
 }

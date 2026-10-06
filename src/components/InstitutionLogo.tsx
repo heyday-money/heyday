@@ -16,15 +16,15 @@ export function InstitutionLogo({ institution, name = '', className = '' }: { in
   const src = useInstitutionLogo(institution)
   return <LogoImage src={src} name={institution?.name || name} className={className} />
 }
-export function AccountLabel({ id, name, compact = false }: { id?: string | null; name: string; compact?: boolean }) {
+export function AccountLabel({ id, name, compact = false, iconSize = 'sm' }: { id?: string | null; name: string; compact?: boolean; iconSize?: 'sm' | 'lg' }) {
   useLanguage()
 
   const directory = useInstitutions()
   const account = directory.accounts.find(a => a.id === id)
   const institution = directory.institutions.find(i => i.id === account?.institution_id)
   const label = account?.name ?? name
-  return <span className={`inline-flex min-w-0 max-w-full items-center gap-1.5 align-middle ${compact ? 'w-full' : ''}`} title={institution ? translate("{value0} · {value1}", { value0: label, value1: institution.name }) : label}>
-    <InstitutionLogo institution={institution} name={label} />
+  return <span className={`inline-flex min-w-0 max-w-full items-center align-middle ${iconSize === 'lg' ? 'gap-3' : 'gap-1.5'} ${compact ? 'w-full' : ''}`} title={institution ? translate("{value0} · {value1}", { value0: label, value1: institution.name }) : label}>
+    <InstitutionLogo institution={institution} name={label} className={iconSize === 'lg' ? 'size-12 rounded-xl text-xl' : ''} />
     <span className={compact ? 'min-w-0 truncate' : 'min-w-0 break-words'}>{label}{institution && !compact && <span className="block text-[10px] font-normal text-muted">{institution.name}</span>}</span>
   </span>
 }

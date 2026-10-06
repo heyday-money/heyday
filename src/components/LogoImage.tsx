@@ -1,6 +1,7 @@
 import { t as translate, useLanguage } from "../lib/i18n"
 import { useEffect, useState } from 'react'
 import { getLogoAsset } from '../lib/logos'
+import { cn } from '../lib/utils'
 export function useLogoAsset(id?: string | null) {
   const [loaded, setLoaded] = useState<{ id: string; src: string } | null>(null)
   useEffect(() => {
@@ -15,7 +16,7 @@ export function LogoImage({ src, name, className = '' }: { src?: string | null; 
 
   const [failed, setFailed] = useState<string | null>(null)
   const hasLogo = !!src && failed !== src
-  return <span aria-hidden="true" className={`inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded ${hasLogo ? '' : 'bg-soft'} text-[11px] font-semibold text-brand ${className}`}>
+  return <span aria-hidden="true" className={cn('inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded text-[11px] font-semibold text-brand', !hasLogo && 'bg-soft', className)}>
     {hasLogo ? <img src={src} alt="" className="size-full object-contain" onError={() => setFailed(src)} /> : Array.from(name.trim())[0]?.toLocaleUpperCase() || '?'}
   </span>
 }

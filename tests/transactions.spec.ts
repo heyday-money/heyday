@@ -24,7 +24,7 @@ test.beforeEach(async ({ page }) => {
         case 'list_incomes': return [{id:'salary',name:'Company salary',type:'salary',is_active:true,destination_account_id:'bank'}]
         case 'get_loan_account':
           if (sessionStorage.getItem('fail-loan-load')) throw 'Load failed'
-          return { contracts: Array.from({ length: Number(sessionStorage.getItem('loan-count')) }, (_, n) => ({ id: `contract-${n}`, name: `Contract ${n + 1}`, needs_review: false })) }
+          return { account: accounts.find(a => a.id === 'loan'), currency: 'THB', facility: null, transactions: [], payment_parts: [], contracts: Array.from({ length: Number(sessionStorage.getItem('loan-count')) }, (_, n) => ({ id: `contract-${n}`, name: `Contract ${n + 1}`, remaining_principal: '0', needs_review: false })) }
         case 'record_loan_repayment':
           if (sessionStorage.getItem('fail')) throw 'Save failed. Try again.'
           localStorage.setItem('loan-payment', JSON.stringify(args.input)); return
@@ -644,4 +644,34 @@ test('account search groups choices, supports keyboards, and restricts destinati
 // Layout errors must be caught even when Vite handles the window error event.
 test.afterEach(async ({ page }) => {
   expect(await page.evaluate(() => (window as Window & { uiErrors?: string[] }).uiErrors ?? [])).toEqual([])
+})
+
+
+test('linked loan principal and charges share a recipient and loan history filter', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('loan-count', '0')
+    const base = { account_id: 'bank', account_name: 'Bank', date: '2024-03-01', payee_id: null, payee_name: null, category_id: null, category_name: null, destination_account_id: null, destination_account_name: null }
+    const linked = { ...base, loan_account_id: 'loan', loan_account_name: 'Home loan' }
+    localStorage.setItem('transactions', JSON.stringify([
+      { ...linked, id: 'principal', type: 'repayment', amount: '400000', description: 'Principal payment', destination_account_id: 'loan', destination_account_name: 'Home loan' },
+      { ...linked, id: 'interest', type: 'expense', amount: '80000', description: 'Interest payment' },
+      { ...linked, id: 'fee', type: 'expense', amount: '20000', description: 'Fee payment' },
+      { ...base, id: 'other', type: 'expense', amount: '123', description: 'Unassigned purchase' },
+    ]))
+  })
+  await page.goto('/#/transactions')
+  const history = page.getByRole('table', { name: 'Transaction history' })
+  for (const description of ['Principal payment', 'Interest payment', 'Fee payment']) {
+    await expect(history.getByRole('row').filter({ hasText: description }).getByRole('cell').nth(3)).toContainText('Home loan')
+  }
+  await page.getByLabel('Filter by account').selectOption('loan')
+  await expect(history.getByRole('row')).toHaveCount(4)
+  await expect(page.getByLabel('Filtered spending')).toContainText('1,000.00 THB')
+  await page.getByLabel('Filter by payee', { exact: true }).selectOption('loan:loan')
+  await expect(history.getByRole('row')).toHaveCount(4)
+  await page.getByLabel('Filter by account').selectOption('')
+  await page.getByLabel('Filter by payee', { exact: true }).selectOption('unassigned')
+  await expect(history.getByRole('row')).toHaveCount(2)
+  await expect(history).toContainText('Unassigned purchase')
+  await expect(history).not.toContainText('Interest payment')
 })

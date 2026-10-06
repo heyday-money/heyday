@@ -15,8 +15,11 @@ pub struct Subscription {
     first_billing_date: String,
     end_date: Option<String>,
     is_active: bool,
+    logo_asset_id: Option<String>,
+    managed_via: Option<String>,
+    management_url: Option<String>,
 }
-pub(crate) const SELECT: &str = "SELECT s.id, s.name, s.account_id, a.name AS account_name, a.type AS account_type, s.category_id, c.name AS category_name, CAST(s.amount AS TEXT) AS amount, s.frequency, s.first_billing_date, s.end_date, s.is_active FROM subscriptions s JOIN accounts a ON a.id = s.account_id LEFT JOIN categories c ON c.id = s.category_id ORDER BY s.name COLLATE NOCASE, s.id";
+pub(crate) const SELECT: &str = "SELECT s.id, s.name, s.account_id, a.name AS account_name, a.type AS account_type, s.category_id, c.name AS category_name, CAST(s.amount AS TEXT) AS amount, s.frequency, s.first_billing_date, s.end_date, s.is_active, s.logo_asset_id, s.managed_via, s.management_url FROM subscriptions s JOIN accounts a ON a.id = s.account_id LEFT JOIN categories c ON c.id = s.category_id ORDER BY s.name COLLATE NOCASE, s.id";
 
 #[derive(Deserialize)]
 pub struct SaveSubscription {
@@ -30,8 +33,26 @@ pub struct SaveSubscription {
     end_date: Option<String>,
     is_active: bool,
     currency: String,
+    logo_change: Option<crate::logos::LogoChange>,
+    managed_via: Option<String>,
+    management_url: Option<String>,
 }
+fn management_url(value: Option<&str>) -> Result<Option<String>, String> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else { return Ok(None); };
+    let error = "Enter an HTTPS management link without login credentials (up to 2048 characters).";
+    if value.len() > 2048 || value.chars().any(char::is_control) { return Err(error.into()); }
+    let url = reqwest::Url::parse(value).map_err(|_| error.to_string())?;
+    if url.scheme() != "https" || url.host_str().is_none() || !url.username().is_empty() || url.password().is_some() || url.as_str().len() > 2048 {
+        return Err(error.into());
+    }
+    Ok(Some(url.to_string()))
+}
+
 async fn save(pool: &SqlitePool, input: SaveSubscription) -> Result<(), String> {
+    let management_url = management_url(input.management_url.as_deref())?;
+    if input.managed_via.as_deref().is_some_and(|value| !["apple_app_store", "google_play", "website", "in_app", "other"].contains(&value)) {
+        return Err("Choose a supported subscription management platform.".into());
+    }
     let name = input.name.trim();
     if name.is_empty() || name.chars().count() > 100 {
         return Err("Enter a subscription name between 1 and 100 characters.".into());
@@ -81,28 +102,33 @@ async fn save(pool: &SqlitePool, input: SaveSubscription) -> Result<(), String> 
             return Err("Choose an active category.".into());
         }
     }
-    let result = if let Some(id) = input.id {
-        sqlx::query("UPDATE subscriptions SET name = ?, account_id = ?, category_id = ?, amount = ?, frequency = ?, first_billing_date = ?, end_date = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-            .bind(name).bind(input.account_id).bind(input.category_id).bind(amount).bind(input.frequency).bind(input.first_billing_date).bind(input.end_date).bind(input.is_active).bind(id).execute(&mut *tx).await
+    let result = if let Some(id) = &input.id {
+        sqlx::query_scalar::<_, String>("UPDATE subscriptions SET name = ?, account_id = ?, category_id = ?, amount = ?, frequency = ?, first_billing_date = ?, end_date = ?, is_active = ?, managed_via = ?, management_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING id")
+            .bind(name).bind(input.account_id).bind(input.category_id).bind(amount).bind(input.frequency).bind(input.first_billing_date).bind(input.end_date).bind(input.is_active).bind(&input.managed_via).bind(&management_url).bind(id).fetch_optional(&mut *tx).await
     } else {
-        sqlx::query("INSERT INTO subscriptions (id, name, account_id, category_id, amount, frequency, first_billing_date, end_date, is_active) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)")
-            .bind(name).bind(input.account_id).bind(input.category_id).bind(amount).bind(input.frequency).bind(input.first_billing_date).bind(input.end_date).bind(input.is_active).execute(&mut *tx).await
+        sqlx::query_scalar::<_, String>("INSERT INTO subscriptions (id, name, account_id, category_id, amount, frequency, first_billing_date, end_date, is_active, managed_via, management_url) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id")
+            .bind(name).bind(input.account_id).bind(input.category_id).bind(amount).bind(input.frequency).bind(input.first_billing_date).bind(input.end_date).bind(input.is_active).bind(&input.managed_via).bind(&management_url).fetch_optional(&mut *tx).await
     }.map_err(|e| e.to_string())?;
-    if result.rows_affected() != 1 {
-        return Err("Subscription no longer exists. Reload to continue.".into());
+    let id = result.ok_or("Subscription no longer exists. Reload to continue.")?;
+    if let Some(change) = input.logo_change {
+        let asset_id = crate::logos::asset(&mut tx, &change).await?;
+        sqlx::query("UPDATE subscriptions SET logo_asset_id=? WHERE id=?").bind(asset_id).bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        crate::logos::prune(&mut tx).await?;
     }
     tx.commit().await.map_err(|e| e.to_string())
 }
 async fn remove(pool: &SqlitePool, id: &str) -> Result<(), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let result = sqlx::query("DELETE FROM subscriptions WHERE id = ?")
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
     if result.rows_affected() != 1 {
         return Err("Subscription no longer exists. Reload to continue.".into());
     }
-    Ok(())
+    crate::logos::prune(&mut tx).await?;
+    tx.commit().await.map_err(|e| e.to_string())
 }
 #[tauri::command]
 pub async fn save_subscription(
@@ -119,6 +145,16 @@ pub async fn delete_subscription(
 ) -> Result<(), String> {
     let _database_operation = crate::backups::operation()?;
     remove(pool.inner(), &id).await
+}
+
+#[tauri::command]
+pub async fn open_subscription_management(app: tauri::AppHandle, pool: tauri::State<'_, SqlitePool>, id: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let _database_operation = crate::backups::operation()?;
+    let saved: Option<String> = sqlx::query_scalar("SELECT management_url FROM subscriptions WHERE id=?")
+        .bind(id).fetch_optional(pool.inner()).await.map_err(|e| e.to_string())?.flatten();
+    let url = management_url(saved.as_deref())?.ok_or("Add a management link in Edit subscription first.")?;
+    app.opener().open_url(url, None::<&str>).map_err(|_| "Could not open the management link. Please try again.".into())
 }
 
 #[cfg(test)]
@@ -146,6 +182,9 @@ mod tests {
             end_date: None,
             is_active: true,
             currency: "THB".into(),
+            logo_change: None,
+            managed_via: None,
+            management_url: None,
         }
     }
     async fn records(pool: &SqlitePool) -> Vec<Subscription> {
@@ -157,6 +196,90 @@ mod tests {
             .await
             .unwrap()
     }
+    #[test]
+    fn management_links_require_https_without_credentials() {
+        for value in ["javascript:alert(1)", "file:///tmp/file", "http://example.com", "https://user:pass@example.com", "https://user@example.com", "not a link", "https://example.com/\npath"] {
+            assert!(management_url(Some(value)).is_err(), "{value}");
+        }
+        assert!(management_url(Some(&format!("https://example.com/{}", "x".repeat(2048)))).is_err());
+        assert_eq!(management_url(Some("  https://example.com/settings  ")).unwrap().as_deref(), Some("https://example.com/settings"));
+        assert_eq!(management_url(Some(" ")).unwrap(), None);
+    }
+
+    fn logo() -> crate::logos::LogoChange {
+        use base64::Engine;
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, 1, 1);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.write_header().unwrap().write_image_data(&[128, 0, 255, 255]).unwrap();
+        }
+        crate::logos::LogoChange::Custom { data: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)) }
+    }
+
+    #[tokio::test]
+    async fn management_metadata_and_logos_are_atomic_and_preserve_shared_assets() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        seed(&pool).await;
+        let before = balances(&pool).await;
+        let mut create = input();
+        create.logo_change = Some(logo());
+        create.managed_via = Some("apple_app_store".into());
+        create.management_url = Some(" https://example.com/subscriptions ".into());
+        save(&pool, create).await.unwrap();
+        let saved = records(&pool).await.remove(0);
+        assert_eq!(saved.managed_via.as_deref(), Some("apple_app_store"));
+        assert_eq!(saved.management_url.as_deref(), Some("https://example.com/subscriptions"));
+        let asset = saved.logo_asset_id.unwrap();
+        let mut edit = input();
+        edit.id = Some(saved.id.clone());
+        edit.managed_via = Some("in_app".into());
+        save(&pool, edit).await.unwrap();
+        let edited = records(&pool).await.remove(0);
+        assert_eq!(edited.logo_asset_id.as_deref(), Some(asset.as_str()));
+        assert_eq!(edited.managed_via.as_deref(), Some("in_app"));
+        assert_eq!(edited.management_url, None);
+        for invalid in [false, true] {
+            let mut failed = input();
+            failed.id = Some(saved.id.clone());
+            failed.name = "Must roll back".into();
+            if invalid { failed.managed_via = Some("invalid".into()); }
+            else { failed.logo_change = Some(crate::logos::LogoChange::Custom { data: "bad".into() }); }
+            assert!(save(&pool, failed).await.is_err());
+            assert_eq!(records(&pool).await[0].name, "Streaming");
+        }
+        // Pruning for unrelated payee/institution edits must retain subscription-only logos.
+        let mut conn = pool.acquire().await.unwrap();
+        crate::logos::prune(&mut conn).await.unwrap();
+        drop(conn);
+        assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM logo_assets").fetch_one(&pool).await.unwrap(), 1);
+        sqlx::query("INSERT INTO payees(id,name,name_key,logo_asset_id) VALUES('shared','Shared','shared',?)").bind(&asset).execute(&pool).await.unwrap();
+        remove(&pool, &saved.id).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM logo_assets").fetch_one(&pool).await.unwrap(), 1);
+        let mut create = input(); create.logo_change = Some(logo()); save(&pool, create).await.unwrap();
+        sqlx::query("UPDATE payees SET logo_asset_id=NULL WHERE id='shared'").execute(&pool).await.unwrap();
+        let id = records(&pool).await[0].id.clone();
+        let mut clear = input(); clear.id = Some(id); clear.logo_change = Some(crate::logos::LogoChange::None);
+        save(&pool, clear).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM logo_assets").fetch_one(&pool).await.unwrap(), 0);
+        assert_eq!(balances(&pool).await, before);
+    }
+
+    #[tokio::test]
+    async fn metadata_migration_preserves_existing_subscriptions() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        for migration in sqlx::migrate!("./migrations").iter().filter(|m| m.version < 40) {
+            sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
+        }
+        sqlx::raw_sql("INSERT INTO accounts(id,name,type) VALUES('bank','Bank','bank'); INSERT INTO subscriptions(id,name,account_id,amount,frequency,first_billing_date,is_active) VALUES('old','Existing','bank',9007199254740993,'yearly','2024-02-29',0);").execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
+        let row = records(&pool).await.remove(0);
+        assert_eq!(row.id, "old"); assert_eq!(row.amount, "9007199254740993");
+        assert_eq!(row.frequency, "yearly"); assert_eq!(row.first_billing_date, "2024-02-29"); assert!(!row.is_active);
+        assert!(row.logo_asset_id.is_none() && row.managed_via.is_none() && row.management_url.is_none());
+    }
+
     #[tokio::test]
     async fn wallet_can_fund_schedule_without_changing_balances() {
         let pool = SqlitePoolOptions::new()

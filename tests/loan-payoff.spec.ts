@@ -8,6 +8,7 @@ test('mark paid off validates zero, preserves failed confirmation, and retains h
       if (command === 'plugin:app|version') return '0.0.1-alpha.5'
       if (command === 'get_settings') return { currency: 'THB', period_start_day: 25 }
       if (command === 'list_accounts') return accounts().filter(a => args?.includePaidOff || !a.paid_off_on)
+      if (command === 'list_transactions') return []
       if (command === 'list_institutions') return { institutions: [], accounts: [] }
       if (command === 'list_card_limit_groups') return { groups: [], cards: [] }
       if (command === 'list_transaction_options') return { payees: [], categories: [] }
@@ -24,7 +25,6 @@ test('mark paid off validates zero, preserves failed confirmation, and retains h
   await expect(page.getByRole('button', { name: /Mark .*paid off/ })).toHaveCount(0)
   const unpaid = page.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Unpaid loan', exact: true }) })
   await unpaid.getByRole('link', { name: 'Unpaid loan', exact: true }).click()
-  await page.getByRole('link', { name: 'Overview, contracts & transactions' }).click()
   await page.getByRole('button', { name: 'Mark as paid off', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Mark loan as paid off?', exact: true })
   await expect(dialog.getByRole('button', { name: 'Mark as paid off', exact: true })).toBeDisabled()
@@ -34,7 +34,6 @@ test('mark paid off validates zero, preserves failed confirmation, and retains h
   await expect(page.getByRole('button', { name: /Mark .*paid off/ })).toHaveCount(0)
   const card = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'Finished loan', exact: true }) })
   await card.getByRole('link', { name: 'Finished loan', exact: true }).click()
-  await page.getByRole('link', { name: 'Overview, contracts & transactions' }).click()
   await page.getByRole('button', { name: 'Mark as paid off', exact: true }).click()
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'Mark as paid off', exact: true }).click()
@@ -57,9 +56,12 @@ test('mark paid off validates zero, preserves failed confirmation, and retains h
   const closed = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Finished loan', exact: true }) })
   await expect(closed.getByRole('button', { name: 'Edit account Finished loan' })).toHaveCount(0)
   await closed.getByRole('link', { name: 'Finished loan', exact: true }).click()
-  await page.getByRole('link', { name: 'Overview, contracts & transactions' }).click()
   await expect(page.getByText('Paid off 2026-09-29', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Mark as paid off', exact: true })).toHaveCount(0)
-  await page.getByRole('tab', { name: 'Transactions', exact: true }).click()
-  await expect(page.getByRole('table', { name: 'Loan transactions', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Borrowings & schedules', exact: true })).toHaveCount(0)
+  await page.getByRole('link', { name: 'Transaction history', exact: true }).click()
+  await expect(page).toHaveURL(/#\/transactions\?account=loan$/)
+  await expect(page.getByText('No transactions yet', { exact: true })).toBeVisible()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Finished loan' }).click()
+  await expect(page.getByText('Paid off 2026-09-29', { exact: true })).toBeVisible()
 })
