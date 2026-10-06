@@ -141,6 +141,7 @@ pub async fn delete_payment_plan(
 
 #[derive(Serialize)]
 pub struct FinancialData {
+    selective_defaults: Vec<crate::selective_defaults::Exclusion>,
     card_billing: crate::card_billing::BillingData,
     loan_contracts: Vec<crate::loans::Contract>,
     loan_facilities: Vec<crate::loans::Facility>,
@@ -199,8 +200,10 @@ async fn snapshot(pool: &SqlitePool) -> Result<FinancialData, String> {
         .await
         .map_err(|e| e.to_string())?;
     let card_billing = crate::card_billing::snapshot(&mut tx).await.map_err(|e| e.to_string())?;
+    let selective_defaults = crate::selective_defaults::periods(&mut tx).await.map_err(|e|e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(FinancialData {
+        selective_defaults,
         card_billing,
         loan_contracts,
         loan_facilities,

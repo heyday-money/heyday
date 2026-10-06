@@ -112,5 +112,16 @@ test('Outlook expands reference contracts while an account override replaces the
  await expect(detail.getByRole('cell').first()).toHaveText('Account override')
  await expect(page.getByRole('button',{name:'Edit Cash card 2024-02 amount',exact:true})).toContainText('0.00')
  await page.getByRole('link',{name:'Cash card',exact:true}).click()
- await expect(page).toHaveURL(/accounts\/loan\/loans/)
+ await expect(page).toHaveURL(/accounts\/loan\/details/)
+})
+
+test('Selective Default suppresses contract schedules and parent overrides through the resume cycle boundary',()=>{
+ const d=planner()
+ d.selective_defaults=[{account_id:'loan',start_month:'2024-01',end_month:'2024-03'}]
+ d.amounts=[{item_id:'debt:loan',month:'2024-02',amount:'999999'}]
+ const saved=JSON.stringify(d)
+ expect(cycleTotals(d,'2024-01','forecast').expenses).toBe(0n)
+ expect(cycleTotals(d,'2024-02','forecast').expenses).toBe(0n)
+ expect(cycleTotals(d,'2024-03','forecast').expenses).toBe(210000n)
+ expect(JSON.stringify(d)).toBe(saved)
 })

@@ -110,3 +110,21 @@ test('wallets contribute cash, cancel top-ups, and forecast wallet income', () =
   expect(period.closing).toBe(13500n)
   expect(netWorth(input.accounts).total).toBe(12500n)
 })
+
+test('Selective Default retains account rows and actuals while removing linked repayment forecasts until resumption', () => {
+  const input=data()
+  input.transactions=[transaction('repayment','bank','500','card')]
+  input.plans=[plan('repayment','2026-01-20','1000'),plan('repayment','2026-02-20','2000'),plan('expense','2026-01-20','50')]
+  input.selective_defaults=[{account_id:'card',start_month:'2026-01',end_month:'2026-02'}]
+  const saved=JSON.stringify(input), worth=netWorth(input.accounts)
+  const cycles=monthlyOutlook(input,new Date(2026,0,15))
+  expect(cycles[0].buckets.repayments).toMatchObject({actual:500n,forecast:0n})
+  expect(cycles[0].buckets.repayments.details.get('card')).toMatchObject({label:'card',actual:500n,forecast:0n})
+  expect(cycles[0].closing).toBe(11950n)
+  expect(cycles[1].buckets.repayments.forecast).toBe(2000n)
+  expect(cycles[1].closing).toBe(9950n)
+  expect(netWorth(input.accounts)).toEqual(worth)
+  expect(JSON.stringify(input)).toBe(saved)
+  input.transactions=[]
+  expect(monthlyOutlook(input,new Date(2026,0,15))[0].buckets.repayments.details.has('card')).toBe(true)
+})

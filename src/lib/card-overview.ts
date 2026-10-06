@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Account, Transaction } from './desktop'
 import { cardChange, draftBillingDates, statementTotals, type CardBillingData } from './card-billing'
 
-export interface CardOverviewData { accounts: Account[]; archived_ids: string[]; currency: string | null; billing: CardBillingData; transactions: Transaction[] }
+export interface CardOverviewData { selective_defaults?: import('./selective-defaults').SelectiveDefault[]; period_start_day?: number; accounts: Account[]; archived_ids: string[]; currency: string | null; billing: CardBillingData; transactions: Transaction[] }
 export const getCardOverview = () => invoke<CardOverviewData>('get_card_overview')
 const positive = (n: bigint) => n > 0n ? n : 0n
 function nextDay(date: string) {
@@ -26,7 +26,7 @@ function dueFor(end: string, day: number | null) {
 }
 
 export function cardOverview(data: CardOverviewData, today: string) {
-  const rows = data.accounts.map(account => {
+  const rows = data.accounts.filter(account => !account.is_archived && !data.archived_ids.includes(account.id)).map(account => {
     const transactions = data.transactions.filter(t => t.date <= today && (t.account_id === account.id || t.destination_account_id === account.id))
     const statements = data.billing.statements.filter(s => s.account_id === account.id && s.end_date <= today).sort((a,b) => b.end_date.localeCompare(a.end_date))
     const scheduled = account.statement_day == null ? null : draftBillingDates(account.statement_day, account.payment_due_day, today)

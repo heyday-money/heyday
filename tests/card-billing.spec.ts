@@ -127,3 +127,13 @@ test('billing UI confirms statement, plans partial payment, links existing payme
  await expect(page.getByRole('button',{name:'Confirm statement'})).toBeInViewport()
  await page.screenshot({path:'/tmp/heyday-card-statement-dialog.png',fullPage:true,animations:'disabled'})
 })
+
+test('Selective Default excludes remaining statement plans while retaining payments and saved billing data',()=>{
+ const d=planner(), saved=JSON.stringify(d.card_billing)
+ d.selective_defaults=[{account_id:'card',start_month:'2099-01',end_month:'2099-02'}]
+ expect(cycleTotals(d,'2099-01').expenses).toBe(0n)
+ expect(openingForCycle(d,'2099-04')).toBe(1000000n)
+ expect(JSON.stringify(d.card_billing)).toBe(saved)
+ d.selective_defaults[0].end_month='2099-01'
+ expect(cycleTotals(d,'2099-01').expenses).toBe(400000n)
+})

@@ -1,3 +1,6 @@
+import { SelectiveDefaultWarning } from './SelectiveDefault'
+import { exclusionFor } from '../lib/selective-defaults'
+import { Link } from '@tanstack/react-router'
 import { getLocale } from "../lib/i18n"
 import { t as translate, useLanguage, getLanguage } from "../lib/i18n"
 import { useInstitutions } from './InstitutionProvider'
@@ -44,7 +47,7 @@ export function OutlookTable({ periods, currency, tomorrow, onPlan, loading }: {
     { id: 'label', header: translate("Cash flow"), meta: { rowHeader: true, headerClassName: labelClass, cellClassName: labelClass }, cell: ({ row }) => {
       const item = row.original
       if (item.kind === 'flow') return <button className="flex items-center gap-1 text-left hover:text-brand" aria-expanded={row.getIsExpanded()} onClick={row.getToggleExpandedHandler()}>{row.getIsExpanded() ? <ChevronDown size={15} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />}{item.label}</button>
-      return <span className={item.kind === 'detail' || item.kind === 'empty' ? 'block pl-4 text-xs font-normal text-muted' : item.kind === 'closing' ? 'font-semibold' : ''}>{item.kind === 'detail' ? <OutlookDetailLabel row={item} /> : item.label}</span>
+      return <span className={item.kind === 'detail' || item.kind === 'empty' ? 'block pl-4 text-xs font-normal text-muted' : item.kind === 'closing' ? 'font-semibold' : ''}>{item.kind === 'detail' ? <OutlookDetailLabel row={item} periods={periods} /> : item.label}</span>
     } },
     ...periods.map((period, index): ColumnDef<OutlookRow> => {
       const cellClass = `min-w-[180px] border-b border-line px-4 py-4 text-right align-top tabular-nums ${index === 0 ? 'bg-soft/50' : ''}`
@@ -72,8 +75,9 @@ function PeriodCell({ row, period, current, previousPartial, currency }: { row: 
     case 'net': return <>{current && <div>{money(period.actualNet)}<span className="ml-1 text-xs text-muted">{translate("Actual")}</span></div>}<div className={current ? 'mt-2' : ''}>{money(period.forecastNet)}<span className="mt-1 block text-xs text-muted">{translate("Remaining known flows")}</span></div></>
     case 'closing': return <div className={`font-semibold ${period.closing < 0n ? 'text-red-700 dark:text-red-400' : ''}`}>{money(period.closing)}<span className="mt-1 block text-xs font-normal text-muted">{period.partial ? translate("Partial forecast · missing plans") : translate("Forecast · known plans")}</span></div>
     case 'detail': {
+      const excluded = row.flow === 'repayments' && exclusionFor(period.selectiveDefaults,row.detailKey,period.month)
       const detail = period.buckets[row.flow].details.get(row.detailKey)
-      return <div className="text-xs">{current && <div>{money(detail?.actual ?? 0n)} {" "}{translate("Actual")}</div>}<div className="mt-1 text-muted">{money(detail?.forecast ?? 0n)} {row.flow === 'income' ? translate("Expected") : translate("Planned")}</div></div>
+      return <div className="text-xs">{current && <div>{money(detail?.actual ?? 0n)} {" "}{translate("Actual")}</div>}<div className="mt-1 text-muted">{excluded ? <span title={translate('Excluded by Selective Default')}>—</span> : money(detail?.forecast ?? 0n)} {row.flow === 'income' ? translate("Expected") : translate("Planned")}</div></div>
     }
     case 'flow': {
       const bucket = period.buckets[row.flow]
@@ -85,14 +89,15 @@ function PeriodCell({ row, period, current, previousPartial, currency }: { row: 
   }
 }
 
-function OutlookDetailLabel({ row }: { row: Extract<OutlookRow, { kind: 'detail' }> }) {
+function OutlookDetailLabel({ row, periods }: { row: Extract<OutlookRow, { kind: 'detail' }>; periods: Period[] }) {
   useLanguage()
 
   const { accounts } = useInstitutions()
+  const warning = <SelectiveDefaultWarning period={row.flow === 'repayments' ? periods.map(p => exclusionFor(p.selectiveDefaults,row.detailKey,p.month)).find(Boolean) : undefined} />
   const ids = row.flow === 'repayments' ? [row.detailKey]
     : row.flow === 'other' ? row.detailKey.split(':')
     : row.flow === 'income' && row.detailKey.startsWith('actual:') ? [row.detailKey.slice(7)] : []
   const linked = ids.map(id => accounts.find(a => a.id === id))
-  if (!linked.length || linked.some(a => !a)) return <>{row.label}</>
-  return <>{row.flow === 'income' && translate("Recorded income · ")}{linked.map((a, index) => <span key={a!.id}>{index > 0 && ' → '}<AccountLabel id={a!.id} name={a!.name} /></span>)}</>
+  if (!linked.length || linked.some(a => !a)) return <>{row.label}{warning}</>
+  return <>{row.flow === 'income' && translate("Recorded income · ")}{linked.map((a, index) => <span key={a!.id}>{index > 0 && ' → '}<Link to="/accounts/$accountId/details" params={{ accountId: a!.id }} className="text-brand hover:underline"><AccountLabel id={a!.id} name={a!.name} /></Link></span>)}{warning}</>
 }

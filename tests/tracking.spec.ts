@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { plannerComparison, comparisonViews, cycleTotals, openingForCycle, plannerCycles, itemAmount, plannerItems, type PlannerData, type PlannerCardTransaction } from '../src/lib/cashflow'
+import { loanRepaymentSplit, plannerComparison, comparisonViews, cycleTotals, openingForCycle, plannerCycles, itemAmount, plannerItems, type PlannerData, type PlannerCardTransaction } from '../src/lib/cashflow'
 const tx=(id:string,type:PlannerCardTransaction['type'],account_type:string,amount:string,destination_account_type:string|null=null,date='2024-02-29'):PlannerCardTransaction=>({id,type,account_id:account_type,account_name:account_type,account_type,amount,date,destination_account_id:destination_account_type,destination_account_type,category_id:'food',category_name:'Food'})
 const data=():PlannerData=>({ledger_transactions:[],incomes:[],income_deductions:[],debt_accounts:[],installments:[],credit_cards:[],card_transactions:[],source_currency:'THB',categories:[],items:[{id:'budget',category_id:'expenses',name:'Food budget',description:'',card_name:'',transaction_category_id:'food',schedule_amount:'900',schedule_start:'2024-01',schedule_end:'2024-12'}],amounts:[{item_id:'budget',month:'2024-02',amount:'777'}],months:[],opening:{month:'2024-01',amount:'10000'},period_start_day:31,expense_categories:[]})
 test('tracking uses actual cash flows, excludes purchases on cards and internal transfers, and never adds plans',()=>{
@@ -30,6 +30,12 @@ test('comparison UI shows forecast beside actual, refreshes payments, and preser
  await page.clock.setFixedTime(new Date(2024,2,10,12))
  const fixture=data();fixture.categories=[{id:'income',name:'Gross Income',subtotal:'Total Income'},{id:'deductions',name:'Income Deductions',subtotal:'Total Deductions'},{id:'debt',name:'Debt Payments',subtotal:'Total Debt'},{id:'installments',name:'Card Installments',subtotal:'Total Installments'},{id:'cards',name:'Credit Cards',subtotal:'Total Cards'},{id:'expenses',name:'General Expenses',subtotal:'Total General Expenses'}]
  fixture.ledger_transactions=[tx('income','income','bank','10000'),tx('food','expense','bank','500')];fixture.credit_cards=[{id:'credit_card',name:'Visa',is_archived:false}]
+ fixture.debt_accounts=[{id:'loan',name:'Personal loan',loan_type:'personal_loan',current_balance:'2000000',monthly_installment:'173367',notes:null,is_archived:false}]
+ fixture.ledger_transactions.push(
+  {...tx('principal','repayment','bank','85245','loan'),loan_account_id:'loan',loan_component:'principal'},
+  {...tx('interest','expense','bank','77754'),loan_account_id:'loan',loan_component:'interest'},
+  {...tx('fee','expense','bank','10368'),loan_account_id:'loan',loan_component:'fee'},
+ )
  await page.addInitScript(fixture=>{
   Object.defineProperty(window,'isTauri',{value:true});let state=fixture
   Object.defineProperty(window,'__TAURI_INTERNALS__',{value:{invoke:async(command:string,args:any)=>{
@@ -41,6 +47,15 @@ test('comparison UI shows forecast beside actual, refreshes payments, and preser
  },fixture)
  await page.goto('/#/outlook')
  await expect(page.getByLabel('Food 2024-02: Recorded actual',{exact:true})).toHaveText('5.00')
+ const repayment=page.getByRole('button',{name:'Total repayment: 1,733.67',exact:true})
+ await expect(repayment).toBeVisible()
+ await repayment.hover()
+ const tooltip=page.getByRole('tooltip')
+ await expect(tooltip).toContainText('Principal: 852.45')
+ await expect(tooltip).toContainText('Interest: 777.54')
+ await expect(tooltip).toContainText('Fees: 103.68')
+ await page.keyboard.press('Escape')
+
  await expect(page.getByRole('columnheader',{name:/Feb 2024/})).toHaveAttribute('colspan','2')
  await expect(page.getByLabel('Status 2024-02')).toHaveCount(0)
  await expect(page.getByRole('button',{name:'Edit Food budget 2024-02 amount'})).toContainText('7.77')
@@ -117,4 +132,21 @@ test('actual income groups linked sources across accounts without counting defin
  const salary=rows.find(i=>i.name==='Received · Company salary')!
  expect(itemAmount(d,salary,'2024-02','actual').value).toBe(4510000n)
  expect(cycleTotals(d,'2024-02','actual').netIncome).toBe(4510200n)
+})
+
+test('linked contract charges appear in full loan actuals exactly once', () => {
+ const d=data()
+ d.ledger_transactions=[
+  {...tx('principal','repayment','bank','85245','loan'),loan_account_id:'loan',loan_component:'principal'},
+  {...tx('interest','expense','bank','77754'),category_id:'charges',category_name:'Fee/Interest',loan_account_id:'loan',loan_component:'interest'},
+  {...tx('fee','expense','bank','10368'),category_id:'charges',category_name:'Fee/Interest',loan_account_id:'loan',loan_component:'fee'},
+  {...tx('unlinked','expense','bank','500'),category_id:'charges',category_name:'Fee/Interest'},
+ ]
+ expect(cycleTotals(d,'2024-02','actual')).toMatchObject({expenses:173867n,outflows:173867n,surplus:-173867n,buckets:{debt:173367n,expenses:500n}})
+ expect(loanRepaymentSplit(d,'2024-02','loan')).toEqual({principal:85245n,interest:77754n,fee:10368n,other:0n})
+ expect(loanRepaymentSplit(d,'2024-01','loan')).toBeUndefined()
+ const charges=plannerItems(d).find(i=>i.actual_key==='actual:expense:charges')!
+ expect(itemAmount(d,charges,'2024-02','actual').value).toBe(500n)
+ d.ledger_transactions=d.ledger_transactions.filter(t=>!t.loan_account_id)
+ expect(cycleTotals(d,'2024-02','actual').outflows).toBe(500n)
 })

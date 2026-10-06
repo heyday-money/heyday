@@ -15,6 +15,7 @@ mod loans;
 mod planning;
 mod reconciliation;
 mod reset;
+mod selective_defaults;
 mod subscriptions;
 mod transaction_options;
 mod transactions;
@@ -151,6 +152,8 @@ pub fn run() {
             accounts::list_accounts,
             accounts::set_account_archived,
             accounts::mark_loan_paid_off,
+            selective_defaults::get_selective_default,
+            selective_defaults::save_selective_default,
             incomes::create_income,
             incomes::update_income,
             incomes::list_incomes,

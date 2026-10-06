@@ -178,7 +178,7 @@ test('loan accounts and saved card installments populate linked rows with persis
     localStorage.setItem('planner-test', JSON.stringify(data))
   })
   await page.reload()
-  await expect(page.getByRole('link', { name: 'Home mortgage', exact: true })).toHaveAttribute('href', /accounts/)
+  await expect(page.getByRole('link', { name: 'Home mortgage', exact: true })).toHaveAttribute('href', /accounts\/loan\/details/)
   await expect(page.getByRole('link', { name: 'Visa · Work laptop', exact: true })).toHaveAttribute('href', /installments/)
   await expect(page.getByRole('button', { name: 'Edit Home mortgage 2026-12 amount', exact: true })).toContainText('11,000.00')
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2026-12 amount', exact: true })).toContainText('3,000.00')
@@ -212,7 +212,7 @@ test('recorded card payments refresh by account and cycle without adding install
     localStorage.setItem('planner-test', JSON.stringify(data))
     window.dispatchEvent(new Event('transactions-changed'))
   })
-  await expect(page.getByRole('link', { name: 'Visa', exact: true })).toHaveAttribute('href', /accounts\/card\/billing/)
+  await expect(page.getByRole('link', { name: 'Visa', exact: true })).toHaveAttribute('href', /accounts\/card\/details/)
   await expect(page.getByRole('button', { name: 'Visa 2026-12: Recorded payments', exact: true })).toContainText('2,000.00')
   await expect(page.getByRole('button', { name: 'Work laptop 2026-12: Using recorded card total', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Edit Work laptop 2027-01 amount', exact: true })).toContainText('3,000.00')
@@ -328,4 +328,40 @@ test('credit card rows open a Billing context menu and navigate to the selected 
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/#\/accounts\/scb\/billing$/)
   await expect(page.getByRole('heading', { name: 'SCB CardX BEYOND · Billing' })).toBeVisible()
+})
+
+test('Selective Default keeps linked rows visible with a red warning and excluded forecast cells', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('planner-test',JSON.stringify({ categories:[{id:'debt',name:'Debt Payments',subtotal:'Total Debt Payments'}],items:[],months:[],amounts:[{item_id:'debt:loan',month:'2026-12',amount:'55500'}],period_start_day:25,source_currency:'THB',opening:{month:'2026-12',amount:'100000'},expense_categories:[],incomes:[],income_deductions:[],debt_accounts:[{id:'loan',name:'SCB Loan',loan_type:'mortgage',current_balance:'900000',monthly_installment:'10000',is_archived:false,notes:null}],installments:[],credit_cards:[],card_transactions:[],selective_defaults:[{account_id:'loan',start_month:'2026-12',end_month:'2027-02'}] }))
+  })
+  await page.reload()
+  const row=page.getByRole('row').filter({has:page.getByRole('link',{name:'SCB Loan',exact:true})})
+  await expect(row.getByRole('link',{name:'SCB Loan',exact:true})).toHaveAttribute('href','/#/accounts/loan/details')
+  await expect(row.getByRole('button',{name:'SCB Loan 2026-12: Excluded',exact:true})).toHaveText('—')
+  const warning=row.getByRole('button',{name:'Selective Default',exact:true})
+  await expect(warning).toHaveClass(/text-red/)
+  await warning.hover()
+  await expect(page.getByRole('tooltip')).toContainText('Repayments resume in 2027-02')
+  await expect(row.getByRole('button',{name:'Edit SCB Loan 2027-02 amount',exact:true})).toContainText('100.00')
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('planner-test')!).amounts[0].amount)).toBe('55500')
+})
+
+test('archived debt accounts disappear from Outlook rows and return when restored', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('planner-test',JSON.stringify({ categories:[{id:'debt',name:'Debt Payments',subtotal:'Total Debt Payments'},{id:'cards',name:'Credit Cards',subtotal:'Total Card Payments'},{id:'installments',name:'Card Installments',subtotal:'Total Card Installments'}],items:[],months:[],amounts:[],period_start_day:25,source_currency:'THB',opening:{month:'2026-12',amount:'100000'},expense_categories:[],incomes:[],income_deductions:[],debt_accounts:[{id:'loan',name:'Archived Loan',loan_type:'mortgage',current_balance:'900000',monthly_installment:'10000',is_archived:true,notes:null}],installments:[{id:'purchase',name:'Archived purchase',debt_account_id:'card',debt_account_name:'Archived Visa',debt_account_type:'credit_card',account_name:'Bank',monthly_amount:'100',installment_count:3,first_due_date:'2026-12-25',accounts_available:false}],credit_cards:[{id:'card',name:'Archived Visa',is_archived:true}],card_transactions:[{id:'paid',type:'repayment',account_id:'bank',account_type:'bank',destination_account_id:'card',destination_account_type:'credit_card',amount:'500',date:'2026-12-26'}] }))
+  })
+  await page.reload()
+  await expect(page.getByRole('link',{name:'Archived Loan',exact:true})).toHaveCount(0)
+  await expect(page.getByRole('link',{name:'Archived Visa',exact:true})).toHaveCount(0)
+  await expect(page.getByText('Archived purchase',{exact:true})).toHaveCount(0)
+  await expect(page.getByRole('row').filter({has:page.getByRole('rowheader',{name:/^Total Card Payments/})}).getByRole('cell').first()).toHaveText('5.00')
+  await page.evaluate(() => {
+    const data=JSON.parse(localStorage.getItem('planner-test')!)
+    data.debt_accounts[0].is_archived=false
+    data.credit_cards[0].is_archived=false
+    localStorage.setItem('planner-test',JSON.stringify(data))
+  })
+  await page.reload()
+  await expect(page.getByRole('link',{name:'Archived Loan',exact:true})).toBeVisible()
+  await expect(page.getByRole('link',{name:'Archived Visa',exact:true})).toBeVisible()
 })
