@@ -1,5 +1,6 @@
 // Interface copy only. Never translate user-entered records or persisted identifiers.
 export const thai: Record<string, string> = {
+  "Alpha backups cannot be restored into this fresh beta database. Your original alpha database and backup files remain unchanged.": "ไม่สามารถกู้คืนข้อมูลสำรองรุ่นอัลฟาลงในฐานข้อมูลใหม่ของรุ่นเบตานี้ได้ ฐานข้อมูลอัลฟาเดิมและไฟล์สำรองยังคงอยู่โดยไม่มีการเปลี่ยนแปลง",
   "Apple App Store": "Apple App Store",
   "Google Play": "Google Play",
   "Service website": "เว็บไซต์ของบริการ",

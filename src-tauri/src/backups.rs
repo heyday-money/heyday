@@ -11,6 +11,8 @@ use tempfile::TempDir;
 use tokio::sync::{RwLock, RwLockReadGuard};
 
 static DATABASE_OPERATIONS: RwLock<()> = RwLock::const_new(());
+// Fingerprint of the alpha initial migration, for a clear fresh-start error.
+const ALPHA_INITIAL_CHECKSUM: &[u8] = &[0x70, 0xf9, 0x9b, 0x4a, 0x12, 0x21, 0x10, 0xee, 0xba, 0x4b, 0x47, 0xc9, 0x02, 0xac, 0x9c, 0x06, 0x96, 0x0e, 0xfe, 0x54, 0x38, 0x2e, 0x89, 0xed, 0x31, 0xaa, 0x5d, 0x1b, 0xbe, 0x23, 0x6c, 0x03, 0xe3, 0x15, 0x53, 0x4b, 0x88, 0x96, 0x4d, 0xf0, 0xd0, 0xbc, 0x3a, 0x69, 0x96, 0xb5, 0xca, 0xee];
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 const CONFIRMATION: &str = "RESTORE BACKUP";
 
@@ -97,6 +99,9 @@ async fn validate(conn: &mut SqliteConnection) -> Result<i64, String> {
             })?;
     if history.is_empty() {
         return Err("This backup has no Heyday Money migration history.".into());
+    }
+    if history[0].0 == 1 && history[0].1.as_slice() == ALPHA_INITIAL_CHECKSUM {
+        return Err("Alpha backups cannot be restored into this fresh beta database. Your original alpha database and backup files remain unchanged.".into());
     }
     let known: Vec<_> = MIGRATOR.iter().collect();
     if history.len() > known.len() || history.last().unwrap().0 > known.last().unwrap().version {
@@ -577,40 +582,28 @@ mod tests {
             .contains("broken record references"));
     }
     #[tokio::test]
-    async fn old_backup_upgrades_only_the_staged_copy_and_preserves_original_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("old.db");
-        let mut conn = SqliteConnection::connect_with(
-            &SqliteConnectOptions::new()
-                .filename(&path)
-                .create_if_missing(true),
-        )
-        .await
-        .unwrap();
-        let prefix = sqlx::migrate::Migrator {
-            migrations: Cow::Owned(MIGRATOR.iter().take(6).cloned().collect()),
-            ignore_missing: false,
-            locking: true,
-            no_tx: false,
-        };
-        prefix.run_direct(&mut conn).await.unwrap();
-        sqlx::query("INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('old','Old bank','bank',9007199254740993,9007199254740993)").execute(&mut conn).await.unwrap();
-        conn.close().await.unwrap();
-        let before = std::fs::read(&path).unwrap();
-        let prepared = prepare(&path).await.unwrap();
-        assert_eq!(prepared.preview.schema_version, 6);
-        assert_eq!(std::fs::read(&path).unwrap(), before);
-        let target = database(&dir.path().join("target.db")).await;
-        replace(&target, &prepared, &dir.path().join("backups"))
-            .await
-            .unwrap();
-        assert_eq!(
-            sqlx::query_scalar::<_, i64>("SELECT current_balance FROM accounts WHERE id='old'")
-                .fetch_one(&target)
-                .await
-                .unwrap(),
-            9007199254740993
-        );
+    async fn alpha_backup_is_rejected_without_changing_source_or_beta_data() {
+        let alpha = sqlx::migrate!("./tests/fixtures/alpha-migrations");
+        assert_eq!(alpha.iter().next().unwrap().checksum.as_ref(), ALPHA_INITIAL_CHECKSUM);
+        for count in [1, 6, 40] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("alpha.db");
+            let mut conn = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&path).create_if_missing(true)).await.unwrap();
+            let prefix = sqlx::migrate::Migrator {
+                migrations: Cow::Owned(alpha.iter().take(count).cloned().collect()),
+                ..sqlx::migrate::Migrator::DEFAULT
+            };
+            prefix.run_direct(&mut conn).await.unwrap();
+            sqlx::query("INSERT INTO accounts(id,name,type,opening_balance) VALUES('old','Old bank','bank',9007199254740993)").execute(&mut conn).await.unwrap();
+            conn.close().await.unwrap();
+            let before = std::fs::read(&path).unwrap();
+            let target = database(&dir.path().join("beta.db")).await;
+            populate(&target).await;
+            let target_before = contents(&target).await;
+            assert!(prepare(&path).await.unwrap_err().contains("Alpha backups cannot be restored"));
+            assert_eq!(std::fs::read(&path).unwrap(), before);
+            assert_eq!(contents(&target).await, target_before);
+        }
     }
     #[tokio::test]
     async fn failed_export_and_restore_keep_existing_files_and_live_data_usable() {

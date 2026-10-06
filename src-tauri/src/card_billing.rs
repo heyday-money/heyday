@@ -791,7 +791,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let all = sqlx::migrate!("./migrations");
+        let all = sqlx::migrate!("./tests/fixtures/alpha-migrations");
         let original = sqlx::migrate::Migrator {
             migrations: std::borrow::Cow::Owned(
                 all.iter().filter(|m| m.version <= 27).cloned().collect(),

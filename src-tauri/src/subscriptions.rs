@@ -269,11 +269,11 @@ mod tests {
     #[tokio::test]
     async fn metadata_migration_preserves_existing_subscriptions() {
         let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
-        for migration in sqlx::migrate!("./migrations").iter().filter(|m| m.version < 40) {
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations").iter().filter(|m| m.version < 40) {
             sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
         }
         sqlx::raw_sql("INSERT INTO accounts(id,name,type) VALUES('bank','Bank','bank'); INSERT INTO subscriptions(id,name,account_id,amount,frequency,first_billing_date,is_active) VALUES('old','Existing','bank',9007199254740993,'yearly','2024-02-29',0);").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
         let row = records(&pool).await.remove(0);
         assert_eq!(row.id, "old"); assert_eq!(row.amount, "9007199254740993");
         assert_eq!(row.frequency, "yearly"); assert_eq!(row.first_billing_date, "2024-02-29"); assert!(!row.is_active);

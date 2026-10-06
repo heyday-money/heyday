@@ -229,14 +229,14 @@ mod tests {
     #[tokio::test]
     async fn migrate_free_text_links_and_preserve_history() {
         let pool = database().await;
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 31)
         {
             sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
         }
         sqlx::raw_sql("INSERT INTO accounts(id,name,type,institution,opening_balance,current_balance,is_archived) VALUES ('bank','Savings','bank',' KBANK ',9007199254740993,9007199254740990,1),('custom','Other','wallet',' My  Provider ',100,99,0),('same','Second','investment','my provider',25,25,0); INSERT INTO transactions(id,type,account_id,amount,date,description) VALUES('t','expense','bank',3,'2026-01-01','');").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0031_institutions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0031_institutions.sql"))
             .execute(&pool)
             .await
             .unwrap();

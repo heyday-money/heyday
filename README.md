@@ -17,6 +17,14 @@ With our slogan, "Don't let money control you," we empower users to take full ch
 
 Heyday Money combines practical finance tracking with a powerful simulator to guide users toward making the most of their financial resources, fostering wealth growth and long-term stability.
 
+## Beta database reset
+
+Version `0.0.1-beta.1` starts with a fresh database. Alpha was the MVP stage;
+its database and backups are not compatible with the beta schema history.
+Your alpha files remain untouched, but their records will not appear in beta.
+Subsequent beta and v1 updates preserve the new database through versioned migrations.
+See [database storage and migrations](docs/development.md) for file locations.
+
 ## Philosophy of Money and Finance
 [Standford Encyclopedia of Philosophy — Philosophy of Money and Finance](https://plato.stanford.edu/entries/money-finance/)
 

@@ -264,7 +264,7 @@ mod tests {
             .create_if_missing(true)
             .foreign_keys(true);
         let pool = SqlitePool::connect_with(options.clone()).await.unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 35)
         {
@@ -274,7 +274,7 @@ mod tests {
         INSERT INTO accounts(id,name,type,opening_balance,current_balance,statement_day,payment_due_day) VALUES('a','Card','credit_card',9007199254740993,9007199254740994,10,30);
         INSERT INTO transactions(id,type,account_id,amount,date,description) VALUES('t','expense','a',1,'2026-01-01','');
         INSERT INTO card_statements(id,account_id,start_date,end_date,due_date,amount,minimum) VALUES('s','a','2026-01-01','2026-01-10','2026-01-30',100,10);").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0035_shared_card_limits.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0035_shared_card_limits.sql"))
             .execute(&pool)
             .await
             .unwrap();

@@ -622,7 +622,7 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 23)
         {
@@ -637,7 +637,7 @@ mod tests {
             INSERT INTO incomes (id,name,destination_account_id,type,estimated_amount,recurrence_day_of_month) VALUES ('income','Income','rated','other',100,1);")
             .execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0023_account_interest_precision.sql"
+            "../tests/fixtures/alpha-migrations/0023_account_interest_precision.sql"
         ))
         .execute(&pool)
         .await
@@ -679,16 +679,16 @@ mod tests {
         .await
         .is_err());
         sqlx::raw_sql(include_str!(
-            "../migrations/0024_loan_monthly_installment.sql"
+            "../tests/fixtures/alpha-migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0026_initial_loan_amount.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0026_initial_loan_amount.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0031_institutions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0031_institutions.sql"))
             .execute(&pool)
             .await
             .unwrap();
@@ -723,7 +723,7 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 24)
         {
@@ -733,18 +733,18 @@ mod tests {
         sqlx::raw_sql("INSERT INTO accounts(id,name,type,opening_balance,current_balance,is_archived) VALUES ('old','Old loan','loan',1200,1000,1);
             INSERT INTO incomes(id,name,destination_account_id,type,estimated_amount,recurrence_day_of_month) VALUES ('income','Income','old','other',100,1);").execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0024_loan_monthly_installment.sql"
+            "../tests/fixtures/alpha-migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0026_initial_loan_amount.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0026_initial_loan_amount.sql"))
             .execute(&pool)
             .await
             .unwrap();
         let old: (i64,i64,i64,Option<i64>,String) = sqlx::query_as("SELECT opening_balance,current_balance,is_archived,monthly_installment,i.destination_account_id FROM accounts a JOIN incomes i ON i.destination_account_id=a.id").fetch_one(&pool).await.unwrap();
         assert_eq!(old, (1200, 1000, 1, None, "old".into()));
-        sqlx::raw_sql(include_str!("../migrations/0031_institutions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0031_institutions.sql"))
             .execute(&pool)
             .await
             .unwrap();
@@ -845,18 +845,18 @@ mod tests {
             .await
             .unwrap();
         for migration in [
-            include_str!("../migrations/0001_initial.sql"),
-            include_str!("../migrations/0002_account_details.sql"),
-            include_str!("../migrations/0003_transactions.sql"),
-            include_str!("../migrations/0004_optional_transaction_description.sql"),
-            include_str!("../migrations/0005_payees_and_categories.sql"),
-            include_str!("../migrations/0006_payment_plans.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0001_initial.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0002_account_details.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0003_transactions.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0004_optional_transaction_description.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0005_payees_and_categories.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0006_payment_plans.sql"),
         ] {
             sqlx::raw_sql(migration).execute(&pool).await.unwrap();
         }
         sqlx::query("INSERT INTO accounts (id, name, type, opening_balance, current_balance, is_archived) VALUES ('old', 'Old loan', 'loan', 1234, 1000, 1)").execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO incomes (id, name, destination_account_id, type, estimated_amount, recurrence_day_of_month) VALUES ('income', 'Income', 'old', 'other', 100, 1)").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0007_loan_types.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0007_loan_types.sql"))
             .execute(&pool)
             .await
             .unwrap();
@@ -1050,7 +1050,7 @@ mod tests {
             )
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 20)
         {
@@ -1066,7 +1066,7 @@ mod tests {
             INSERT INTO planner_debt_amounts VALUES ('card','2026-01',0);
             INSERT INTO planner_installment_amounts VALUES ('plan','2026-01',250);").execute(&pool).await.unwrap();
         let mut tx = pool.begin().await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0020_wallet_accounts.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0020_wallet_accounts.sql"))
             .execute(&mut *tx)
             .await
             .unwrap();
@@ -1076,7 +1076,7 @@ mod tests {
             .await
             .unwrap();
         let mut tx = pool.begin().await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0021_account_last_four.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0021_account_last_four.sql"))
             .execute(&mut *tx)
             .await
             .unwrap();
@@ -1136,22 +1136,22 @@ mod tests {
             .await
             .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0023_account_interest_precision.sql"
+            "../tests/fixtures/alpha-migrations/0023_account_interest_precision.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
         sqlx::raw_sql(include_str!(
-            "../migrations/0024_loan_monthly_installment.sql"
+            "../tests/fixtures/alpha-migrations/0024_loan_monthly_installment.sql"
         ))
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0026_initial_loan_amount.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0026_initial_loan_amount.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0031_institutions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0031_institutions.sql"))
             .execute(&pool)
             .await
             .unwrap();
@@ -1167,13 +1167,13 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0001_initial.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0001_initial.sql"))
             .execute(&pool)
             .await
             .unwrap();
         sqlx::query("INSERT INTO accounts (id, name, type, opening_balance) VALUES ('old', 'Old account', 'cash', 1234)").execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO incomes (id, name, destination_account_id, type, estimated_amount, recurrence_day_of_month) VALUES ('salary', 'Salary', 'old', 'salary', 100, 1)").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0002_account_details.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0002_account_details.sql"))
             .execute(&pool)
             .await
             .unwrap();
@@ -1193,14 +1193,14 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        for migration in sqlx::migrate!("./migrations")
+        for migration in sqlx::migrate!("./tests/fixtures/alpha-migrations")
             .iter()
             .filter(|m| m.version < 26)
         {
             sqlx::raw_sql(&migration.sql).execute(&pool).await.unwrap();
         }
         sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,loan_type,opening_balance,current_balance) VALUES('old','Old loan','loan','personal_loan',5000000,2000000);").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0026_initial_loan_amount.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0026_initial_loan_amount.sql"))
             .execute(&pool)
             .await
             .unwrap();
@@ -1210,7 +1210,7 @@ mod tests {
                 .await
                 .unwrap();
         assert!(old.initial_loan_amount.is_none());
-        sqlx::raw_sql(include_str!("../migrations/0031_institutions.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0031_institutions.sql"))
             .execute(&pool)
             .await
             .unwrap();

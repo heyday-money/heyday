@@ -471,21 +471,21 @@ mod tests {
             .await
             .unwrap();
         for migration in [
-            include_str!("../migrations/0001_initial.sql"),
-            include_str!("../migrations/0002_account_details.sql"),
-            include_str!("../migrations/0003_transactions.sql"),
-            include_str!("../migrations/0004_optional_transaction_description.sql"),
-            include_str!("../migrations/0008_installments.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0001_initial.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0002_account_details.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0003_transactions.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0004_optional_transaction_description.sql"),
+            include_str!("../tests/fixtures/alpha-migrations/0008_installments.sql"),
         ] {
             sqlx::raw_sql(migration).execute(&pool).await.unwrap();
         }
         sqlx::query("INSERT INTO accounts (id, name, type, opening_balance) VALUES ('bank', 'Bank', 'bank', 10000), ('card', 'Card', 'credit_card', 5000)").execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO installments (id, name, account_id, debt_account_id, monthly_amount, installment_count, first_due_date) VALUES ('existing', 'Laptop', 'bank', 'card', 1000, 12, '2024-01-31')").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0009_installment_interest.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0009_installment_interest.sql"))
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0010_installment_purchases.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0010_installment_purchases.sql"))
             .execute(&pool)
             .await
             .unwrap();
@@ -494,7 +494,7 @@ mod tests {
             .await
             .unwrap();
         sqlx::query("INSERT INTO installments (id, name, account_id, debt_account_id, monthly_amount, installment_count, first_due_date, interest_rate_bps) VALUES ('rated', 'Rated', 'bank', 'card', 1000, 12, '2025-01-31', 750), ('zero', 'Zero', 'bank', 'card', 1000, 12, '2025-01-31', 0)").execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0019_interest_precision.sql"))
+        sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0019_interest_precision.sql"))
             .execute(&pool)
             .await
             .unwrap();
