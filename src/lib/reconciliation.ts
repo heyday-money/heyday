@@ -3,6 +3,7 @@ import type { TransactionType } from './desktop'
 
 export type VerificationStatus = 'uncleared' | 'cleared' | 'reconciled'
 export interface VerificationEntry {
+  salary_payment_id?: string | null; salary_payment_role?: string | null
   transaction_id: string; date: string; description: string; type: TransactionType; amount: string
   account_id: string; destination_account_id: string | null; status: VerificationStatus
   reconciliation_id: string | null; balance_change: string
@@ -14,7 +15,7 @@ export interface ReconciliationHistoryEntry {
   reconciliation_id: string; transaction_id: string; date: string; description: string; type: TransactionType; balance_change: string
 }
 export interface ReconciliationSnapshot {
-  account_id: string; name: string; account_type: 'bank' | 'wallet' | 'credit_card'; is_archived: boolean; currency: string
+  account_id: string; name: string; account_type: 'bank' | 'wallet' | 'credit_card' | 'loan'; is_archived: boolean; currency: string
   opening_balance: string; working_balance: string; cleared_balance: string; uncleared_changes: string
   entries: VerificationEntry[]; history: ReconciliationHistory[]; history_entries: ReconciliationHistoryEntry[]; token: string
 }

@@ -11,6 +11,7 @@ import { useFinancialData } from '../lib/useFinancialData'
 import { useLocalDate } from '../lib/useLocalDate'
 import { AccountLabel } from './InstitutionLogo'
 import { Button } from './ui/button'
+import { RepaymentCalendar } from './RepaymentCalendar'
 import { Input } from './ui/input'
 
 const transactionNames = { get income() { return translate("Income") }, get expense() { return translate("Expense") }, get transfer() { return translate("Transfer") }, get repayment() { return translate("Repayment") } }
@@ -86,6 +87,7 @@ export function HomePage() {
           </div>)}
         </dl>
         <p className="text-xs">{translate("Current cash includes opening balances and recorded activity. Spending includes card purchases; transfers and repayments are excluded. Cycle totals include recorded activity through")}{" "}{dateLabel(dateKey(today))}.</p>
+        <RepaymentCalendar data={data!} today={today} loading={loading} />
         <section aria-labelledby="home-attention-title" className="rounded-2xl border border-line bg-card p-6">
           <div className="flex flex-wrap items-center justify-between gap-3"><h3 id="home-attention-title" className="text-lg font-semibold">{translate("Needs attention")}{" "}<span className="ml-1 text-sm font-normal text-muted">({overview.attention.length})</span></h3><span className="text-xs text-muted">{translate("Due dates in the next 14 days & items to review")}</span></div>
           {!overview.attention.length ? <p className="mt-3 text-sm">{translate("No saved bills or payment plans need attention right now.")}</p> : <ul className="mt-3 divide-y divide-line">
@@ -114,8 +116,8 @@ export function HomePage() {
           <p className="mt-2 text-xs">{translate("Latest five entries across all recorded dates.")}</p>
           {!overview.recent.length ? <p className="mt-3 text-sm">{translate("No transactions yet. Use Add transaction to record your first entry.")}</p> : <ul className="mt-3 divide-y divide-line">
             {overview.recent.map(row => <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <div className="min-w-0 flex-1"><h4 className="break-words text-sm font-medium">{row.description || transactionNames[row.type]}</h4><p className="mt-1 text-xs">{dateLabel(row.date)} · {transactionNames[row.type]}</p><p className="mt-1 text-xs"><AccountLabel id={row.account_id} name={row.account_name} />{row.destination_account_id && <> → <AccountLabel id={row.destination_account_id} name={row.destination_account_name ?? translate("Destination account")} /></>}</p></div>
-              <span className={`text-right font-medium tabular-nums ${row.type === 'income' ? 'text-green-700 dark:text-green-400' : row.type === 'expense' ? 'text-red-700 dark:text-red-400' : 'text-ink'}`}>{row.type === 'income' ? '+' : row.type === 'expense' ? '−' : ''}{money(BigInt(row.amount))}</span>
+              <div className="min-w-0 flex-1"><h4 className="break-words text-sm font-medium">{row.description || transactionNames[row.type]}</h4><p className="mt-1 text-xs">{dateLabel(row.date)} · {row.salary_payment_role === 'principal' ? translate("Payroll repayment") : transactionNames[row.type]}</p><p className="mt-1 text-xs"><AccountLabel id={row.account_id} name={row.account_name} />{row.destination_account_id && <> → <AccountLabel id={row.destination_account_id} name={row.destination_account_name ?? translate("Destination account")} /></>}</p></div>
+              <span className={`text-right font-medium tabular-nums ${row.type === 'income' ? 'text-green-700 dark:text-green-400' : row.type === 'expense' ? 'text-red-700 dark:text-red-400' : 'text-ink'}`}>{row.salary_payment_role === 'principal' ? '−' : row.type === 'income' ? '+' : row.type === 'expense' ? '−' : ''}{money(BigInt(row.amount))}</span>
             </li>)}
           </ul>}
         </section>

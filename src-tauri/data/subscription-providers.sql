@@ -1,0 +1,12 @@
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-netflix','Netflix','netflix','netflix');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-spotify','Spotify','spotify','spotify');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-youtube','YouTube Premium','youtube premium','youtube');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-apple-music','Apple Music','apple music','apple-music');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-icloud','iCloud+','icloud+','icloud');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-google-one','Google One','google one','google-one');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-microsoft-365','Microsoft 365','microsoft 365','microsoft-365');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-disney','Disney+','disney+','disney');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-prime-video','Prime Video','prime video','prime-video');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-adobe','Adobe Creative Cloud','adobe creative cloud','adobe');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-dropbox','Dropbox','dropbox','dropbox');
+INSERT INTO subscription_providers(id,name,name_key,builtin_icon) VALUES('provider-canva','Canva','canva','canva');

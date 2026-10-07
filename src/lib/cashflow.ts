@@ -143,7 +143,7 @@ export function plannerItems(data: PlannerData): PlannerItem[] {
       const payroll = data.income_deductions.filter(deduction => deduction.debt_account_id === account.id && data.incomes.some(salary => salary.id === deduction.income_id && salary.is_active && !salary.account_archived))
       const legacy = data.installments.some(plan => plan.debt_account_type === 'loan' && plan.debt_account_id === account.id)
       linked.push({ ...defaults, id: `debt:${account.id}`, category_id: 'debt', name: (payroll.length ? translate("{value0} · Additional Payments", { value0: account.name }) : account.name), debt_account: account,
-        description: translate("{value0}{value1} · Balance: {value2} THB (positive means owed, negative means credit). {value3} {value4}{value5} Exclude payments already deducted through payroll.", { value0: (payroll.length ? translate("Payroll repayments ({value0}) are entered on the salary and included under Income Deductions. This row is for additional payments outside payroll. Existing entered amounts and schedules are retained; review them for duplicates. ", { value0: payroll.map(deduction => deduction.name).join(', ') }) : ''), value1: account.loan_type?.replaceAll('_', ' ') ?? 'Loan', value2: plannerMoney(BigInt(account.current_balance)), value3: account.notes ?? '', value4: (account.is_archived ? translate("Archived account. ") : ''), value5: (data.loan_facilities?.some(f => f.account_id === account.id) ? translate("Contract schedules replace monthly and legacy schedules. Expand to view contract estimates; an entered account cycle amount replaces the full total. No payments are inferred.") : (account.monthly_installment != null ? translate("Monthly installment: {value0} THB per payday cycle. Replaces legacy loan schedules in this row. Current settings apply to past and future cycles; entered cycle amounts are preserved.", { value0: plannerMoney(BigInt(account.monthly_installment)) }) : (legacy ? translate("Legacy loan schedules are included once in this row. Entering a cycle amount replaces their combined payment.") : translate("Enter the payment for each cycle; the balance is not a payment.")))) }) })
+        description: translate("{value0}{value1} · Balance: {value2} THB (positive means owed, negative means credit). {value3} {value4}{value5} Exclude payments already deducted through payroll.", { value0: (payroll.length ? translate("Payroll repayments ({value0}) are included under Income Deductions and cover this loan’s schedule first. This row forecasts only the uncovered amount. Entered cycle amounts remain additional payments outside payroll. ", { value0: payroll.map(deduction => deduction.name).join(', ') }) : ''), value1: account.loan_type?.replaceAll('_', ' ') ?? 'Loan', value2: plannerMoney(BigInt(account.current_balance)), value3: account.notes ?? '', value4: (account.is_archived ? translate("Archived account. ") : ''), value5: (data.loan_facilities?.some(f => f.account_id === account.id) ? translate("Contract schedules replace monthly and legacy schedules. Expand to view contract estimates; an entered account cycle amount replaces the full total. No payments are inferred.") : (account.monthly_installment != null ? translate("Monthly installment: {value0} THB per payday cycle. Replaces legacy loan schedules in this row. Current settings apply to past and future cycles; entered cycle amounts are preserved.", { value0: plannerMoney(BigInt(account.monthly_installment)) }) : (legacy ? translate("Legacy loan schedules are included once in this row. Entering a cycle amount replaces their combined payment.") : translate("Enter the payment for each cycle; the balance is not a payment.")))) }) })
     }
     for (const plan of data.installments.filter(plan => plan.debt_account_type === 'credit_card')) {
       linked.push({ ...defaults, id: `installment:${plan.id}`, category_id: 'installments', name: plan.name, card_name: plan.debt_account_name, installment: plan,
@@ -197,7 +197,7 @@ export function loanContractAmount(data: PlannerData, contract: LoanContract, fr
   const start=boundaryKey(from,data.period_start_day), end=boundaryKey(to,data.period_start_day)
   return loanSchedule(contract).filter(p => p.date >= start && p.date < end && !excludedOnDate(data.selective_defaults,contract.account_id,p.date,data.period_start_day)).reduce((n,p) => n+BigInt(p.amount),0n)
 }
-function linkedPaymentsBetween(data: PlannerData, item: PlannerItem, from: string, to: string): bigint | null {
+function scheduledLinkedPaymentsBetween(data: PlannerData, item: PlannerItem, from: string, to: string): bigint | null {
   if (item.debt_account?.is_archived) return null
   if (item.debt_account && data.loan_facilities?.some(f => f.account_id === item.debt_account!.id)) {
     return (data.loan_contracts ?? []).filter(c => c.account_id === item.debt_account!.id).reduce((n,c) => n + loanContractAmount(data,c,from,to),0n)
@@ -212,6 +212,29 @@ function linkedPaymentsBetween(data: PlannerData, item: PlannerItem, from: strin
   return available.reduce((total, plan) => total + installmentSchedule(plan)
     .filter(payment => payment.date >= start && payment.date < end && !excludedOnDate(data.selective_defaults,plan.debt_account_id,payment.date,data.period_start_day) && !installmentCovered(data.card_billing,plan.id,payment.date))
     .reduce((sum, payment) => sum + BigInt(payment.amount), 0n), 0n)
+}
+// Payroll is already subtracted from gross income. Only uncovered scheduled debt
+// belongs in cash expenses; explicit debt entries remain additional payments.
+export function payrollCoverage(data: PlannerData, accountId: string, month: string): bigint {
+  if (data.source_currency !== 'THB') return 0n
+  return data.income_deductions.filter(d => d.debt_account_id === accountId).reduce((sum, deduction) => {
+    const salary = data.incomes.find(i => i.id === deduction.income_id)
+    if (!salary) return sum
+    const override = data.amounts.find(a => a.item_id === `deduction:${deduction.id}` && a.month === month)
+    return sum + (override ? BigInt(override.amount) : expectedIncomeBetween({ ...salary, estimated_amount: deduction.amount }, month, addMonths(month, 1), data.period_start_day) ?? 0n)
+  }, 0n)
+}
+function linkedPaymentsBetween(data: PlannerData, item: PlannerItem, from: string, to: string): bigint | null {
+  if (!item.debt_account || !data.income_deductions.some(d => d.debt_account_id === item.debt_account!.id)) return scheduledLinkedPaymentsBetween(data, item, from, to)
+  let total: bigint | null = null
+  for (let month = from; month < to; month = addMonths(month, 1)) {
+    const scheduled = scheduledLinkedPaymentsBetween(data, item, month, addMonths(month, 1))
+    if (scheduled !== null) {
+      const remaining = scheduled - payrollCoverage(data, item.debt_account.id, month)
+      total = (total ?? 0n) + (remaining > 0n ? remaining : 0n)
+    }
+  }
+  return total
 }
 function generatedAmount(data: PlannerData, item: PlannerItem, month: string) {
   if (item.income) return expectedIncomeBetween(item.income, month, addMonths(month, 1), data.period_start_day)
@@ -250,7 +273,7 @@ function forecastItemAmount(data: PlannerData, item: PlannerItem, month: string)
   if (usesRecordedCardTotal(data, item, month)) return { value: 0n, source: 'Using recorded card total' }
   const entry = data.amounts.find(a => a.item_id === item.id && a.month === month)
   const generated = generatedAmount(data, item, month)
-  return { value: entry ? BigInt(entry.amount) : generated, source: entry ? 'Entered' : generated !== null ? item.deduction ? 'Expected deduction' : item.income ? 'Expected income' : 'Scheduled' : 'Empty' }
+  return { value: entry ? BigInt(entry.amount) : generated, source: entry ? 'Entered' : item.debt_account && payrollCoverage(data, item.debt_account.id, month) > 0n ? translate('After payroll deductions of {amount} THB', { amount: plannerMoney(payrollCoverage(data, item.debt_account.id, month)) }) : generated !== null ? item.deduction ? 'Expected deduction' : item.income ? 'Expected income' : 'Scheduled' : 'Empty' }
 }
 function forecastCycleTotals(data: PlannerData, month: string) {
   const buckets: Record<PlannerCategoryId, bigint> = { income: 0n, deductions: 0n, debt: 0n, installments: 0n, cards: 0n, expenses: 0n }
@@ -259,8 +282,8 @@ function forecastCycleTotals(data: PlannerData, month: string) {
   const expenses = buckets.debt + buckets.installments + buckets.cards + buckets.expenses
   return { buckets, netIncome, expenses, outflows: buckets.deductions + expenses, surplus: netIncome - expenses }
 }
-// Sum intervening cycles even outside the visible window. Interval arithmetic avoids
-// iterating through decades of empty cycles. Explicit entries replace generated values.
+// Sum intervening cycles even outside the visible window. Unlinked schedules use
+// interval arithmetic; payroll coverage is capped per cycle. Explicit entries replace generated values.
 function forecastOpeningForCycle(data: PlannerData, month: string): bigint | null {
   if (!data.opening || month < data.opening.month) return null
   let cash = BigInt(data.opening.amount)

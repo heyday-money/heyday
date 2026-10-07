@@ -2,6 +2,8 @@ use sqlx::SqlitePool;
 
 // Child-first order preserves foreign-key enforcement throughout the reset.
 const DATA_TABLES: &[&str] = &[
+    "salary_payment_transactions",
+    "salary_payments",
     "selective_defaults",
     "loan_payoffs",
     "card_limit_members",
@@ -26,6 +28,7 @@ const DATA_TABLES: &[&str] = &[
     "planner_opening",
     "planner_items",
     "subscriptions",
+    "subscription_providers",
     "payment_plans",
     "installments",
     "transactions",
@@ -58,6 +61,9 @@ async fn clear_data(pool: &SqlitePool, confirmation: &str) -> Result<(), String>
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+    }
+    for statement in include_str!("../data/subscription-providers.sql").lines() {
+        sqlx::query(statement).execute(&mut *tx).await.map_err(|e|e.to_string())?;
     }
     sqlx::query("UPDATE settings SET currency = NULL, period_start_day = 1 WHERE id = 1")
         .execute(&mut *tx)
@@ -162,7 +168,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-            assert_eq!(count, 0, "{table}");
+            assert_eq!(count, if *table == "subscription_providers" { 12 } else { 0 }, "{table}");
         }
         let settings: (Option<String>, i64) =
             sqlx::query_as("SELECT currency, period_start_day FROM settings")

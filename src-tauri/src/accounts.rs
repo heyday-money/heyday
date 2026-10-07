@@ -4,6 +4,8 @@ use sqlx::SqlitePool;
 #[derive(Serialize, sqlx::FromRow)]
 pub struct Account {
     #[sqlx(default)]
+    payroll_linked: bool,
+    #[sqlx(default)]
     paid_off_on: Option<String>,
     is_archived: bool,
     id: String,
@@ -26,6 +28,8 @@ pub struct Account {
 }
 
 pub(crate) const COLUMNS: &str = "is_archived, id, name, type AS account_type, loan_type, CAST(opening_balance AS TEXT) AS opening_balance, CAST(current_balance AS TEXT) AS current_balance, institution, last_four, notes, CAST(credit_limit AS TEXT) AS credit_limit, statement_day, payment_due_day, interest_rate_ten_thousandths, CAST(monthly_installment AS TEXT) AS monthly_installment, CAST(initial_loan_amount AS TEXT) AS initial_loan_amount";
+
+pub(crate) const PAYROLL_COLUMN: &str = "EXISTS(SELECT 1 FROM income_deductions d JOIN incomes i ON i.id=d.income_id WHERE d.debt_account_id=accounts.id AND i.type='salary') AS payroll_linked";
 
 #[derive(Deserialize)]
 pub struct NewAccount {
@@ -266,6 +270,11 @@ async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, Stri
     if input.account_type != saved.account_type {
         return Err("Account type cannot be changed after creation.".into());
     }
+    let payroll_linked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM income_deductions d JOIN incomes i ON i.id=d.income_id WHERE d.debt_account_id=? AND i.type='salary')")
+        .bind(&input.id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
+    if payroll_linked && input.monthly_installment.as_deref().map(amount).transpose()? != saved.monthly_installment.as_deref().map(amount).transpose()? {
+        return Err("Monthly installment is locked while linked to salary deductions. Manage the link in Income first.".into());
+    }
     let currency: Option<String> = sqlx::query_scalar("SELECT currency FROM settings WHERE id = 1")
         .fetch_one(&mut *tx)
         .await
@@ -310,7 +319,7 @@ async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, Stri
     .await?;
     // Neither opening nor current balance is accepted in the update payload or written here.
     let query = format!("UPDATE accounts SET name = ?, loan_type = ?, institution = ?, last_four = ?, notes = ?, credit_limit = ?, statement_day = ?, payment_due_day = ?, interest_rate_ten_thousandths = ?, monthly_installment = ?, initial_loan_amount = ?, institution_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING {COLUMNS}");
-    let account = sqlx::query_as(&query)
+    let mut account: Account = sqlx::query_as(&query)
         .bind(details.name)
         .bind(details.loan_type)
         .bind(institution)
@@ -340,6 +349,7 @@ async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, Stri
         .await
         .map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
+    account.payroll_linked = payroll_linked;
     Ok(account)
 }
 
@@ -365,11 +375,11 @@ pub async fn create_account(
 pub async fn list_accounts(pool: tauri::State<'_, SqlitePool>, include_paid_off: Option<bool>, include_archived: Option<bool>) -> Result<Vec<Account>, String> {
     let _database_operation = crate::backups::operation()?;
     let query = if include_archived.unwrap_or(false) {
-        format!("SELECT {COLUMNS}, (SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts ORDER BY created_at,id")
+        format!("SELECT {COLUMNS}, {PAYROLL_COLUMN}, (SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts ORDER BY created_at,id")
     } else if include_paid_off.unwrap_or(false) {
-        format!("SELECT {COLUMNS}, (SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts WHERE is_archived=0 OR id IN (SELECT account_id FROM loan_payoffs) ORDER BY created_at,id")
+        format!("SELECT {COLUMNS}, {PAYROLL_COLUMN}, (SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts WHERE is_archived=0 OR id IN (SELECT account_id FROM loan_payoffs) ORDER BY created_at,id")
     } else {
-        format!("SELECT {COLUMNS} FROM accounts WHERE is_archived=0 ORDER BY created_at,id")
+        format!("SELECT {COLUMNS}, {PAYROLL_COLUMN} FROM accounts WHERE is_archived=0 ORDER BY created_at,id")
     };
     sqlx::query_as::<_, Account>(&query).fetch_all(pool.inner()).await.map_err(|e| e.to_string())
 }
@@ -524,6 +534,7 @@ mod tests {
         object.remove("opening_balance");
         object.remove("current_balance");
         object.remove("paid_off_on");
+        object.remove("payroll_linked");
         object.remove("is_archived");
         object.insert("currency".into(), serde_json::json!("THB"));
         serde_json::from_value(value).unwrap()
@@ -1257,5 +1268,27 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn salary_link_locks_installment_preserves_other_edits_and_unlocks_after_unlink() {
+        let pool=crate::salary_payments::tests::database().await;
+        sqlx::query("UPDATE accounts SET monthly_installment=920000 WHERE id='home'").execute(&pool).await.unwrap();
+        let saved:Account=sqlx::query_as(&format!("SELECT {COLUMNS}, {PAYROLL_COLUMN} FROM accounts WHERE id='home'")).fetch_one(&pool).await.unwrap();
+        assert!(saved.payroll_linked);
+        for monthly in [None,Some("0".to_owned()),Some("930000".to_owned())] {
+            let mut changes=edit_input(&saved);changes.monthly_installment=monthly;changes.name="Should not save".into();
+            assert!(update(&pool,changes).await.err().unwrap().contains("locked"));
+        }
+        let mut changes=edit_input(&saved);changes.name="Renamed home".into();changes.monthly_installment=Some("0920000".into());
+        let updated=update(&pool,changes).await.unwrap();
+        assert!(updated.payroll_linked);assert_eq!(updated.name,"Renamed home");assert_eq!(updated.monthly_installment.as_deref(),Some("920000"));
+        sqlx::query("UPDATE incomes SET is_active=0 WHERE id='salary'").execute(&pool).await.unwrap();
+        let mut changes=edit_input(&updated);changes.monthly_installment=None;
+        assert!(update(&pool,changes).await.is_err());
+        sqlx::query("UPDATE income_deductions SET debt_account_id=NULL WHERE debt_account_id='home'").execute(&pool).await.unwrap();
+        let mut changes=edit_input(&updated);changes.monthly_installment=Some("930000".into());
+        let updated=update(&pool,changes).await.unwrap();assert!(!updated.payroll_linked);
+        assert_eq!(updated.monthly_installment.as_deref(),Some("930000"));assert_eq!(updated.current_balance,"2000000");
     }
 }

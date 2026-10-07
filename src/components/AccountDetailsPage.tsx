@@ -48,7 +48,7 @@ function AccountDetails({ accountId }: { accountId: string }) {
   }, [accountId, attempt])
   useEffect(() => {
     const refresh = () => setAttempt(n => n + 1)
-    const events = ['accounts-changed', 'transactions-changed', 'plans-changed', 'focus']
+    const events = ['accounts-changed', 'transactions-changed', 'plans-changed', 'incomes-changed', 'focus']
     events.forEach(event => window.addEventListener(event, refresh))
     return () => events.forEach(event => window.removeEventListener(event, refresh))
   }, [])
@@ -82,13 +82,13 @@ function AccountDetails({ accountId }: { accountId: string }) {
       </div>
     </div>
     <div className="rounded-2xl border border-line bg-card p-6">
-      <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{details.map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="mt-1 break-words font-medium tabular-nums">{value}</dd></div>)}</dl>
+      <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{details.map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="mt-1 break-words font-medium tabular-nums">{value}{label === translate("Monthly installment") && account.payroll_linked && <span className="mt-1 block text-xs font-normal text-muted">{translate("Deducted from salary")} · <Link to="/income" className="text-brand">{translate("Manage Deductions")}</Link></span>}</dd></div>)}</dl>
       {account.type === 'credit_card' && <CardCredit id={account.id} individualLimit={account.credit_limit} balance={account.current_balance} currency={currency} limits={limits} />}
       {account.notes && <p className="mt-5 break-words whitespace-pre-wrap text-sm">{account.notes}</p>}
     </div>
     {loan && <LoanAccountSummary data={loan} onSaved={() => setAttempt(n => n + 1)} />}
     {account.type !== 'loan' && <nav aria-label={translate("Account management")} className="flex flex-wrap gap-3">
-      {['bank', 'wallet', 'credit_card'].includes(account.type) && <Button asChild variant="outline"><Link to="/accounts/$accountId" params={{ accountId }}>{translate("Transactions & reconciliation")}</Link></Button>}
+      {['bank', 'wallet', 'credit_card', 'loan'].includes(account.type) && <Button asChild variant="outline"><Link to="/accounts/$accountId" params={{ accountId }}>{translate("Transactions & reconciliation")}</Link></Button>}
       {account.type === 'credit_card' && <Button asChild variant="outline"><Link to="/accounts/$accountId/billing" params={{ accountId }}>{translate("Billing & payments")}</Link></Button>}
     </nav>}
     {['loan', 'credit_card'].includes(account.type) && <SelectiveDefaultSettings account={account} />}

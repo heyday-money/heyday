@@ -13,7 +13,7 @@ export function AppearancePicker({ value, onChange }: {
 }) {
   useLanguage()
 
-  return <fieldset className="@container border-b border-line pb-6">
+  return <fieldset className="@container min-w-0 border-b border-line pb-6">
     <legend className="text-base font-semibold">{translate("Appearance")}</legend>
     <p className="mt-1 text-xs">{translate("Choose your look. Applies immediately and stays saved on this device.")}</p>
     <div className="mt-4 grid grid-cols-1 gap-3 @min-[600px]:grid-cols-3">
@@ -40,7 +40,7 @@ export function AppearancePicker({ value, onChange }: {
             </div>
           </div>
           <div className="flex items-center justify-between gap-2 px-1 pt-3 pb-1">
-            <span><span className="block text-sm font-medium">{translate(labels[appearance])}</span><span className="mt-0.5 block text-xs text-muted">{translate(descriptions[appearance])}</span></span>
+            <span className="min-w-0 break-words"><span className="block text-sm font-medium">{translate(labels[appearance])}</span><span className="mt-0.5 block text-xs text-muted">{translate(descriptions[appearance])}</span></span>
             <span className={`flex size-5 shrink-0 items-center justify-center rounded-full border ${value === appearance ? 'border-primary bg-primary text-primary-foreground' : 'border-line'}`} aria-hidden="true">
               {value === appearance && <Check className="size-3" />}
             </span>

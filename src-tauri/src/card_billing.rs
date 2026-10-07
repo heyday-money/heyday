@@ -817,6 +817,7 @@ mod tests {
         all.run(&p).await.unwrap();
         all.run(&p).await.unwrap();
         assert_eq!(balances(&p).await, before);
+        sqlx::raw_sql(include_str!("../migrations/0002_salary_payments.sql")).execute(&p).await.unwrap();
         let saved = account_snapshot(&p, "card").await.unwrap();
         assert_eq!(saved.billing.statements[0].id, sid);
         assert_eq!(saved.billing.allocations[0].amount, "1000");

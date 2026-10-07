@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { nextSubscriptionDate, subscriptionDates } from '../src/lib/subscriptions'
+import { subscriptionBillings } from '../src/lib/repayment-calendar'
 import { monthlyOutlook } from '../src/lib/financial'
 import type { Account, FinancialData, Subscription } from '../src/lib/desktop'
 
@@ -29,4 +30,21 @@ test('Outlook includes each future cash subscription once and excludes paused, e
   expect(periods[1].buckets.expenses.plannedCount).toBe(1)
   expect(JSON.stringify(data)).toBe(before)
   expect(monthlyOutlook(data, new Date(2024, 1, 29))[0].buckets.expenses.forecast).toBe(0n)
+})
+
+
+test('calendar billings include card subscriptions, clamp dates, and respect availability and schedule boundaries', () => {
+  const base: Account = { id: 'bank', name: 'Bank', type: 'bank', opening_balance: '100000', current_balance: '100000', loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }
+  const accounts = [base, { ...base, id: 'card', type: 'credit_card' as const }, { ...base, id: 'archived', is_archived: true }]
+  const subscriptions = [plan(), plan({ id: 'yearly', frequency: 'yearly', first_billing_date: '2024-02-29' }),
+    plan({ id: 'card', account_id: 'card' }), plan({ id: 'paused', is_active: false }),
+    plan({ id: 'ended', end_date: '2024-01-31' }), plan({ id: 'unavailable', account_id: 'gone' }),
+    plan({ id: 'archived', account_id: 'archived' }), plan({ id: 'future', first_billing_date: '2026-01-01' })]
+  const before = JSON.stringify(subscriptions)
+  const leap = subscriptionBillings(subscriptions, accounts, 2024, 1)
+  expect(leap.map(e => e.subscription.id).sort()).toEqual(['card', 'service', 'yearly'])
+  expect(leap.every(e => e.date === '2024-02-29')).toBe(true)
+  expect(subscriptionBillings(subscriptions, accounts, 2025, 1).every(e => e.date === '2025-02-28')).toBe(true)
+  expect(subscriptionBillings(subscriptions, accounts, 2024, 2).some(e => e.subscription.id === 'yearly')).toBe(false)
+  expect(JSON.stringify(subscriptions)).toBe(before)
 })

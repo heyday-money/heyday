@@ -1,3 +1,4 @@
+import type { SubscriptionProvider } from '../src/lib/subscription-providers'
 import { test, expect } from '@playwright/test'
 import { validateManagementUrl } from '../src/lib/subscription-management'
 import type { SaveSubscription, Subscription } from '../src/lib/desktop'
@@ -7,12 +8,23 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const accounts = [{ id: 'bank', name: 'Everyday bank', type: 'bank', current_balance: '100000' }, { id: 'card', name: 'Credit card', type: 'credit_card', current_balance: '5000' }, { id: 'loan', name: 'Loan', type: 'loan', current_balance: '5000' }].map(account => ({ ...account, opening_balance: account.current_balance, loan_type: null, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }))
     const rows = (): Subscription[] => JSON.parse(localStorage.getItem('subscriptions') ?? '[]')
+    const providers = (): SubscriptionProvider[] => JSON.parse(localStorage.getItem('providers') ?? JSON.stringify([{ id: 'netflix', name: 'Netflix', is_archived: false, builtin_icon: 'netflix', logo_mode: 'default', logo_asset_id: null }]))
     const settings = () => ({ currency: sessionStorage.getItem('no-currency') ? null : 'THB', period_start_day: 1 })
     Object.defineProperty(window, 'isTauri', { value: true })
-    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: SaveSubscription; id: string }) => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: SaveSubscription & { is_archived?: boolean }; id: string }) => {
       const active = sessionStorage.getItem('no-accounts') ? [] : accounts
       switch (command) {
         case 'plugin:app|version': return '0.1.0'
+        case 'list_subscription_providers':
+          if (sessionStorage.getItem('fail-providers')) throw 'Load failed'
+          return providers()
+        case 'save_subscription_provider': {
+          if (sessionStorage.getItem('fail-provider-save')) throw 'Could not save provider.'
+          const input = args.input
+          const row = { ...providers().find(p => p.id === input.id), id: input.id ?? crypto.randomUUID(), name: input.name, is_archived: input.is_archived ?? false }
+          localStorage.setItem('providers', JSON.stringify([...providers().filter(p => p.id !== row.id), row])); return
+        }
+        case 'list_transaction_options': return { payees: [], categories: [] }
         case 'get_settings': return settings()
         case 'list_accounts': return active
         case 'list_incomes': return []
@@ -23,6 +35,7 @@ test.beforeEach(async ({ page }) => {
           if (sessionStorage.getItem('fail-save')) throw 'Could not save subscription.'
           const { logo_change, ...input } = args.input, account = accounts.find(account => account.id === input.account_id)!
           const row = { ...rows().find(row => row.id === input.id), ...input, id: input.id ?? crypto.randomUUID(), account_name: account.name, account_type: account.type, category_name: input.category_id ? 'Services' : null }
+          row.provider_icon = providers().find(p => p.id === input.provider_id)?.builtin_icon ?? null
           if (logo_change) {
             row.logo_asset_id = logo_change.kind === 'custom' ? crypto.randomUUID() : null
             if (logo_change.kind === 'custom' && row.logo_asset_id) localStorage.setItem(row.logo_asset_id, logo_change.data)
@@ -192,4 +205,46 @@ test('management URL validation only accepts HTTPS browser destinations', () => 
   for (const url of ['file:///tmp/file', 'javascript:alert(1)', 'http://example.com', 'https://user:pass@example.com', 'https://user@example.com', 'bad']) expect(() => validateManagementUrl(url)).toThrow()
   expect(validateManagementUrl(' https://example.com/settings ')).toBe('https://example.com/settings')
   expect(validateManagementUrl('')).toBeNull()
+})
+
+
+test('providers speed up subscription creation and can be managed in Settings', async ({ page }) => {
+  await page.goto('/#/subscriptions')
+  await page.getByRole('button', { name: 'Add subscription', exact: true }).click()
+  await page.getByLabel('Subscription provider', { exact: true }).selectOption('netflix')
+  await expect(page.getByLabel('Subscription name', { exact: true })).toHaveValue('Netflix')
+  await expect(page.getByRole('dialog').locator('img[src="/subscription-providers/netflix.svg"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Choose logo', exact: true })).not.toBeVisible()
+  await page.getByLabel('Subscription name', { exact: true }).fill('Netflix Family')
+  await page.getByLabel('Amount per charge (THB)').fill('419')
+  await page.getByLabel('Pay from', { exact: true }).selectOption('bank')
+  await page.getByRole('button', { name: 'Save subscription', exact: true }).click()
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('subscriptions')!)[0])).toMatchObject({ name: 'Netflix Family', provider_id: 'netflix', amount: '41900' })
+  await page.goto('/#/settings')
+  await page.getByRole('tab', { name: 'Subscriptions', exact: true }).click()
+  await page.getByRole('button', { name: 'Add provider', exact: true }).click()
+  await page.getByLabel('Provider name', { exact: true }).fill('Local Internet')
+  await page.evaluate(() => sessionStorage.setItem('fail-provider-save', '1'))
+  await page.getByRole('button', { name: 'Save provider', exact: true }).click()
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Could not save provider')
+  await expect(page.getByLabel('Provider name', { exact: true })).toHaveValue('Local Internet')
+  await page.evaluate(() => sessionStorage.removeItem('fail-provider-save'))
+  await page.getByRole('button', { name: 'Save provider', exact: true }).click()
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+  await page.getByRole('button', { name: 'Archive provider Netflix', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Restore provider Netflix', exact: true })).toBeVisible()
+  await page.goto('/#/subscriptions')
+  await page.getByRole('button', { name: 'Edit subscription Netflix Family', exact: true }).click()
+  await expect(page.getByLabel('Subscription provider', { exact: true })).toHaveValue('netflix')
+  await expect(page.getByLabel('Subscription name', { exact: true })).toHaveValue('Netflix Family')
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('button', { name: 'Add subscription', exact: true }).click()
+  await expect(page.getByLabel('Subscription provider', { exact: true }).locator('option[value="netflix"]')).toHaveCount(0)
+  const custom = page.getByLabel('Subscription provider', { exact: true }).locator('option', { hasText: 'Local Internet' })
+  await expect(custom).toHaveCount(1)
+  await page.getByLabel('Subscription provider', { exact: true }).selectOption({ label: 'Local Internet' })
+  await expect(page.getByLabel('Subscription name', { exact: true })).toHaveValue('Local Internet')
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Discard changes', exact: true })).toBeVisible()
 })

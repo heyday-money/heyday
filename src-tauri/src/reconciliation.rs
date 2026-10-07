@@ -3,6 +3,8 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct Entry {
+    salary_payment_id: Option<String>,
+    salary_payment_role: Option<String>,
     transaction_id: String,
     date: String,
     description: String,
@@ -55,7 +57,7 @@ async fn snapshot(conn: &mut SqliteConnection, id: &str) -> Result<Snapshot, Str
         "SELECT name, type, opening_balance, current_balance, is_archived FROM accounts WHERE id = ?",
     ).bind(id).fetch_optional(&mut *conn).await.map_err(|e| e.to_string())?
         .ok_or("Account no longer exists.")?;
-    if !["bank", "wallet", "credit_card"].contains(&kind.as_str()) {
+    if !["bank", "wallet", "credit_card", "loan"].contains(&kind.as_str()) {
         return Err(
             "Reconciliation is available for bank, digital wallet, and credit card accounts."
                 .into(),
@@ -65,7 +67,7 @@ async fn snapshot(conn: &mut SqliteConnection, id: &str) -> Result<Snapshot, Str
         .fetch_one(&mut *conn)
         .await
         .map_err(|e| e.to_string())?;
-    let mut entries: Vec<Entry> = sqlx::query_as("SELECT t.id AS transaction_id,t.date,t.description,t.type AS kind,CAST(t.amount AS TEXT) AS amount,t.account_id,t.destination_account_id,v.status,CAST(v.reconciliation_id AS TEXT) AS reconciliation_id,'' AS balance_change FROM transactions t JOIN transaction_verifications v ON v.transaction_id=t.id WHERE v.account_id=? ORDER BY t.date DESC,t.created_at DESC,t.id DESC")
+    let mut entries: Vec<Entry> = sqlx::query_as("SELECT (SELECT payment_id FROM salary_payment_transactions WHERE transaction_id=t.id) salary_payment_id,(SELECT role FROM salary_payment_transactions WHERE transaction_id=t.id) salary_payment_role,t.id AS transaction_id,t.date,t.description,t.type AS kind,CAST(t.amount AS TEXT) AS amount,t.account_id,t.destination_account_id,v.status,CAST(v.reconciliation_id AS TEXT) AS reconciliation_id,'' AS balance_change FROM transactions t JOIN transaction_verifications v ON v.transaction_id=t.id WHERE v.account_id=? ORDER BY t.date DESC,t.created_at DESC,t.id DESC")
         .bind(id).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
     let mut uncleared = 0i128;
     for entry in &mut entries {
@@ -76,7 +78,7 @@ async fn snapshot(conn: &mut SqliteConnection, id: &str) -> Result<Snapshot, Str
             } else {
                 -amount
             };
-        let change = if kind == "credit_card" {
+        let change = if kind == "credit_card" || kind == "loan" {
             -inflow
         } else {
             inflow
@@ -156,7 +158,7 @@ async fn set_status(pool: &SqlitePool, input: VerificationUpdate) -> Result<(), 
         return Err("Select transactions and choose Uncleared or Cleared.".into());
     }
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    let available: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type IN ('bank','wallet','credit_card') AND is_archived=0)")
+    let available: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type IN ('bank','wallet','credit_card','loan') AND is_archived=0)")
         .bind(&input.account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     if !available {
         return Err("Choose an active bank, digital wallet, or credit card account.".into());
@@ -640,6 +642,7 @@ mod tests {
             .await
             .unwrap();
         tx.commit().await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0002_salary_payments.sql")).execute(&pool).await.unwrap();
         for id in ["bank", "card"] {
             assert_eq!(
                 read(&pool, id).await.unwrap().entries[0].status,
@@ -765,5 +768,26 @@ mod tests {
         assert_eq!(balances(&pool).await, before);
         record(&pool, "income", "wallet", None, "100", &["wallet"]).await;
         assert_eq!(read(&pool, "wallet").await.unwrap().cleared_balance, "3100");
+    }
+
+    #[tokio::test]
+    async fn payroll_loan_principal_reconciles_and_group_reversal_preserves_evidence() {
+        let pool=crate::salary_payments::tests::database().await;
+        crate::salary_payments::record(&pool,crate::salary_payments::tests::input()).await.unwrap();
+        let state=read(&pool,"home").await.unwrap();
+        assert_eq!(state.working_balance,"1300000");
+        assert_eq!(state.cleared_balance,"2000000");
+        assert_eq!(state.entries[0].balance_change,"-700000");
+        let id=state.entries[0].transaction_id.clone();
+        set_status(&pool,VerificationUpdate {account_id:"home".into(),entries:vec![StatusChange{transaction_id:id.clone(),expected_status:"uncleared".into()}],status:"cleared".into(),confirm_unlock:false}).await.unwrap();
+        let state=read(&pool,"home").await.unwrap();
+        finish(&pool,Finish{account_id:"home".into(),posted_balance:"1300000".into(),expected_token:state.token,confirm_opening_balance:true}).await.unwrap();
+        let receipt:String=sqlx::query_scalar("SELECT transaction_id FROM salary_payment_transactions WHERE role='net'").fetch_one(&pool).await.unwrap();
+        assert!(crate::transactions::remove(&pool,&receipt).await.is_err());
+        assert_eq!(read(&pool,"home").await.unwrap().working_balance,"1300000");
+        crate::transactions::remove_confirmed(&pool,&receipt,true).await.unwrap();
+        let state=read(&pool,"home").await.unwrap();
+        assert_eq!(state.working_balance,"2000000");assert!(state.history[0].needs_review);
+        assert_eq!(state.history_entries[0].balance_change,"-700000");
     }
 }

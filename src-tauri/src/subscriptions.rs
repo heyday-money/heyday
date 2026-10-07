@@ -16,10 +16,12 @@ pub struct Subscription {
     end_date: Option<String>,
     is_active: bool,
     logo_asset_id: Option<String>,
+    provider_id: Option<String>,
+    provider_icon: Option<String>,
     managed_via: Option<String>,
     management_url: Option<String>,
 }
-pub(crate) const SELECT: &str = "SELECT s.id, s.name, s.account_id, a.name AS account_name, a.type AS account_type, s.category_id, c.name AS category_name, CAST(s.amount AS TEXT) AS amount, s.frequency, s.first_billing_date, s.end_date, s.is_active, s.logo_asset_id, s.managed_via, s.management_url FROM subscriptions s JOIN accounts a ON a.id = s.account_id LEFT JOIN categories c ON c.id = s.category_id ORDER BY s.name COLLATE NOCASE, s.id";
+pub(crate) const SELECT: &str = "SELECT s.id, s.name, s.account_id, a.name AS account_name, a.type AS account_type, s.category_id, c.name AS category_name, CAST(s.amount AS TEXT) AS amount, s.frequency, s.first_billing_date, s.end_date, s.is_active, COALESCE(s.logo_asset_id,p.logo_asset_id) AS logo_asset_id, s.provider_id, CASE WHEN p.logo_mode='default' THEN p.builtin_icon END AS provider_icon, s.managed_via, s.management_url FROM subscriptions s JOIN accounts a ON a.id = s.account_id LEFT JOIN categories c ON c.id = s.category_id LEFT JOIN subscription_providers p ON p.id=s.provider_id ORDER BY s.name COLLATE NOCASE, s.id";
 
 #[derive(Deserialize)]
 pub struct SaveSubscription {
@@ -34,6 +36,7 @@ pub struct SaveSubscription {
     is_active: bool,
     currency: String,
     logo_change: Option<crate::logos::LogoChange>,
+    provider_id: Option<String>,
     managed_via: Option<String>,
     management_url: Option<String>,
 }
@@ -102,6 +105,11 @@ async fn save(pool: &SqlitePool, input: SaveSubscription) -> Result<(), String> 
             return Err("Choose an active category.".into());
         }
     }
+    if let Some(provider) = &input.provider_id {
+        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM subscription_providers p WHERE p.id=? AND (p.is_archived=0 OR EXISTS(SELECT 1 FROM subscriptions s WHERE s.id=? AND s.provider_id=p.id)))")
+            .bind(provider).bind(&input.id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
+        if !valid { return Err("Choose an active subscription provider.".into()); }
+    }
     let result = if let Some(id) = &input.id {
         sqlx::query_scalar::<_, String>("UPDATE subscriptions SET name = ?, account_id = ?, category_id = ?, amount = ?, frequency = ?, first_billing_date = ?, end_date = ?, is_active = ?, managed_via = ?, management_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING id")
             .bind(name).bind(input.account_id).bind(input.category_id).bind(amount).bind(input.frequency).bind(input.first_billing_date).bind(input.end_date).bind(input.is_active).bind(&input.managed_via).bind(&management_url).bind(id).fetch_optional(&mut *tx).await
@@ -110,6 +118,7 @@ async fn save(pool: &SqlitePool, input: SaveSubscription) -> Result<(), String> 
             .bind(name).bind(input.account_id).bind(input.category_id).bind(amount).bind(input.frequency).bind(input.first_billing_date).bind(input.end_date).bind(input.is_active).bind(&input.managed_via).bind(&management_url).fetch_optional(&mut *tx).await
     }.map_err(|e| e.to_string())?;
     let id = result.ok_or("Subscription no longer exists. Reload to continue.")?;
+    sqlx::query("UPDATE subscriptions SET provider_id=? WHERE id=?").bind(&input.provider_id).bind(&id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
     if let Some(change) = input.logo_change {
         let asset_id = crate::logos::asset(&mut tx, &change).await?;
         sqlx::query("UPDATE subscriptions SET logo_asset_id=? WHERE id=?").bind(asset_id).bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
@@ -183,6 +192,7 @@ mod tests {
             is_active: true,
             currency: "THB".into(),
             logo_change: None,
+            provider_id: None,
             managed_via: None,
             management_url: None,
         }
@@ -216,6 +226,38 @@ mod tests {
             encoder.write_header().unwrap().write_image_data(&[128, 0, 255, 255]).unwrap();
         }
         crate::logos::LogoChange::Custom { data: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)) }
+    }
+
+    #[tokio::test]
+    async fn provider_links_reuse_icons_and_archived_links_remain_editable() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        seed(&pool).await;
+        let before = balances(&pool).await;
+        let mut create = input(); create.provider_id = Some("provider-netflix".into());
+        save(&pool, create).await.unwrap();
+        let row = records(&pool).await.remove(0);
+        assert_eq!(row.provider_icon.as_deref(), Some("netflix"));
+        let mut conn = pool.acquire().await.unwrap();
+        let asset = crate::logos::asset(&mut conn, &logo()).await.unwrap().unwrap();
+        sqlx::query("UPDATE subscription_providers SET logo_mode='custom',logo_asset_id=? WHERE id='provider-netflix'").bind(&asset).execute(&mut *conn).await.unwrap();
+        drop(conn);
+        assert_eq!(records(&pool).await[0].logo_asset_id.as_deref(), Some(asset.as_str()));
+        sqlx::query("UPDATE subscription_providers SET is_archived=1,name='Renamed' WHERE id='provider-netflix'").execute(&pool).await.unwrap();
+        assert_eq!(records(&pool).await[0].name, "Streaming");
+        let mut new = input(); new.provider_id = Some("provider-netflix".into());
+        assert!(save(&pool, new).await.is_err());
+        let mut edit = input(); edit.id = Some(row.id.clone()); edit.provider_id = Some("provider-netflix".into());
+        save(&pool, edit).await.unwrap();
+        let mut invalid = input(); invalid.id = Some(row.id.clone()); invalid.provider_id = Some("missing".into());
+        assert!(save(&pool, invalid).await.is_err());
+        assert_eq!(records(&pool).await[0].provider_id.as_deref(), Some("provider-netflix"));
+        let mut detach = input(); detach.id = Some(row.id); save(&pool, detach).await.unwrap();
+        assert!(records(&pool).await[0].provider_id.is_none());
+        let mut conn = pool.acquire().await.unwrap();
+        crate::logos::prune(&mut conn).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM logo_assets WHERE id=?").bind(&asset).fetch_one(&mut *conn).await.unwrap(), 1);
+        drop(conn);
+        assert_eq!(balances(&pool).await, before);
     }
 
     #[tokio::test]
@@ -274,6 +316,7 @@ mod tests {
         }
         sqlx::raw_sql("INSERT INTO accounts(id,name,type) VALUES('bank','Bank','bank'); INSERT INTO subscriptions(id,name,account_id,amount,frequency,first_billing_date,is_active) VALUES('old','Existing','bank',9007199254740993,'yearly','2024-02-29',0);").execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0003_subscription_providers.sql")).execute(&pool).await.unwrap();
         let row = records(&pool).await.remove(0);
         assert_eq!(row.id, "old"); assert_eq!(row.amount, "9007199254740993");
         assert_eq!(row.frequency, "yearly"); assert_eq!(row.first_billing_date, "2024-02-29"); assert!(!row.is_active);

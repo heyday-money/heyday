@@ -7,6 +7,7 @@ import { Button } from "./components/ui/button";
 import { NativeSelect } from "./components/ui/native-select";
 import { PayeeLogoProvider } from "./components/PayeeLogo";
 import { InstitutionProvider } from "./components/InstitutionProvider";
+import { SubscriptionProvidersSettings } from "./components/SubscriptionProvidersSettings";
 import { InstitutionsSettings } from "./components/InstitutionsSettings";
 import { AppUpdates } from "./components/AppUpdates";
 import { useLocalDate } from "./lib/useLocalDate";
@@ -40,6 +41,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings as SettingsIcon,
+  Users,
+  Tags,
+  Landmark,
   Wallet,
 } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
@@ -294,21 +298,28 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[740px]">
+    <div className="@container mx-auto w-full max-w-[1080px]">
       <div className="mb-6 max-w-[740px]">
         <h2 className="mb-3 text-2xl font-semibold">{translate("Make Heyday yours.")}</h2>
         <p className="text-sm">{translate("Manage your preferences, institutions, payees, and spending categories.")}</p>
       </div>
-      <Tabs defaultValue="general" className="max-w-[740px]">
-        <TabsList aria-label={translate("Settings sections")}>
-          <TabsTrigger value="general">{translate("General")}</TabsTrigger>
-          <TabsTrigger value="payees">{translate("Payees")}</TabsTrigger>
-          <TabsTrigger value="categories">{translate("Categories")}</TabsTrigger>
-          <TabsTrigger value="institutions">{translate("Institutions")}</TabsTrigger>
+      <Tabs defaultValue="general" orientation="vertical" className="grid min-w-0 grid-cols-1 items-stretch gap-0 overflow-clip rounded-2xl border border-line bg-card shadow-sm @min-[640px]:grid-cols-[220px_minmax(0,1fr)]">
+        <TabsList aria-label={translate("Settings sections")} className="h-auto min-w-0 flex-col items-stretch justify-start gap-1 rounded-none border-b border-line bg-soft/50 p-3 @min-[640px]:border-r @min-[640px]:border-b-0">
+          {([
+            ['general', translate("General"), SettingsIcon],
+            ['payees', translate("Payees"), Users],
+            ['categories', translate("Categories"), Tags],
+            ['institutions', translate("Institutions"), Landmark],
+            ['providers', translate("Subscriptions"), Repeat],
+          ] as const).map(([value, label, Icon]) => <TabsTrigger key={value} value={value} className="w-full flex-none justify-start gap-3 px-3 py-3 text-left">
+            <Icon className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 whitespace-normal break-normal">{label}</span>
+          </TabsTrigger>)}
         </TabsList>
+        <div className="min-w-0 p-4 [overflow-wrap:anywhere] @min-[640px]:p-6 @min-[900px]:p-8 [&_p]:leading-relaxed [&_fieldset]:min-w-0">
+        <TabsContent value="providers"><SubscriptionProvidersSettings /></TabsContent>
         <TabsContent value="institutions"><InstitutionsSettings /></TabsContent>
         <TabsContent value="general" forceMount>
-      <section className="rounded-2xl border border-line bg-card p-6">
+      <section className="min-w-0">
         <LanguagePicker />
         <AppearancePicker value={appearance} onChange={setAppearance} />
         {!desktopAvailable ? (
@@ -327,9 +338,9 @@ export function SettingsPage() {
             <form className="border-b border-line pb-6" onSubmit={savePeriod}>
               <h3 className="text-base font-semibold">{translate("Payday cycle")}</h3>
               <p className="mt-1 text-xs">{translate("Group your dashboard by your monthly payday. Save to apply changes.")}</p>
-              <div className="my-3 flex items-center justify-between gap-5 border-b border-line py-5 text-[14px]">
+              <div className="my-3 flex flex-wrap items-center justify-between gap-5 border-b border-line py-5 text-[14px]">
                 <label htmlFor="period-day">{translate("Period start day")}</label>
-                <div className="w-48 shrink-0"><NativeSelect
+                <div className="w-48 max-w-full"><NativeSelect
                   id="period-day"
                   value={day}
                   disabled={saving}
@@ -368,17 +379,17 @@ export function SettingsPage() {
             </form>
             <h3 className="mt-6 text-base font-semibold">{translate("Storage & app information")}</h3>
             <dl className="my-3">
-              <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
+              <div className="flex flex-wrap justify-between gap-x-5 gap-y-2 border-b border-line py-[18px] text-[14px]">
                 <dt>{translate("Currency")}</dt>
                 <dd className="text-right text-muted">
                   {settings.currency ?? translate("Not selected yet")}
                 </dd>
               </div>
-              <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
+              <div className="flex flex-wrap justify-between gap-x-5 gap-y-2 border-b border-line py-[18px] text-[14px]">
                 <dt>{translate("Computer date")}</dt>
                 <dd className="text-right text-muted">{today.toLocaleDateString(getLocale(), { day: "numeric", month: "short", year: "numeric" })}</dd>
               </div>
-              <div className="flex justify-between gap-5 border-b border-line py-[18px] text-[14px]">
+              <div className="flex flex-wrap justify-between gap-x-5 gap-y-2 border-b border-line py-[18px] text-[14px]">
                 <dt>{translate("Storage")}</dt>
                 <dd className="text-right text-muted">{translate("Local SQLite database")}</dd>
               </div>
@@ -396,10 +407,11 @@ export function SettingsPage() {
         <TabsContent value="categories" forceMount>
           {desktopAvailable ? <TransactionOptionsSettings kind="category" /> : <p className="rounded-xl bg-soft p-5">{translate("Open the desktop app to manage categories.")}</p>}
         </TabsContent>
+          <p className="mt-6 border-t border-line pt-4 text-xs text-muted">
+            {translate("Heyday Money · Version")} {version}
+          </p>
+        </div>
       </Tabs>
-      <p className="max-w-[740px] px-1 py-[18px] text-[12px]">
-        {translate("Heyday Money · Version")} {version}
-      </p>
     </div>
   );
 }
