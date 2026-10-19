@@ -7,8 +7,13 @@
   </p>
 </p>
 
+<div align="center">
+
+[![CI](https://github.com/heyday-money/heyday/actions/workflows/ci.yml/badge.svg)](https://github.com/heyday-money/heyday/actions/workflows/ci.yml)
 [![Build macOS DMG](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml/badge.svg)](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml)
 [![Build Windows installers](https://github.com/heyday-money/heyday/actions/workflows/build-windows.yml/badge.svg)](https://github.com/heyday-money/heyday/actions/workflows/build-windows.yml)
+
+</div>
 
 ## What is?
 
