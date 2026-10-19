@@ -48,6 +48,9 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python scripts/set-release-version.py
 
+      - name: Configure MSI installer version
+        run: python scripts/configure-windows.py
+
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 

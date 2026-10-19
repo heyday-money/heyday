@@ -226,6 +226,13 @@ or manually from **Actions > Build Windows installers > Run workflow** after
 the workflow is on the default branch. Tag builds validate and apply the semantic
 version using the same script as macOS; branch builds keep the checked-in version.
 
+Before packaging, `scripts/configure-windows.py` sets the WiX installer version to
+the numeric `major.minor.patch` portion (for example, `0.0.1-beta.2` becomes
+`0.0.1` for MSI only). The application retains its complete semantic version.
+MSI version comparisons do not distinguish prereleases of the same core version;
+use the EXE installer when that distinction matters. For local Windows MSI builds,
+run `python scripts/configure-windows.py` before `bun run desktop:build`.
+
 The workflow installs pinned Bun and locked dependencies, runs Rust tests, and
 builds the frontend with TypeScript checks before packaging. Download the EXE or
 MSI artifact from the completed run's **Artifacts** section; artifacts are retained
