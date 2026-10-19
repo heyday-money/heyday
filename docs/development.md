@@ -218,6 +218,26 @@ require the one-time key setup described below. No local tags or releases are cr
 
 Based on the [Tauri GitHub Actions guide](https://v2.tauri.app/distribute/pipelines/github/).
 
+## Windows distribution builds
+
+`.github/workflows/build-windows.yml` builds Windows x64 NSIS (`-setup.exe`)
+and MSI installers on Windows Server 2022. It runs when a `v*` tag is pushed,
+or manually from **Actions > Build Windows installers > Run workflow** after
+the workflow is on the default branch. Tag builds validate and apply the semantic
+version using the same script as macOS; branch builds keep the checked-in version.
+
+The workflow installs pinned Bun and locked dependencies, runs Rust tests, and
+builds the frontend with TypeScript checks before packaging. Download the EXE or
+MSI artifact from the completed run's **Artifacts** section; artifacts are retained
+for 30 days. These builds do not publish GitHub Release assets or updater manifests
+and need no signing secrets. Windows code signing is not configured.
+
+`src-tauri/tauri.windows.conf.json` bundles the WebView2 offline installer so users
+can install without downloading a runtime. This increases installer size; the CI
+build itself still needs internet access to download dependencies and packaging tools.
+The app bundles its frontend and SQLite and needs no user-installed JavaScript runtime.
+See [Tauri's Windows installer guide](https://v2.tauri.app/distribute/windows-installer/).
+
 ### Local date and development storage
 
 The WebView reads the computer's local date (no network clock). Outlook's default

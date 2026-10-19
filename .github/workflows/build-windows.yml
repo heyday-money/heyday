@@ -1,0 +1,78 @@
+name: Build Windows installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    name: Windows x64 EXE and MSI
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Apply tag version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/set-release-version.py
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test Rust operations
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+
+      # Tauri runs beforeBuildCommand (TypeScript checks and Vite build),
+      # and automatically merges src-tauri/tauri.windows.conf.json.
+      - name: Build Windows installers
+        run: bun run tauri build --target x86_64-pc-windows-msvc --bundles nsis,msi --verbose -- --locked
+
+      - name: Keep EXE installer as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Heyday-Money-Windows-x64-EXE-${{ github.run_number }}
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Keep MSI installer as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Heyday-Money-Windows-x64-MSI-${{ github.run_number }}
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
