@@ -8,6 +8,7 @@
 </p>
 
 [![Build macOS DMG](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml/badge.svg)](https://github.com/heyday-money/heyday/actions/workflows/release-dmg.yml)
+[![Build Windows installers](https://github.com/heyday-money/heyday/actions/workflows/build-windows.yml/badge.svg)](https://github.com/heyday-money/heyday/actions/workflows/build-windows.yml)
 
 ## What is?
 
