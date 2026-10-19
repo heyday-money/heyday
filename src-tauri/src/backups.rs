@@ -159,7 +159,11 @@ async fn vacuum(conn: &mut SqliteConnection, path: &Path) -> Result<(), String> 
         .execute(conn)
         .await
         .map_err(|e| format!("Could not create the database snapshot: {e}"))?;
-    std::fs::File::open(path)
+    // Windows FlushFileBuffers (used by sync_all) requires a writable handle.
+    // Open only the newly created snapshot, without creating or truncating it.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
         .and_then(|f| f.sync_all())
         .map_err(err)
 }
