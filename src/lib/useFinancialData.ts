@@ -28,9 +28,9 @@ export function useFinancialData() {
     void load()
     const events = ['accounts-changed', 'transactions-changed', 'plans-changed', 'transaction-options-changed', 'incomes-changed']
     events.forEach(event => window.addEventListener(event, load))
-    window.addEventListener('focus', dayChanged)
+    window.addEventListener('focus', load)
     const timer = window.setInterval(dayChanged, 60000)
-    return () => { active = false; events.forEach(event => window.removeEventListener(event, load)); window.removeEventListener('focus', dayChanged); clearInterval(timer) }
+    return () => { active = false; events.forEach(event => window.removeEventListener(event, load)); window.removeEventListener('focus', load); clearInterval(timer) }
   }, [attempt])
   return { data, loading, error, today, reload: () => setAttempt(value => value + 1) }
 }

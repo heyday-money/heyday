@@ -236,8 +236,12 @@ run `python scripts/configure-windows.py` before `bun run desktop:build`.
 The workflow installs pinned Bun and locked dependencies, runs Rust tests, and
 builds the frontend with TypeScript checks before packaging. Download the EXE or
 MSI artifact from the completed run's **Artifacts** section; artifacts are retained
-for 30 days. These builds do not publish GitHub Release assets or updater manifests
-and need no signing secrets. Windows code signing is not configured.
+for 30 days. EXE and MSI build in independent jobs with fail-fast disabled, so
+one packaging failure does not discard the other installer. Tag builds also upload
+installers to the same GitHub Release as macOS, preserving existing notes and draft
+status. Manual branch builds publish workflow artifacts only. Concurrent release
+creation is handled by the shared `scripts/github-release.cjs` helper. No updater
+manifests or signing secrets are used by Windows builds; code signing is unconfigured.
 
 `src-tauri/tauri.windows.conf.json` bundles the WebView2 offline installer so users
 can install without downloading a runtime. This increases installer size; the CI
@@ -447,3 +451,27 @@ visibility. Subscription icons link to Subscriptions, with amount and payment ac
 in the tooltip. Monthly/yearly schedules clamp independently and respect first/end
 dates, pauses, and account availability. Credit-card subscriptions remain visible as
 billing reminders without adding cash expenses or inferring payment status.
+
+
+## Continuous integration and database instance safety
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to main. It checks the
+frontend build, Chromium browser tests, release helper tests, and Rust tests on
+macOS and Windows. Configure repository branch protection separately to require
+these jobs before merging. No release write credentials are needed by PR tests.
+Browser tests use mocked native IPC; packaged installer/picker QA remains required.
+
+The application requires Rust 1.89 or newer for OS-backed file locking. Before
+opening SQLite or applying migrations, it acquires `instance.lock` in the database
+storage directory and retains the handle for the process lifetime. A second
+process fails startup with an already-open message. The OS releases the lock after
+exit/crash; the file is intentionally retained. Debug and release directories use
+independent locks. Existing older app binaries do not participate in this lock;
+close them before opening the updated app. No database files are removed or copied.
+
+Home and other consumers of `useFinancialData` refresh on every window focus,
+including the same calendar day. Existing request ordering prevents an older
+response from overwriting a newer one; failed refreshes remain retryable.
+
+See [IMPROVEMENTS.md](../IMPROVEMENTS.md) for the remaining feature backlog and
+native release checks.

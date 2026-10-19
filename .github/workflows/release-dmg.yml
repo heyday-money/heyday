@@ -65,26 +65,10 @@ jobs:
           RELEASE_PRERELEASE: ${{ steps.version.outputs.prerelease }}
         with:
           script: |
-            const tag = process.env.RELEASE_TAG;
-            let release;
-            // Listing also finds drafts, which the release-by-tag endpoint omits.
-            for await (const { data } of github.paginate.iterator(
-              github.rest.repos.listReleases,
-              { ...context.repo, per_page: 100 },
-            )) {
-              release = data.find(candidate => candidate.tag_name === tag);
-              if (release) break;
-            }
-            if (!release) {
-              ({ data: release } = await github.rest.repos.createRelease({
-                ...context.repo,
-                tag_name: tag,
-                name: `Heyday Money ${tag}`,
-                body: 'Download the universal macOS DMG below (Apple Silicon and Intel).\nThis build is ad-hoc signed and is not Apple-notarized.',
-                draft: false,
-                prerelease: process.env.RELEASE_PRERELEASE === 'true',
-              }));
-            }
+            const ensureRelease = require('./scripts/github-release.cjs');
+            const release = await ensureRelease({ github, context,
+              tag: process.env.RELEASE_TAG,
+              prerelease: process.env.RELEASE_PRERELEASE === 'true' });
             core.setOutput('id', release.id.toString());
             core.setOutput('body', release.body ?? '');
 

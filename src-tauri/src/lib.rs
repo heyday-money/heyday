@@ -22,6 +22,7 @@ mod subscription_providers;
 mod transaction_options;
 mod transactions;
 mod updates;
+mod instance;
 
 #[derive(Serialize, sqlx::FromRow)]
 struct Settings {
@@ -99,6 +100,9 @@ pub fn run() {
         .setup(|app| {
             let directory = data_directory(app.path().app_data_dir()?, cfg!(debug_assertions));
             std::fs::create_dir_all(&directory)?;
+            // Acquire before opening SQLite or applying migrations. The OS lock
+            // protects restore and stale drafts across processes, not just tasks.
+            app.manage(instance::DatabaseInstance::acquire(&directory)?);
             let options = SqliteConnectOptions::new()
                 .filename(directory.join("heyday.db"))
                 .create_if_missing(true)

@@ -15,7 +15,19 @@ concurrency:
 
 jobs:
   build-windows:
-    name: Windows x64 EXE and MSI
+    name: Windows x64 ${{ matrix.label }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bundle: nsis
+            label: EXE
+            pattern: '*-setup.exe'
+          - bundle: msi
+            label: MSI
+            pattern: '*.msi'
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
@@ -43,12 +55,14 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Apply tag version
+        id: version
         if: startsWith(github.ref, 'refs/tags/')
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python scripts/set-release-version.py
 
       - name: Configure MSI installer version
+        if: matrix.bundle == 'msi'
         run: python scripts/configure-windows.py
 
       - name: Install frontend dependencies
@@ -60,22 +74,41 @@ jobs:
       # Tauri runs beforeBuildCommand (TypeScript checks and Vite build),
       # and automatically merges src-tauri/tauri.windows.conf.json.
       - name: Build Windows installers
-        run: bun run tauri build --target x86_64-pc-windows-msvc --bundles nsis,msi --verbose -- --locked
+        run: bun run tauri build --target x86_64-pc-windows-msvc --bundles ${{ matrix.bundle }} --verbose -- --locked
 
-      - name: Keep EXE installer as workflow artifact
+      - name: Keep installer as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Heyday-Money-Windows-x64-EXE-${{ github.run_number }}
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          name: Heyday-Money-Windows-x64-${{ matrix.label }}-${{ github.run_number }}
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/${{ matrix.bundle }}/${{ matrix.pattern }}
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
 
-      - name: Keep MSI installer as workflow artifact
-        uses: actions/upload-artifact@v4
+      - name: Publish installer to tag release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          BUNDLE: ${{ matrix.bundle }}
         with:
-          name: Heyday-Money-Windows-x64-MSI-${{ github.run_number }}
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 30
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const ensureRelease = require('./scripts/github-release.cjs');
+            const release = await ensureRelease({ github, context,
+              tag: process.env.RELEASE_TAG,
+              prerelease: process.env.RELEASE_PRERELEASE === 'true' });
+            const directory = path.join('src-tauri/target/x86_64-pc-windows-msvc/release/bundle', process.env.BUNDLE);
+            const extension = process.env.BUNDLE === 'nsis' ? '-setup.exe' : '.msi';
+            const files = fs.readdirSync(directory).filter(name => name.endsWith(extension));
+            if (!files.length) throw new Error('No installer found to publish');
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets,
+              { ...context.repo, release_id: release.id, per_page: 100 });
+            for (const name of files) {
+              const existing = assets.find(asset => asset.name === name);
+              if (existing) await github.rest.repos.deleteReleaseAsset({ ...context.repo, asset_id: existing.id });
+              await github.rest.repos.uploadReleaseAsset({ ...context.repo, release_id: release.id,
+                name, data: fs.readFileSync(path.join(directory, name)) });
+            }
