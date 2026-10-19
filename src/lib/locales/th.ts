@@ -1674,6 +1674,8 @@ export const thai: Record<string, string> = {
   "Upcoming payment plan": "แผนชำระที่จะถึงกำหนด",
   "Upcoming statement due date": "วันครบกำหนดบิลถัดไป",
   "Update available on GitHub Releases. This build or release does not have signed in-app updates configured; install its DMG manually.": "มีอัปเดตใน GitHub Releases แอปหรือเวอร์ชันนี้ยังไม่ได้ตั้งอัปเดตที่ลงลายมือชื่อภายในแอป ให้ติดตั้ง DMG เอง",
+  "Update available on GitHub Releases. Download and install the Windows EXE or MSI installer manually.": "มีอัปเดตใน GitHub Releases ดาวน์โหลดและติดตั้งตัวติดตั้ง Windows แบบ EXE หรือ MSI ด้วยตนเอง",
+  "Update available on GitHub Releases. Download the installer for your operating system and install it manually.": "มีอัปเดตใน GitHub Releases ดาวน์โหลดตัวติดตั้งสำหรับระบบปฏิบัติการของคุณและติดตั้งด้วยตนเอง",
   "Update available. Installation is disabled in development builds.": "มีอัปเดต การติดตั้งปิดไว้ในแอปสำหรับพัฒนา",
   "Update available. Save your work before installing.": "มีอัปเดต บันทึกงานก่อนติดตั้ง",
   "Update your account details. Opening balance and account type are locked.": "แก้รายละเอียดบัญชี ยอดเริ่มต้นและประเภทบัญชีถูกล็อก",

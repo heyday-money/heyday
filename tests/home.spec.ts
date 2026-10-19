@@ -86,6 +86,29 @@ async function nativeSnapshot(page: Page, data = example()) {
   }, data)
 }
 
+test('Home refreshes on same-day focus without a change event and recovers from failure', async ({ page }) => {
+  await nativeSnapshot(page)
+  await page.goto('/')
+  await expect(page.getByLabel('Home financial summary')).toContainText('24,850.00 THB')
+  const updated = example()
+  updated.accounts[0].current_balance = '1234500'
+  await page.evaluate(snapshot => {
+    localStorage.setItem('home-data', JSON.stringify(snapshot))
+    window.dispatchEvent(new Event('focus'))
+  }, updated)
+  await expect(page.getByLabel('Home financial summary')).toContainText('12,345.00 THB')
+  await page.evaluate(() => {
+    sessionStorage.setItem('fail-home', 'true')
+    window.dispatchEvent(new Event('focus'))
+  })
+  await expect(page.getByRole('alert')).toBeVisible()
+  await page.evaluate(() => {
+    sessionStorage.removeItem('fail-home')
+    window.dispatchEvent(new Event('focus'))
+  })
+  await expect(page.getByLabel('Home financial summary')).toContainText('12,345.00 THB')
+})
+
 test('Home keeps its island, shows actuals, follows cycle selection, refreshes and links reminders to their management views', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))

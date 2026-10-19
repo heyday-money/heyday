@@ -85,6 +85,14 @@ fn manifest(release: &Release) -> Option<&str> {
         .map(|asset| asset.browser_download_url.as_str())
 }
 
+fn manual_update_message(platform: &str) -> &'static str {
+    match platform {
+        "windows" => "Update available on GitHub Releases. Download and install the Windows EXE or MSI installer manually.",
+        "macos" => "Update available on GitHub Releases. This build or release does not have signed in-app updates configured; install its DMG manually.",
+        _ => "Update available on GitHub Releases. Download the installer for your operating system and install it manually.",
+    }
+}
+
 #[tauri::command]
 pub async fn check_app_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     let mut info = UpdateInfo {
@@ -102,7 +110,7 @@ pub async fn check_app_update(app: tauri::AppHandle) -> Result<UpdateInfo, Strin
             && manifest(&release).is_some();
         info.message = if cfg!(debug_assertions) { "Update available. Installation is disabled in development builds." }
         else if info.can_install { "Update available. Save your work before installing." }
-        else { "Update available on GitHub Releases. This build or release does not have signed in-app updates configured; install its DMG manually." }.into();
+        else { manual_update_message(std::env::consts::OS) }.into();
         info.notes = release.body;
     }
     Ok(info)
@@ -178,6 +186,13 @@ pub async fn install_app_update(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn manual_install_instructions_match_platform() {
+        assert!(manual_update_message("windows").contains("Windows EXE or MSI"));
+        assert!(!manual_update_message("windows").contains("DMG"));
+        assert!(manual_update_message("macos").contains("DMG"));
+        assert!(manual_update_message("linux").contains("your operating system"));
+    }
     fn release(tag: &str, draft: bool, prerelease: bool) -> Release {
         Release {
             tag_name: tag.into(),
