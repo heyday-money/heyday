@@ -3,6 +3,7 @@ use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
 mod backups;
+mod exports;
 mod card_limits;
 mod institutions;
 mod logos;
@@ -118,6 +119,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_settings,
             backups::export_backup,
+            exports::export_accounts_excel,
             backups::preview_backup,
             backups::restore_backup,
             backups::cancel_backup_restore,

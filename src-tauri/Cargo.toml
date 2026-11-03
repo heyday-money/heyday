@@ -1,6 +1,6 @@
 [package]
 name = "heyday-money"
-version = "0.0.1-beta.3"
+version = "0.0.1-beta.4"
 description = "An offline personal finance desktop app"
 edition = "2021"
 rust-version = "1.89"
@@ -28,6 +28,8 @@ tokio = { version = "1", features = ["sync"] }
 semver = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde_json = "1"
+rust_xlsxwriter = "0.92"
 
 [dev-dependencies]
+zip = { version = "7.4", default-features = false, features = ["deflate"] }
 tokio = { version = "1", features = ["macros", "rt"] }

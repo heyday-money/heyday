@@ -21,6 +21,7 @@ test('data reset requires exact confirmation, handles failure, then reloads defa
     } } })
   })
   await page.goto('/#/settings')
+  await page.getByRole('tab', { name: 'Data', exact: true }).click()
   await page.getByRole('button', { name: 'Clear all data', exact: true }).click()
   const confirm = page.getByRole('button', { name: 'Permanently clear all data' })
   await expect(confirm).toBeDisabled()

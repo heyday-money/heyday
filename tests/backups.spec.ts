@@ -32,6 +32,7 @@ test.beforeEach(async ({ page }) => {
     } } })
   })
   await page.goto('/#/settings')
+  await page.getByRole('tab', { name: 'Data', exact: true }).click()
 })
 
 test('exports backup, handles picker cancellation and errors without changing settings', async ({ page }) => {
@@ -84,17 +85,23 @@ test('requires exact confirmation, preserves data on failure, prevents busy dism
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByLabel('Period start day')).toHaveValue('28')
   await expect(page.getByText('Backup restored. Your previous data is saved in a recovery backup.')).toBeVisible()
+  await page.getByRole('tab', { name: 'Data', exact: true }).click()
   await expect(page.getByText('Backup saved at: /ApplicationData/backups/before-restore.db')).toBeVisible()
 })
 
 test('backup controls require saved settings and work in all appearances', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Restore backup', exact: true })).toBeEnabled()
+  await page.getByRole('tab', { name: 'General', exact: true }).click()
   await page.getByLabel('Period start day').selectOption('28')
+  await page.getByRole('tab', { name: 'Data', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Restore backup', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Export backup', exact: true })).toBeDisabled()
+  await page.getByRole('tab', { name: 'General', exact: true }).click()
   await page.getByLabel('Period start day').selectOption('25')
   for (const appearance of ['Light', 'Dark', 'Heyday']) {
+    await page.getByRole('tab', { name: 'General', exact: true }).click()
     await page.getByRole('radio', { name: appearance, exact: true }).check()
+    await page.getByRole('tab', { name: 'Data', exact: true }).click()
     await page.getByRole('button', { name: 'Restore backup', exact: true }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('button', { name: 'Cancel', exact: true }).click()
