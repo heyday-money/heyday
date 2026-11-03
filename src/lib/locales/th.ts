@@ -1,5 +1,15 @@
 // Interface copy only. Never translate user-entered records or persisted identifiers.
 export const thai: Record<string, string> = {
+  "Data": "ข้อมูล",
+  "Export accounts": "ส่งออกบัญชี",
+  "Accounts exported.": "ส่งออกบัญชีแล้ว",
+  "Could not export accounts. Please try again.": "ส่งออกบัญชีไม่สำเร็จ โปรดลองอีกครั้ง",
+  "Download all active, archived, and paid-off accounts as an Excel (.xlsx) file. Includes balances and account details, without transaction history. Amounts are exported as exact text to preserve precision.": "ดาวน์โหลดบัญชีที่ใช้งาน เก็บถาวร และชำระหมดแล้วเป็นไฟล์ Excel (.xlsx) รวมยอดเงินและรายละเอียดบัญชี ไม่รวมประวัติธุรกรรม ส่งออกจำนวนเงินเป็นข้อความเพื่อรักษาความแม่นยำ",
+  "Excel exports are for your records and cannot be restored into the app. Use Backup & restore for a complete backup.": "ไฟล์ Excel ใช้เก็บข้อมูลอ้างอิงและไม่สามารถกู้คืนเข้าแอปได้ ใช้สำรองและกู้คืนข้อมูลเพื่อสำรองข้อมูลทั้งหมด",
+  "Export accounts to Excel": "ส่งออกบัญชีเป็น Excel",
+  "Export saved at:": "บันทึกไฟล์ส่งออกที่:",
+  "Save or discard your General settings changes before backup or restore.": "บันทึกหรือยกเลิกการเปลี่ยนแปลงการตั้งค่าทั่วไปก่อนสำรองหรือกู้คืนข้อมูล",
+
   "Dates beyond month-end use the last day. Weekends and holidays are not adjusted. Manage repayment due days in account details and billing schedules in Subscriptions.": "วันที่เกินสิ้นเดือนใช้วันสุดท้ายของเดือน ไม่ปรับตามวันหยุด จัดการวันชำระหนี้ในรายละเอียดบัญชีและกำหนดเรียกเก็บในหน้าสมาชิก",
   "No scheduled events for this month and filter.": "ไม่มีรายการตามกำหนดในเดือนและประเภทที่เลือก",
   "Account repayment deadlines and subscription billing dates. Scheduled reminders only; payments are not confirmed and balances stay unchanged.": "วันครบกำหนดชำระหนี้และวันเรียกเก็บค่าสมาชิก เป็นการเตือนตามกำหนดเท่านั้น ไม่ยืนยันการจ่ายและไม่เปลี่ยนยอดบัญชี",

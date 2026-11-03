@@ -11,6 +11,7 @@ import { SubscriptionProvidersSettings } from "./components/SubscriptionProvider
 import { InstitutionsSettings } from "./components/InstitutionsSettings";
 import { AppUpdates } from "./components/AppUpdates";
 import { useLocalDate } from "./lib/useLocalDate";
+import { AccountExport } from "./components/AccountExport";
 import { DatabaseBackups } from "./components/DatabaseBackups";
 import { DangerZone } from "./components/DangerZone";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
@@ -45,6 +46,7 @@ import {
   Tags,
   Landmark,
   Wallet,
+  Database,
 } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
 import appConfig from "../src-tauri/tauri.conf.json";
@@ -311,6 +313,7 @@ export function SettingsPage() {
             ['categories', translate("Categories"), Tags],
             ['institutions', translate("Institutions"), Landmark],
             ['providers', translate("Subscriptions"), Repeat],
+            ['data', translate("Data"), Database],
           ] as const).map(([value, label, Icon]) => <TabsTrigger key={value} value={value} className="w-full flex-none justify-start gap-3 px-3 py-3 text-left">
             <Icon className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 whitespace-normal break-normal">{label}</span>
           </TabsTrigger>)}
@@ -397,9 +400,13 @@ export function SettingsPage() {
           </>
         )}
       </section>
-          <DatabaseBackups disabled={saving || !settings || day !== settings.period_start_day} />
           <AppUpdates version={version} disabled={saving || !!settings && day !== settings.period_start_day} />
-          <DangerZone disabled={saving || !settings} />
+        </TabsContent>
+        <TabsContent value="data" forceMount>
+          <AccountExport disabled={saving || !settings} />
+          {settings && day !== settings.period_start_day && <p className="mt-4 text-sm text-muted">{translate("Save or discard your General settings changes before backup or restore.")}</p>}
+          <DatabaseBackups disabled={saving || !settings || day !== settings.period_start_day} />
+          <DangerZone disabled={saving || !settings || day !== settings.period_start_day} />
         </TabsContent>
         <TabsContent value="payees" forceMount>
           {desktopAvailable ? <TransactionOptionsSettings kind="payee" /> : <p className="rounded-xl bg-soft p-5">{translate("Open the desktop app to manage payees.")}</p>}

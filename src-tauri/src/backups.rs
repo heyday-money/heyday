@@ -211,7 +211,7 @@ async fn prepare(source: &Path) -> Result<PreparedBackup, String> {
     staged.close().await.map_err(err)?;
     Ok(PreparedBackup { directory, preview })
 }
-fn protect_live_path(pool: &SqlitePool, target: &Path) -> Result<(), String> {
+pub(crate) fn protect_live_path(pool: &SqlitePool, target: &Path) -> Result<(), String> {
     let options = pool.connect_options();
     let live = options.get_filename();
     let parent = target

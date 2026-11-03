@@ -192,7 +192,7 @@ negative amounts remain red in both themes. Calculations and stored data are unc
 
 ### Clear local data
 
-Settings > General includes a Danger Zone with a typed `DELETE ALL DATA` confirmation. The Rust command deletes all user financial records, planner entries, schedules, payees, and categories in one foreign-key-safe transaction, then resets currency to unset and payday start to 1. Schema, migration history, built-in Outlook sections, and appearance preferences remain. Success reloads the interface and discards drafts; failure rolls back all deletions. This action is irreversible; backup/restore remains future work.
+Settings > Data includes a Danger Zone with a typed `DELETE ALL DATA` confirmation. The Rust command deletes all user financial records, planner entries, schedules, payees, and categories in one foreign-key-safe transaction, then resets currency to unset and payday start to 1. Schema, migration history, built-in Outlook sections, and appearance preferences remain. Success reloads the interface and discards drafts; failure rolls back all deletions. This action is irreversible; use Backup & restore in the same Data section to save a restorable snapshot first.
 
 ## Tag-triggered macOS release
 
@@ -475,3 +475,25 @@ response from overwriting a newer one; failed refreshes remain retryable.
 
 See [IMPROVEMENTS.md](../IMPROVEMENTS.md) for the remaining feature backlog and
 native release checks.
+
+
+### Account Excel export
+
+Settings > Data groups account export, backup/restore and data reset. The
+`export_accounts_excel` command owns the native save picker and holds the database
+operation guard while reading accounts, currency, payoff markers and credit-limit
+links in one SQLite transaction. It builds the workbook locally with
+`rust_xlsxwriter` and atomically publishes a completed temporary file beside the
+destination. The active database and journal paths are protected.
+
+Accounts includes every account status and account detail; Read me documents
+balance signs and shared-limit semantics. Monetary values use exact decimal text
+(in currency units), avoiding Excel's 15-significant-digit numeric limit. IDs and
+last four digits remain text, and user input cannot become a formula. Empty
+databases export headers. This is a report, not an import/restore format; use
+SQLite backups for full data recovery. No schema migration is needed.
+
+Validation: Rust export tests inspect snapshot contents and workbook XML, currency
+precision and i64 boundaries, formula safety, and empty exports. Browser tests
+cover cancellation, errors/retry, busy controls, and preservation of General
+drafts. Native save-picker and Excel opening smoke tests remain release checks.

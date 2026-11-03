@@ -31,6 +31,14 @@ Your alpha files remain untouched, but their records will not appear in beta.
 Subsequent beta and v1 updates preserve the new database through versioned migrations.
 See [database storage and migrations](docs/development.md) for file locations.
 
+## Manage your data
+
+Open **Settings → Data** to export accounts to Excel, back up or restore your
+database, or clear app data. Excel exports include active, archived, and paid-off
+accounts with their balances and details. Amounts are decimal text to preserve
+exact precision; transaction history is not included. Use **Backup & restore**
+for a complete, restorable copy of your data. Both exports work locally and offline.
+
 ## Philosophy of Money and Finance
 [Standford Encyclopedia of Philosophy — Philosophy of Money and Finance](https://plato.stanford.edu/entries/money-finance/)
 
