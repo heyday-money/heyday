@@ -9,7 +9,7 @@ Advanced security in the Heyday account panel now supports:
   The exact encrypted request is saved before sending, and both roots remain in
   the OS credential store until the new package is acknowledged. Cancellation
   checks whether the server already committed; it never reverses a committed key.
-- **Verify another device**: check cloud history against this device's saved pin
+- **Get verification code**: check cloud history against this device's saved pin
   and display a code to transfer directly to the new device with its recovery key.
   The code is a minimum-history checkpoint, not a key or global freshness proof.
 - **Recovery without a trusted device**: a separate unchecked warning allows

@@ -399,7 +399,7 @@ test(`${tabName} balances sort exactly in both directions, including negative an
 })
 }
 
-test('archive and restore preserve account details with explicit confirmation', async ({ page }) => {
+test('archive in the editor protects drafts and failures; restore preserves account details', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, 'isTauri', { value: true })
     const account = { id: 'bank', name: 'Savings', type: 'bank', opening_balance: '12345', current_balance: '12345', is_archived: false, notes: 'Keep this history', last_four: null, loan_type: null, institution: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }
@@ -410,7 +410,11 @@ test('archive and restore preserve account details with explicit confirmation', 
         case 'list_accounts': return args.includeArchived || !account.is_archived ? [account] : []
         case 'list_institutions': return { institutions: [], accounts: [] }
         case 'list_card_limit_groups': return { groups: [], cards: [] }
-        case 'set_account_archived': account.is_archived = args.archived!; return null
+        case 'list_transactions': return []
+        case 'set_account_archived':
+          if (sessionStorage.getItem('fail-archive')) throw 'Could not archive account.'
+          if (sessionStorage.getItem('hold-archive')) await new Promise<void>(resolve => window.addEventListener('release-archive', () => resolve(), { once: true }))
+          account.is_archived = args.archived!; return null
         default: throw new Error(`Unexpected command: ${command}`)
       }
     } } })
@@ -430,24 +434,48 @@ test('archive and restore preserve account details with explicit confirmation', 
   await expect(page).toHaveURL(/#\/accounts$/)
   await row.getByRole('cell').filter({ hasText: '123.45' }).click()
   await expect(page).toHaveURL(/#\/accounts\/bank\/details$/)
+  await expect(page.getByRole('button', { name: 'Archive account Savings', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Edit account Savings', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit account', exact: true })
+  await editor.getByLabel('Notes (optional)').fill('Unsaved account notes')
+  await expect(editor.getByRole('button', { name: 'Archive account Savings', exact: true })).toBeDisabled()
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await editor.getByRole('button', { name: 'Keep editing', exact: true }).click()
+  await expect(editor.getByLabel('Notes (optional)')).toHaveValue('Unsaved account notes')
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await editor.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit account Savings', exact: true }).click()
+  await expect(editor.getByLabel('Notes (optional)')).toHaveValue('Keep this history')
+  await editor.getByRole('button', { name: 'Archive account Savings', exact: true }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: 'test-results/account-edit-archive.png', animations: 'disabled' })
   await page.getByRole('button', { name: 'Archive account Savings', exact: true }).click()
-  const dialog = page.getByRole('dialog')
+  const dialog = page.getByRole('dialog', { name: 'Archive Savings?', exact: true })
   await expect(dialog).toContainText('excludes this balance from Net Worth')
   await expect(dialog).toContainText('123.45')
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Archive account Savings', exact: true })).toBeVisible()
+  await expect(editor.getByRole('button', { name: 'Archive account Savings', exact: true })).toBeFocused()
   await page.getByRole('button', { name: 'Archive account Savings', exact: true }).click()
+  await page.evaluate(() => sessionStorage.setItem('fail-archive', '1'))
   await dialog.getByRole('button', { name: 'Archive account', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Could not archive account.')
+  await page.evaluate(() => { sessionStorage.removeItem('fail-archive'); sessionStorage.setItem('hold-archive', '1') })
+  await dialog.getByRole('button', { name: 'Archive account', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  await page.evaluate(() => { sessionStorage.removeItem('hold-archive'); window.dispatchEvent(new Event('release-archive')) })
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Edit account Savings' })).toHaveCount(0)
   await page.getByRole('link', { name: '← Accounts', exact: true }).click()
   await page.getByText('Archived accounts (1)', { exact: true }).click()
   await expect(page.getByRole('button', { name: 'Restore account Savings' })).toHaveCount(0)
   await page.getByRole('link', { name: 'Savings', exact: true }).click()
   await expect(page.getByText('Keep this history', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Transaction history', exact: true })).toHaveAttribute('href', /account=bank/)
+  await expect(page.getByRole('link', { name: 'View all transactions', exact: true })).toHaveAttribute('href', /account=bank/)
   await page.getByRole('button', { name: 'Restore account Savings', exact: true }).click()
-  await expect(dialog).toContainText('may generate forecasts again')
-  await dialog.getByRole('button', { name: 'Restore account', exact: true }).click()
+  const restore = page.getByRole('dialog', { name: 'Restore Savings?', exact: true })
+  await expect(restore).toContainText('may generate forecasts again')
+  await restore.getByRole('button', { name: 'Restore account', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Edit account Savings' })).toBeVisible()
   await page.getByRole('link', { name: '← Accounts', exact: true }).click()
   await expect(page.getByText('Archived accounts (1)', { exact: true })).toHaveCount(0)

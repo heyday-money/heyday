@@ -59,7 +59,7 @@ test('mark paid off validates zero, preserves failed confirmation, and retains h
   await expect(page.getByText('Paid off 2026-09-29', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Mark as paid off', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Borrowings & schedules', exact: true })).toHaveCount(0)
-  await page.getByRole('link', { name: 'Transaction history', exact: true }).click()
+  await page.getByRole('link', { name: 'View all transactions', exact: true }).click()
   await expect(page).toHaveURL(/#\/transactions\?account=loan$/)
   await expect(page.getByText('No transactions yet', { exact: true })).toBeVisible()
   await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Finished loan' }).click()

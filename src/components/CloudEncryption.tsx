@@ -96,14 +96,14 @@ export function CloudEncryption({ disabled, online, registered = false, onBusyCh
   return <div className="space-y-4">
     {children(status?.rotationPending ? 'rotating' : status?.state === 'unlocked' && needsHistory ? 'locked' : status?.state ?? null, prepare)}
     {busy && <p role="status" className="text-sm text-muted">{t('Updating encryption…')}</p>}
-    {status?.state === 'not_set' && <div className="space-y-3 rounded-xl border border-line bg-soft p-4">
-      <p className="text-sm">{t('Set up encryption and keep your recovery key somewhere safe. Support cannot recover it.')}</p>
+    {(status?.state === 'not_set' || status?.state === 'locked') && <div className="space-y-2 rounded-xl border border-line bg-soft p-4">
+      <p className="text-sm font-medium">{t('One recovery key for your account')}</p>
+      <p className="text-sm text-muted">{status.state === 'not_set'
+        ? t('Save your recovery key when you set up cloud sync. You will use this same key on every device signed in to this account. Support cannot recover a lost key.')
+        : t('Enter the recovery key you saved when setting up cloud sync. All devices connected to this account use the same recovery key.')}</p>
     </div>}
     {status?.state === 'pending' && <div className="space-y-3 rounded-xl border border-line bg-soft p-4">
       <p className="text-sm">{t('Setup was interrupted. Use the recovery key you already saved to finish without replacing your encryption key.')}</p>
-    </div>}
-    {status?.state === 'locked' && <div className="space-y-3 rounded-xl border border-line bg-soft p-4">
-      <p className="text-sm">{t('This device needs your recovery key before it can sync. Your cloud data is still encrypted and retained.')}</p>
     </div>}
     {status?.unverifiedHistory && <div role="status" className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm"><p className="font-medium">{t('History recovered without independent verification')}</p><p>{t('The recovery key unlocked your data, but older cloud history could not be checked against a trusted device. Future verified checkpoints are saved on this device to detect rollback.')}</p><Button variant="outline" size="sm" disabled={blocked || !online} onClick={() => { clearSecrets(); setDialog('recover') }}>{t('Verify recovered history')}</Button></div>}
     {status?.state === 'changed' && <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm">{t('Encryption changed on another device. Restore with the latest recovery key.')}</p>}
@@ -115,10 +115,20 @@ export function CloudEncryption({ disabled, online, registered = false, onBusyCh
       <Button size="sm" variant="outline" disabled={blocked || !online} onClick={() => void refresh()}>{t('Check encryption status')}</Button>
       {status?.state === 'unlocked' && <div className="space-y-3">
       <div className="space-y-3 border-b border-line pb-4">
-        <p className="text-sm text-muted">{t('Replace your recovery key to rotate encryption for future changes. Other devices will need the new key. Existing history stays readable; copies already held by another device cannot be erased.')}</p>
+        <p className="text-sm font-medium">{t('Connect another device')}</p>
+        <p className="text-sm text-muted">{t('Use the recovery key you already saved for this account. Keep it somewhere safe so you can use it again on another device.')}</p>
+        <ol className="list-decimal space-y-2 pl-5 text-sm text-muted marker:font-medium marker:text-ink">
+          <li>{t('On the new device, sign in to the same Heyday account and register the device.')}</li>
+          <li>{t('Choose Restore encryption key and enter your saved recovery key.')}</li>
+          <li>{t('Get a history verification code on this device, then enter it in the History verification code field on the new device.')}</li>
+          <li>{t('Enable cloud sync on the new device when you are ready to share its financial data.')}</li>
+        </ol>
+        <Button variant="outline" disabled={blocked || !online || !!status.rotationPending || needsHistory} onClick={() => void run(async () => { const code = await cloudHistoryVerificationCode(); if (mounted.current) { clearSecrets(); setHistoryCode(code); setDialog('history') } })}>{t('Get verification code')}</Button>
+      </div>
+      <div className="space-y-3 border-b border-line pb-4">
+        <p className="text-sm font-medium">{t('Change the recovery key for your account')}</p>
+        <p className="text-sm text-muted">{t('Replacing the recovery key changes it for your whole account. All your other devices will need the new recovery key to sync again. Existing cloud history stays available; copies already held by another device cannot be erased.')}</p>
         <Button variant="outline" disabled={blocked || !online || !!status.rotationPending || needsHistory} onClick={() => void begin(true)}><KeyRound aria-hidden="true" className="size-4" />{t('Replace recovery key')}</Button>
-        <p className="text-sm text-muted">{t('Verify a new device using a code copied directly from this trusted device. This checks cloud history before any downloaded financial records are applied.')}</p>
-        <Button variant="outline" disabled={blocked || !online || !!status.rotationPending || needsHistory} onClick={() => void run(async () => { const code = await cloudHistoryVerificationCode(); if (mounted.current) { clearSecrets(); setHistoryCode(code); setDialog('history') } })}>{t('Verify another device')}</Button>
       </div>
       <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={!!status.rememberEncryption} disabled={blocked || !online} onChange={event => { const remember = event.target.checked; void run(async () => { const next = await cloudRememberEncryption(remember); if (mounted.current) setStatus(next) }) }} className="mt-1" /><span>{t('Remember encryption on this device')}</span></label>
       <p className="text-xs text-muted">{t('Keeps your encryption key in the system secure store after sign-out. Only this account can use it after signing in again.')}</p>
@@ -135,13 +145,23 @@ export function CloudEncryption({ disabled, online, registered = false, onBusyCh
     <Dialog open={dialog !== null} onOpenChange={value => { if (!value && !busy) close() }}>
       <DialogContent showCloseButton={!busy} onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (busy) event.preventDefault() }}>
         <DialogHeader>
-          <DialogTitle>{dialog === 'history' ? t('History verification code') : rotating ? t('Replace recovery key and rotate encryption') : dialog === 'remove' ? t('Remove saved encryption key?') : dialog === 'recover' ? t('Restore encryption key') : t('Save your recovery key')}</DialogTitle>
-          <DialogDescription>{dialog === 'history' ? t('Transfer this code directly to your new device. It pins the history verified now and contains no encryption key. Generate a new code if the recovery key changes.') : rotating ? t('Save and re-enter the new key. It replaces the old recovery key and rotates encryption for future changes. Other devices must restore with the new key. Support cannot recover it.') : dialog === 'remove'
+          <DialogTitle>{dialog === 'history' ? t('History verification code') : rotating ? t('Replace account recovery key') : dialog === 'remove' ? t('Remove saved encryption key?') : dialog === 'recover' ? t('Restore encryption key') : t('Save your recovery key')}</DialogTitle>
+          <DialogDescription>{dialog === 'history' ? t('Your recovery key unlocks your encrypted data. This separate code checks that the cloud history matches the history verified on this device.') : rotating ? t('Save and re-enter the new recovery key for your whole account. All your other devices will need the new recovery key to sync again. Your existing data stays available. Support cannot recover a lost key.') : dialog === 'remove'
             ? t('Sync will pause and the saved encryption key will be removed from this device. You will need your recovery key to sync again. Your local finances and encrypted cloud data remain available.')
-            : t('Keep this key private and separate from this computer. Anyone with the key and encrypted data can read that data. Support cannot recover a lost key.')}</DialogDescription>
+            : dialog === 'recover'
+              ? status?.state === 'changed'
+                ? t('The recovery key for this account was replaced. Enter the latest recovery key saved on the device that changed it. Your local financial data stays on this device.')
+                : t('Enter the recovery key you saved when setting up cloud sync. All devices connected to this account use the same recovery key.')
+              : dialog === 'resume'
+                ? t('Use the recovery key you already saved to finish setup. This will be the recovery key for all devices connected to your account.')
+                : t('Save one recovery key for your account. You will use this same key to connect your other devices. Keep it private and separate from this computer. Support cannot recover a lost key.')}</DialogDescription>
         </DialogHeader>
         {dialog === 'history' && status?.unverifiedHistory && <p className="text-sm text-amber-800 dark:text-amber-200">{t('This device recovered without independent verification. The new device will keep the same history notice.')}</p>}
-        {dialog === 'history' && <textarea aria-label={t('History verification code')} readOnly value={historyCode} spellCheck={false} className="min-h-40 w-full select-text break-all rounded-lg border border-line bg-soft p-3 font-mono text-xs" />}
+        {dialog === 'history' && <div className="space-y-3">
+          <textarea aria-label={t('History verification code')} readOnly value={historyCode} spellCheck={false} className="min-h-40 w-full select-text break-all rounded-lg border border-line bg-soft p-3 font-mono text-xs" />
+          <p className="text-sm text-muted">{t('On the new device, open Restore encryption key. Enter your saved recovery key, then paste this code into History verification code.')}</p>
+          <p className="text-xs text-muted">{t('Generate a fresh verification code when connecting another device. If you replace your recovery key, generate a new code.')}</p>
+        </div>}
         {generated && <div className="space-y-3">
           <label htmlFor="generated-recovery" className="text-sm font-medium">{t('Your recovery key')}</label>
           <textarea id="generated-recovery" readOnly value={generated} spellCheck={false} className="min-h-24 w-full select-text break-all rounded-lg border border-line bg-soft p-3 font-mono text-sm" />
@@ -151,19 +171,25 @@ export function CloudEncryption({ disabled, online, registered = false, onBusyCh
         {dialog !== 'remove' && dialog !== 'history' && <>
           <label htmlFor="recovery-entry" className="text-sm font-medium">{dialog === 'setup' || rotating ? t('Re-enter your saved recovery key') : t('Recovery key')}</label>
           <input id="recovery-entry" type="password" autoComplete="off" spellCheck={false} maxLength={128} value={entered} onChange={event => setEntered(event.target.value)} disabled={busy} className="w-full rounded-lg border border-line bg-card px-3 py-2 font-mono text-sm" />
-          {dialog === 'recover' && status?.historyVerified === false && <div className="space-y-2"><label htmlFor="history-code" className="text-sm font-medium">{t('History verification code')}</label><textarea id="history-code" value={historyCode} onChange={event => setHistoryCode(event.target.value)} disabled={busy} autoComplete="off" spellCheck={false} maxLength={4096} className="min-h-24 w-full rounded-lg border border-line bg-card p-3 font-mono text-xs" /><p className="text-xs text-muted">{t('On a trusted device, open Advanced security and choose Verify another device. A recovery key alone cannot prove that the server returned the latest history. Keep a trusted device available until verification completes.')}</p>{needsHistory && <label className="flex items-start gap-3 rounded-lg border border-amber-500/30 p-3 text-sm"><input type="checkbox" checked={allowUnverified} onChange={event => setAllowUnverified(event.target.checked)} disabled={busy || !!historyCode.trim()} className="mt-1" /><span>{t('I no longer have a trusted device or verification code. I understand that the server could return older or incomplete history, and I want to recover without independent history verification.')}</span></label>}</div>}
+          {dialog === 'recover' && status?.historyVerified === false && <div className="space-y-2">
+            <label htmlFor="history-code" className="text-sm font-medium">{t('History verification code')}</label>
+            <p className="text-xs text-muted">{t('Your recovery key unlocks your encrypted data. This separate code checks the cloud history against a device you trust.')}</p>
+            <textarea id="history-code" value={historyCode} onChange={event => setHistoryCode(event.target.value)} disabled={busy} autoComplete="off" spellCheck={false} maxLength={4096} className="min-h-24 w-full rounded-lg border border-line bg-card p-3 font-mono text-xs" />
+            <p className="text-xs text-muted">{t('On your existing device: Settings → Heyday account → Advanced security → Get verification code. Enter that code here.')}</p>
+            {needsHistory && <label className="flex items-start gap-3 rounded-lg border border-amber-500/30 p-3 text-sm"><input type="checkbox" checked={allowUnverified} onChange={event => setAllowUnverified(event.target.checked)} disabled={busy || !!historyCode.trim()} className="mt-1" /><span>{t('I no longer have a trusted device or verification code. I understand that the server could return older or incomplete history, and I want to recover without independent history verification.')}</span></label>}
+          </div>}
           {dialog !== 'recover' && <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={saved} disabled={busy} onChange={event => setSaved(event.target.checked)} className="mt-1" /><span>{t('I saved my recovery key and understand that support cannot recover my encrypted data.')}</span></label>}
           {!rotating && <><label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={remember} disabled={busy} onChange={event => setRemember(event.target.checked)} className="mt-1" /><span>{t('Remember encryption on this device')}</span></label>
           <p className="text-xs text-muted">{t('Keeps your encryption key in the system secure store after sign-out. Only this account can use it after signing in again.')}</p></>}
         </>}
         {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{t(error)}</p>}
         <DialogFooter>
-          <Button variant="outline" disabled={busy} onClick={close}>{t('Cancel')}</Button>
+          <Button variant="outline" disabled={busy} onClick={close}>{dialog === 'history' ? t('Done') : t('Cancel')}</Button>
           {dialog !== 'history' && <Button variant={dialog === 'remove' ? 'destructive' : 'default'} disabled={blocked || (dialog !== 'remove' && (!online || !entered.trim() || (dialog === 'recover' && needsHistory && !historyCode.trim() && !allowUnverified) || (dialog !== 'recover' && !saved)))} onClick={() => void finish()}>
             {busy ? <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin" />
               : dialog === 'remove' ? <Trash2 aria-hidden="true" className="size-4 shrink-0" />
               : dialog === 'recover' ? <KeyRound aria-hidden="true" className="size-4 shrink-0" /> : null}
-            {rotating ? t('Replace key and rotate encryption') : dialog === 'remove' ? t('Remove saved encryption key') : dialog === 'recover' ? t('Restore encryption key') : t('Confirm encryption setup')}
+            {rotating ? t('Replace recovery key') : dialog === 'remove' ? t('Remove saved encryption key') : dialog === 'recover' ? t('Restore encryption key') : t('Confirm encryption setup')}
           </Button>}
         </DialogFooter>
       </DialogContent>
