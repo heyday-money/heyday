@@ -2,6 +2,12 @@ use sqlx::SqlitePool;
 
 // Child-first order preserves foreign-key enforcement throughout the reset.
 const DATA_TABLES: &[&str] = &[
+    "cloud_sync_binding",
+    "cloud_sync_pending",
+    "cloud_sync_dirty",
+    "cloud_sync_shadow",
+    "ledger_sync_imports",
+    "ledger_sync_members",
     "salary_payment_transactions",
     "salary_payments",
     "selective_defaults",
@@ -13,6 +19,7 @@ const DATA_TABLES: &[&str] = &[
     "card_payment_plans",
     "card_statement_entries",
     "card_statements",
+    "loan_sync_reservations",
     "loan_payment_parts",
     "loan_contracts",
     "loan_facilities",
@@ -75,9 +82,11 @@ async fn clear_data(pool: &SqlitePool, confirmation: &str) -> Result<(), String>
 #[tauri::command]
 pub async fn clear_all_data(
     pool: tauri::State<'_, SqlitePool>,
+    auth: tauri::State<'_, crate::cloud_auth::CloudAuthState>,
     confirmation: String,
 ) -> Result<(), String> {
     let _database_operation = crate::backups::operation()?;
+    let _auth = auth.operation.lock().await;
     clear_data(pool.inner(), &confirmation).await
 }
 

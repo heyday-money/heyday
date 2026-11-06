@@ -66,7 +66,7 @@ fn amount(value: &str) -> Result<i64, String> {
         .map_err(|_| "Amount is outside the supported range.".into())
 }
 
-fn validate_account(mut input: NewAccount, allow_unclassified: bool) -> Result<NewAccount, String> {
+pub(crate) fn validate_account(mut input: NewAccount, allow_unclassified: bool) -> Result<NewAccount, String> {
     let kind = input.account_type.as_str();
     if ![
         "cash",
@@ -1047,7 +1047,7 @@ mod tests {
         let linked: (String, String) = sqlx::query_as("SELECT i.id,i.logo FROM accounts a JOIN institutions i ON i.id=a.institution_id WHERE a.id=?").bind(&created.id).fetch_one(&reopened).await.unwrap();
         assert_eq!(linked, ("bank-002".into(), "bbl.svg".into()));
         reopened.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
 
     #[tokio::test]

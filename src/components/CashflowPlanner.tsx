@@ -94,7 +94,7 @@ export function CashflowPlanner() {
   async function save(change: PlannerChange) {
     setBusy(true)
     const current = ++request.current
-    try { const result = await savePlanner(change); if (current === request.current) setData(result); else await load(); toast.success(translate("Planner saved.")); }
+    try { const result = await savePlanner(change); if (current === request.current) setData(result); else await load(); toast.success(translate("Planner saved.")); window.dispatchEvent(new Event('plans-changed')); }
     finally { setBusy(false) }
   }
   if (!desktopAvailable) return <p className="rounded-xl bg-soft p-5">{translate("Open the desktop app to use your local cashflow planner.")}</p>

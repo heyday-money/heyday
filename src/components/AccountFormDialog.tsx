@@ -14,6 +14,7 @@ import { Input } from './ui/input'
 import { FormField as Field } from './FormField'
 import { Textarea } from './ui/textarea'
 import { NativeSelect } from './ui/native-select'
+import { AccountArchiveAction } from './AccountArchiveAction'
 
 export const accountTypes = [
   { value: 'cash', get label() { return translate("Cash") }, get groupLabel() { return translate("Cash") }, icon: Banknote },
@@ -56,6 +57,8 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
   const [type, setType] = useState<AccountType>(editing?.type ?? initialType)
   const [revolving, setRevolving] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [archiving, setArchiving] = useState(false)
+  const busy = saving || archiving
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
@@ -64,14 +67,14 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
   const debt = type === 'credit_card' || type === 'loan'
   const close = onClose
   const changeOpen = (next: boolean) => {
-    if (next || saving) return
+    if (next || busy) return
     if (dirty) setConfirmDiscard(true)
     else close()
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!currency || saving) return
+    if (!currency || busy) return
     if (type !== 'cash' && (unresolvedInstitution || directory.loading || directory.error)) { setError("Select or add an institution, or choose No institution. If loading failed, retry first."); return }
     const data = new FormData(event.currentTarget)
     const text = (key: string) => String(data.get(key) ?? '').trim()
@@ -109,18 +112,18 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
   }
 
   return <Dialog open onOpenChange={changeOpen}>
-        <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden border-line bg-card p-0 sm:max-w-[640px]" showCloseButton={!saving}
+        <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden border-line bg-card p-0 sm:max-w-[640px]" showCloseButton={!busy}
           onOpenAutoFocus={event => { event.preventDefault(); nameRef.current?.focus() }}
           onCloseAutoFocus={event => { event.preventDefault(); returnFocus.current?.isConnected && returnFocus.current.focus() }}
           onInteractOutside={event => event.preventDefault()}
-          onEscapeKeyDown={event => { if (saving) event.preventDefault() }}>
+          onEscapeKeyDown={event => { if (busy) event.preventDefault() }}>
           <DialogHeader className="shrink-0 border-b border-line px-6 py-5 pr-12">
             <DialogTitle>{editing ? translate("Edit account") : translate("Add account")}</DialogTitle>
             <DialogDescription>{editing ? translate("Update your account details. Opening balance and account type are locked.") : translate("Choose an account type and enter your starting balance.")}</DialogDescription>
           </DialogHeader>
           <form onSubmit={save} onChange={() => setDirty(true)} className="flex min-h-0 flex-1 flex-col" aria-label={editing ? translate("Edit account") : translate("Add account")}>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              <fieldset disabled={saving}>
+              <fieldset disabled={busy}>
                 <div className="grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">
                   <Field label={translate("Account type")}><NativeSelect disabled={!!editing} value={type} onChange={event => { setType(event.target.value as AccountType); setError(null) }} className={inputStyle}>{accountTypes.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}</NativeSelect></Field>
                   {type === 'loan' && !revolving && <Field label={translate("Loan type")}><NativeSelect name="loan_type" required={!editing || editing.loan_type !== null} defaultValue={editing?.loan_type ?? ''} className={inputStyle}><option value="" disabled={!editing || editing.loan_type !== null}>{editing ? translate("Unclassified") : translate("Choose a loan type")}</option>{loanTypes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></Field>}
@@ -136,7 +139,7 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
                 <details open={editing ? true : undefined} className="mt-5 rounded-xl border border-line p-4">
                   <summary className="cursor-pointer text-[13px] font-semibold">{translate("Optional details")}</summary>
                   <div className="mt-4 grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">
-                    {type !== 'cash' && <Field label={translate("Institution (optional)")}><InstitutionCombobox disabled={saving} value={institutionId} draftName={draftInstitution} onChange={(id, name) => { setChosenInstitution({ id, name }); setDirty(true); setError(null) }} onUnresolvedChange={setUnresolvedInstitution} /></Field>}
+                    {type !== 'cash' && <Field label={translate("Institution (optional)")}><InstitutionCombobox disabled={busy} value={institutionId} draftName={draftInstitution} onChange={(id, name) => { setChosenInstitution({ id, name }); setDirty(true); setError(null) }} onUnresolvedChange={setUnresolvedInstitution} /></Field>}
                     <Field label={translate("Last four digits (optional)")}><Input name="last_four" defaultValue={editing?.last_four ?? ''} inputMode="numeric" pattern="[0-9]{4}" maxLength={4} className={inputStyle} /></Field>
                     {type === 'credit_card' && <>
                       {editing && limits.loading ? <p role="status" className="text-sm">{translate("Loading credit limit…")}</p> : editing && limits.error ? <div role="alert" className="text-sm">{translate("Could not load credit limit.")}{" "}<Button type="button" variant="outline" onClick={() => void limits.reload()}>{translate("Retry")}</Button></div> : sharedLimit ? <div className="col-span-full rounded-xl bg-soft p-3">
@@ -152,14 +155,20 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
                   <div className="mt-4"><Field label={translate("Notes (optional)")}><Textarea name="notes" defaultValue={editing?.notes ?? ''} maxLength={1000} rows={2} className={inputStyle} /></Field></div>
                 </details>
               </fieldset>
+              {editing && !editing.is_archived && !editing.paid_off_on && <section aria-label={translate("Account status")} className="mt-6 space-y-3 border-t border-line pt-5">
+                <h3 className="text-sm font-semibold">{translate("Archive account")}</h3>
+                <p className="text-sm text-muted">{translate("Hide this account from active accounts and forecasts. Your balance and transaction history are kept, and you can restore the account later.")}</p>
+                <AccountArchiveAction account={editing} currency={currency} disabled={saving || dirty || confirmDiscard} onBusyChange={setArchiving} onSaved={close} />
+                {dirty && <p className="text-xs text-muted">{translate("Save or discard your changes before archiving this account.")}</p>}
+              </section>}
               {error && <p className="mt-4 text-[14px]" role="alert">{translate(error)}</p>}
             </div>
             {confirmDiscard ? <div className="shrink-0 border-t border-line px-6 py-4">
               <p className="mb-3 text-sm" role="alert">{translate("Discard your unsaved account?")}</p>
               <DialogFooter><Button type="button" variant="outline" onClick={() => setConfirmDiscard(false)}>{translate("Keep editing")}</Button><Button type="button" variant="destructive" onClick={close}>{translate("Discard changes")}</Button></DialogFooter>
             </div> : <DialogFooter className="shrink-0 border-t border-line px-6 py-4">
-              <Button type="button" variant="outline" disabled={saving} onClick={() => changeOpen(false)}>{translate("Cancel")}</Button>
-              <Button type="submit" disabled={saving}>{saving ? translate("Saving…") : translate("Save account")}</Button>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => changeOpen(false)}>{translate("Cancel")}</Button>
+              <Button type="submit" disabled={busy}>{saving ? translate("Saving…") : translate("Save account")}</Button>
             </DialogFooter>}
           </form>
         </DialogContent>

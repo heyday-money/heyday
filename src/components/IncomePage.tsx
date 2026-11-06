@@ -54,18 +54,28 @@ export function IncomePage() {
   const [history, setHistory] = useState<Income | null>(null)
   const saveLock = useRef(false)
   const editTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const editIdRef = useRef<string | null>(null)
+  const rememberEditButton = useCallback((id: string, button: HTMLButtonElement | null) => {
+    if (button && editIdRef.current === id) editTriggerRef.current = button
+  }, [])
   const nameRef = useRef<HTMLInputElement>(null)
   const currency = settings?.currency
 
   useEffect(() => {
     if (!desktopAvailable) return
     let active = true
-    setLoading(true); setLoadError(false)
+    setLoading(settings === null); setLoadError(false)
     Promise.all([getSettings(), listAccounts(), listIncomes()]).then(([settings, accounts, incomes]) => {
       if (active) { setSettings(settings); setAccounts(accounts); setSources(incomes) }
     }).catch(() => { if (active) setLoadError(true) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [attempt])
+
+  useEffect(() => {
+    const refresh = (event: Event) => { if ((event as CustomEvent).detail?.source === 'cloud-sync') setAttempt(value => value + 1) }
+    window.addEventListener('incomes-changed', refresh)
+    return () => window.removeEventListener('incomes-changed', refresh)
+  }, [])
 
   const close = () => { setOpen(false); setEditing(null); setDirty(false); setConfirmDiscard(false); setError(null) }
   const changeOpen = (next: boolean) => {
@@ -76,6 +86,7 @@ export function IncomePage() {
   }
 
   const beginEdit = useCallback((source: Income, trigger: HTMLButtonElement) => {
+    editIdRef.current = source.id
     editTriggerRef.current = trigger
     if (saveLock.current || !currency) return
     setEditing(source); setIncomeType(source.type); setGross(amountText(source.estimated_amount, currency))
@@ -121,7 +132,10 @@ export function IncomePage() {
       : <>
         {!accounts.length && <section className="mb-6 rounded-2xl border border-line bg-card p-7"><h3 className="font-semibold">{translate("Add a destination account first")}</h3><p className="mt-2">{translate("Every income source needs an account to receive it.")}</p><Link to="/accounts" className="mt-4 inline-block text-brand">{translate("Go to Accounts →")}</Link></section>}
         <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden border-line bg-card p-0 sm:max-w-[640px]" showCloseButton={!saving}
-          onCloseAutoFocus={event => { if (editTriggerRef.current) { event.preventDefault(); editTriggerRef.current.focus(); editTriggerRef.current = null } }}
+          onCloseAutoFocus={event => {
+            if (editTriggerRef.current?.isConnected) { event.preventDefault(); editTriggerRef.current.focus() }
+            editTriggerRef.current = null; editIdRef.current = null
+          }}
           onOpenAutoFocus={event => { event.preventDefault(); nameRef.current?.focus() }}
           onInteractOutside={event => event.preventDefault()}
           onEscapeKeyDown={event => { if (saving) event.preventDefault() }}>
@@ -153,7 +167,7 @@ export function IncomePage() {
           </form>
         </DialogContent>
         {!sources.length ? <section className="rounded-2xl border border-line bg-card p-12 text-center"><ArrowUpRight size={28} className="mx-auto mb-4 text-brand" /><h3 className="font-semibold">{translate("No income sources yet")}</h3><p className="mt-2 text-[14px]">{translate("Add salary, variable income, investments, or another source.")}</p></section>
-          : <IncomeTable sources={sources} accounts={accounts} currency={currency} onEdit={beginEdit} onRecord={setRecording} onDeductions={setEditingDeductions} onHistory={setHistory} />}
+          : <IncomeTable sources={sources} accounts={accounts} currency={currency} onEdit={beginEdit} onEditButton={rememberEditButton} onRecord={setRecording} onDeductions={setEditingDeductions} onHistory={setHistory} />}
 
       </>}
     {recording && currency && <SalaryPaymentDialog income={recording} currency={currency} onClose={() => setRecording(null)} />}
@@ -162,9 +176,10 @@ export function IncomePage() {
   </Dialog>
 }
 
-function IncomeTable({ sources, accounts, currency, onEdit, onRecord, onDeductions, onHistory }: {
+function IncomeTable({ sources, accounts, currency, onEdit, onEditButton, onRecord, onDeductions, onHistory }: {
   sources: Income[]; accounts: Account[]; currency: string
   onEdit: (source: Income, trigger: HTMLButtonElement) => void
+  onEditButton: (id: string, button: HTMLButtonElement | null) => void
   onRecord: (source: Income) => void; onDeductions: (source: Income) => void; onHistory: (source: Income) => void
 }) {
   useLanguage()
@@ -179,10 +194,10 @@ function IncomeTable({ sources, accounts, currency, onEdit, onRecord, onDeductio
     { id: 'schedule', header: translate('Schedule'), meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap` }, cell: ({ row }) => <>{translate('Monthly · Day')} {row.original.recurrence_day_of_month}{row.original.recurrence_day_of_month > 28 && <span className="mt-1 block text-xs text-muted">{translate(' (or month-end)')}</span>}</> },
     { id: 'actions', header: translate('Actions'), meta: { ...meta, headerClassName: `${meta.headerClassName} text-right` }, cell: ({ row: { original: source } }) => <div className="flex items-center justify-end gap-1">
       {source.type === 'salary' && <Button size="sm" variant="outline" className="mr-1" aria-label={translate('Record salary payment')} disabled={!source.is_active || !accounts.some(a => a.id === source.destination_account_id && ['cash', 'bank', 'wallet'].includes(a.type))} onClick={() => onRecord(source)}>{translate('Record payment')}</Button>}
-      <Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={translate('Edit {value0}', { value0: source.name })} onClick={event => onEdit(source, event.currentTarget)}><Pencil aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{translate('Edit income source')}</TooltipContent></Tooltip>
+      <Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="ghost" ref={button => onEditButton(source.id, button)} aria-label={translate('Edit {value0}', { value0: source.name })} onClick={event => onEdit(source, event.currentTarget)}><Pencil aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{translate('Edit income source')}</TooltipContent></Tooltip>
       {source.type === 'salary' && <DropdownMenu modal={false}><DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label={translate('More actions for {value0}', { value0: source.name })}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem aria-label={translate('Manage deductions for {value0}', { value0: source.name })} onSelect={() => onDeductions(source)}><ListMinus aria-hidden="true" />{translate('Manage Deductions')}</DropdownMenuItem><DropdownMenuItem onSelect={() => onHistory(source)}><History aria-hidden="true" />{translate('Salary payment history')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
     </div> },
-  ], [currency, accounts, onEdit, onRecord, onDeductions, onHistory, getLanguage()])
+  ], [currency, accounts, onEdit, onEditButton, onRecord, onDeductions, onHistory, getLanguage()])
   const table = useReactTable({ data: sources, columns, getRowId: source => source.id, getCoreRowModel: getCoreRowModel() })
   return <TooltipProvider><DataTable table={table} label={translate('Income sources')} className="min-w-[1050px]" headerClassName="border-b border-line bg-soft text-xs text-muted" bodyClassName="divide-y divide-line" rowClassName="hover:bg-soft/40" /><p className="mt-3 text-xs text-muted">{translate('Estimates per payment. Salary deductions are included in net income; record actual payments separately.')}</p></TooltipProvider>
 }

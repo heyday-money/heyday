@@ -319,7 +319,7 @@ mod tests {
             .unwrap();
         assert_eq!(count, 0);
         reopened.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
     #[tokio::test]
     async fn new_purchase_increases_debt_once_and_schedule_edits_never_rebook_it() {

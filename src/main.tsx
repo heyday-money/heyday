@@ -13,6 +13,8 @@ import { createHashHistory, createRootRoute, createRoute, createRouter, RouterPr
 import { AppLayout, HomePage, AccountsPage, IncomePage, SettingsPage } from './pages'
 import './styles.css'
 import { TransactionsPage } from './components/TransactionsPage'
+import { CloudSessionProvider } from './components/CloudSessionProvider'
+import { CloudSyncProvider } from './components/CloudSyncProvider'
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -31,7 +33,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions', validateSearch: (search: Record<string, unknown>): { account?: string } => ({ account: typeof search.account === 'string' ? search.account : undefined }), component: TransactionsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/installments', component: InstallmentsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/subscriptions', component: SubscriptionsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings', validateSearch: (search: Record<string, unknown>): { section?: string } => ({ section: typeof search.section === 'string' && ['general', 'payees', 'categories', 'institutions', 'providers', 'data', 'account'].includes(search.section) ? search.section : undefined }), component: SettingsPage }),
 ])
 const router = createRouter({ routeTree, history: createHashHistory() })
 
@@ -40,5 +42,5 @@ declare module '@tanstack/react-router' {
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><RouterProvider router={router} /></React.StrictMode>,
+  <React.StrictMode><CloudSessionProvider><CloudSyncProvider><RouterProvider router={router} /></CloudSyncProvider></CloudSessionProvider></React.StrictMode>,
 )

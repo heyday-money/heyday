@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
+pub(super) const CATEGORY_ICONS: &[&str] = &[
+    "tag", "utensils", "coffee", "shopping-cart", "bus", "fuel", "house", "plug-zap",
+    "heart-pulse", "shopping-bag", "clapperboard", "graduation-cap", "plane", "gift",
+    "paw-print", "baby", "shirt", "dumbbell", "smartphone", "wifi", "shield-check",
+    "wrench", "scissors", "hand-heart", "briefcase-business", "volleyball", "users",
+    "spray-can", "receipt-text",
+];
+
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OptionKind {
@@ -51,39 +59,7 @@ pub async fn save(pool: &SqlitePool, input: SaveOption) -> Result<TransactionOpt
     let table = input.kind.table();
     let category = matches!(input.kind, OptionKind::Category);
     if let Some(icon) = input.icon.as_deref() {
-        if !category
-            || ![
-                "tag",
-                "utensils",
-                "coffee",
-                "shopping-cart",
-                "bus",
-                "fuel",
-                "house",
-                "plug-zap",
-                "heart-pulse",
-                "shopping-bag",
-                "clapperboard",
-                "graduation-cap",
-                "plane",
-                "gift",
-                "paw-print",
-                "baby",
-                "shirt",
-                "dumbbell",
-                "smartphone",
-                "wifi",
-                "shield-check",
-                "wrench",
-                "scissors",
-                "hand-heart",
-                "briefcase-business",
-                "volleyball",
-                "users",
-                "spray-can",
-                "receipt-text",
-            ]
-            .contains(&icon)
+        if !category || !CATEGORY_ICONS.contains(&icon)
         {
             return Err("Choose a supported category icon.".into());
         }

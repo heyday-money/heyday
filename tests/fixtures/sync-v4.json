@@ -1,0 +1,31 @@
+{
+  "rootKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "localId": "income_2026-11_public-test-income",
+  "plaintext": "{\"schema\":4,\"entity\":\"income-plan\",\"id\":\"income_2026-11_public-test-income\",\"value\":{\"source_type\":\"income\",\"source_id\":\"public-test-income\",\"month\":\"2026-11\",\"currency\":\"THB\",\"amount\":\"9007199254740993\"}}",
+  "change": {
+    "sequence": "1",
+    "version": "1",
+    "request": {
+      "protocol": 4,
+      "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+      "mutationId": "public-test-income-plan",
+      "recordId": "l2L_3cnLEl9i2THPfKGW74EXYivUXDi15cXOzwpn6fQ",
+      "baseVersion": "0",
+      "previous": {
+        "sequence": "0",
+        "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "operation": "put",
+      "payload": {
+        "format": "heyday-record-v2",
+        "algorithm": "A256GCM-HKDF-SHA256",
+        "keyId": "test-key-v1",
+        "salt": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+        "nonce": "BAQEBAQEBAQEBAQE",
+        "ciphertext": "SG-z8rc0jW19vo1GX9fUoiS5h0kIuQOtfAYzzBUUuehgYbdh-TjabN-fLxqCiMiVRZnd7zW6hJi306rat18dkbyI7CUdK662RwTey_-GjaSHIEKrQkX0a3uZx2KOb6y-Q4QrC02eCl6nvqo7hlzhS1nazb2u0lmvIZdP7Y2XLzEwKIcaxHkbkDxI0iUbb4Us-abazwLkrE_WlASw5Ea4EOsT0aurpt3BWThFGgN6X2qbGBgkIgGG6uiYLhJbzVTyGgDtY3LVu3SlYAHNxm6ZpGcrY1Q0mbBRp224DxA"
+      },
+      "commitHash": "1136ce55fdc8f1a76024178594b7b6e99e82bfcd42c83bcd54aa10047b4f2540",
+      "commitMac": "Kc-FsRLTiGh2K6uR24k_jW-6pkBUevVzpWHUptxs-MM"
+    }
+  }
+}

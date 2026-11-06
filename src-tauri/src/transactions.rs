@@ -3,6 +3,8 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct Transaction {
+    #[sqlx(default)]
+    imported_linked_payment: bool,
     pub(crate) id: String,
     #[serde(rename = "type")]
     kind: String,
@@ -25,6 +27,9 @@ pub struct Transaction {
     has_reconciliation_history: bool,
     salary_payment_id: Option<String>,
     salary_payment_role: Option<String>,
+}
+impl Transaction {
+    pub(crate) fn order(&self)->(&str,&str){(&self.date,&self.id)}
 }
 pub(crate) const SELECT: &str = "SELECT sp.payment_id AS salary_payment_id,sp.role AS salary_payment_role,t.id, t.type AS kind, t.account_id, a.name AS account_name, t.destination_account_id, d.name AS destination_account_name, CAST(t.amount AS TEXT) AS amount, t.date, t.description, t.payee_id, p.name AS payee_name, linked_loan.id AS loan_account_id, linked_loan.name AS loan_account_name, t.category_id, c.name AS category_name, c.icon AS category_icon, t.income_source_id, (SELECT name FROM incomes WHERE id=t.income_source_id) AS income_source_name, EXISTS(SELECT 1 FROM reconciliation_entries re WHERE re.transaction_id=t.id) AS has_reconciliation_history FROM transactions t LEFT JOIN salary_payment_transactions sp ON sp.transaction_id=t.id JOIN accounts a ON a.id = t.account_id LEFT JOIN accounts d ON d.id = t.destination_account_id LEFT JOIN payees p ON p.id = t.payee_id LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN loan_payment_parts lp ON lp.transaction_id=t.id LEFT JOIN loan_contracts lc ON lc.id=lp.contract_id LEFT JOIN accounts linked_loan ON linked_loan.id=COALESCE(lp.loan_account_id,lc.account_id)";
 
@@ -49,9 +54,10 @@ async fn expense_snapshot(pool: &SqlitePool) -> Result<ExpenseReport, String> {
     // Retain account types for archived history so payment-method filters stay accurate.
     let accounts = sqlx::query_as("SELECT id,name,type AS kind,is_archived FROM accounts ORDER BY name,id")
         .fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
-    let transactions = sqlx::query_as(&format!("{SELECT} WHERE t.type='expense' ORDER BY t.date DESC,t.id"))
+    let mut transactions:Vec<Transaction> = sqlx::query_as(&format!("{SELECT} WHERE t.type='expense' ORDER BY t.date DESC,t.id"))
         .fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
+    decorate_imported(pool,&mut transactions).await?;
     Ok(ExpenseReport { settings, accounts, transactions })
 }
 #[tauri::command]
@@ -300,22 +306,27 @@ pub(crate) async fn remove_confirmed(
     confirmed: bool,
 ) -> Result<(), String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    let group = crate::salary_payments::group(&mut tx, id).await?;
+    remove_in_connection(&mut tx,id,confirmed).await?;
+    tx.commit().await.map_err(|e|e.to_string())
+}
+pub(crate) async fn remove_in_connection(conn:&mut SqliteConnection,id:&str,confirmed:bool)->Result<(),String> {
+    crate::cloud_sync_ledger::protect_imported_deletion(conn, id).await?;
+    let group = crate::salary_payments::group(conn, id).await?;
     let ids = if let Some(group) = &group {
-        sqlx::query_scalar("SELECT transaction_id FROM salary_payment_transactions WHERE payment_id=?").bind(group).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?
-    } else { crate::loans::deletion_ids(&mut tx, id).await? };
+        sqlx::query_scalar("SELECT transaction_id FROM salary_payment_transactions WHERE payment_id=?").bind(group).fetch_all(&mut *conn).await.map_err(|e|e.to_string())?
+    } else { crate::loans::deletion_ids(conn, id).await? };
     for id in &ids {
-        crate::loans::before_delete(&mut tx, id).await?;
+        crate::loans::before_delete(conn, id).await?;
         let row: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id = ?"))
             .bind(id)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut *conn)
             .await
             .map_err(|e| e.to_string())?
             .ok_or("Transaction no longer exists. Reload the page.")?;
-        crate::reconciliation::before_delete(&mut tx, id, confirmed).await?;
+        crate::reconciliation::before_delete(conn, id, confirmed).await?;
         let amount = row.amount.parse::<i64>().map_err(|e| e.to_string())?;
         adjust(
-            &mut tx,
+            conn,
             &row.account_id,
             if row.kind == "income" {
                 -amount
@@ -326,19 +337,19 @@ pub(crate) async fn remove_confirmed(
         )
         .await?;
         if let Some(destination) = row.destination_account_id {
-            adjust(&mut tx, &destination, -amount, false).await?;
+            adjust(conn, &destination, -amount, false).await?;
         }
         sqlx::query("DELETE FROM transactions WHERE id = ?")
             .bind(id)
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await
             .map_err(|e| e.to_string())?;
     }
     if let Some(group) = group {
-        sqlx::query("DELETE FROM salary_payments WHERE id=?").bind(group).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        sqlx::query("DELETE FROM salary_payments WHERE id=?").bind(group).execute(&mut *conn).await.map_err(|e|e.to_string())?;
     }
-    crate::loans::validate_allocations(&mut tx).await?;
-    tx.commit().await.map_err(|e| e.to_string())
+    crate::loans::validate_allocations(conn).await?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -363,12 +374,28 @@ pub async fn list_transactions(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<Vec<Transaction>, String> {
     let _database_operation = crate::backups::operation()?;
-    sqlx::query_as(&format!(
-        "{SELECT} ORDER BY t.date DESC, t.created_at DESC, t.id DESC"
-    ))
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())
+    let mut rows:Vec<Transaction>=sqlx::query_as(&format!("{SELECT} ORDER BY t.date DESC,t.created_at DESC,t.id DESC"))
+        .fetch_all(pool.inner()).await.map_err(|e|e.to_string())?;
+    decorate_imported(pool.inner(),&mut rows).await?;
+    Ok(rows)
+}
+
+async fn decorate_imported(pool:&SqlitePool,rows:&mut [Transaction])->Result<(),String>{
+    let mut conn=pool.acquire().await.map_err(|_|crate::cloud_sync_store::DATABASE)?;
+    decorate_in_connection(&mut conn,rows).await
+}
+pub(crate) async fn decorate_in_connection(conn:&mut SqliteConnection,rows:&mut [Transaction])->Result<(),String>{
+    let entries=crate::cloud_sync_ledger::imported_entries(&mut *conn).await?;
+    let accounts:Vec<(String,String)>=sqlx::query_as("SELECT id,name FROM accounts").fetch_all(&mut *conn).await.map_err(|_|crate::cloud_sync_store::DATABASE)?;
+    let names=accounts.into_iter().collect::<std::collections::HashMap<_,_>>();
+    for row in rows{
+        if let Some((protected,entry))=entries.get(&row.id){
+            row.imported_linked_payment=*protected;
+            if row.income_source_name.is_none(){if let Some(source)=&entry.income_source{row.income_source_id=Some(source.id.clone());row.income_source_name=Some(source.name.clone());}}
+            if row.loan_account_id.is_none(){row.loan_account_id=entry.loan_account_id.clone();row.loan_account_name=entry.loan_account_id.as_ref().and_then(|id|names.get(id).cloned());}
+            if row.salary_payment_role.is_none(){row.salary_payment_role=entry.salary_role.clone();}
+        }
+    }Ok(())
 }
 
 #[cfg(test)]
@@ -690,7 +717,7 @@ mod tests {
         remove(&pool, &row.id).await.unwrap();
         assert_eq!(balances(&pool).await, vec![("bank".into(), 100, 100)]);
         pool.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
     #[tokio::test]
     async fn optional_description_migration_preserves_history_and_balances() {

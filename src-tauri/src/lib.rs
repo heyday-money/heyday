@@ -3,6 +3,22 @@ use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
 mod backups;
+mod cloud_auth;
+mod cloud_crypto;
+mod cloud_devices;
+mod cloud_e2ee;
+mod cloud_key_protocol;
+mod cloud_sync_protocol;
+mod cloud_sync_store;
+mod cloud_sync;
+mod cloud_sync_ledger;
+mod cloud_sync_income;
+mod cloud_sync_planner;
+mod cloud_sync_metadata;
+mod cloud_sync_metadata_rules;
+mod cloud_sync_loans;
+#[cfg(test)]
+mod cloud_sync_complete_tests;
 mod exports;
 mod card_limits;
 mod institutions;
@@ -24,6 +40,8 @@ mod transaction_options;
 mod transactions;
 mod updates;
 mod instance;
+#[cfg(test)]
+mod test_support;
 
 #[derive(Serialize, sqlx::FromRow)]
 struct Settings {
@@ -98,6 +116,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(backups::BackupState::default())
+        .manage(cloud_auth::CloudAuthState::default())
+        .manage(cloud_e2ee::EncryptionState::default())
         .setup(|app| {
             let directory = data_directory(app.path().app_data_dir()?, cfg!(debug_assertions));
             std::fs::create_dir_all(&directory)?;
@@ -118,6 +138,31 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
+            cloud_auth::cloud_sign_in,
+            cloud_auth::cloud_cancel_sign_in,
+            cloud_auth::cloud_account,
+            cloud_auth::cloud_sign_out,
+            cloud_auth::cloud_manage_subscription,
+            cloud_devices::cloud_devices,
+            cloud_devices::cloud_register_device,
+            cloud_devices::cloud_revoke_device,
+            cloud_e2ee::cloud_encryption_status,
+            cloud_e2ee::cloud_prepare_encryption,
+            cloud_e2ee::cloud_confirm_encryption,
+            cloud_e2ee::cloud_recover_encryption,
+            cloud_e2ee::cloud_lock_encryption,
+            cloud_e2ee::cloud_remember_encryption,
+            cloud_e2ee::cloud_cancel_encryption,
+            cloud_e2ee::cloud_save_recovery_key,
+            cloud_e2ee::cloud_prepare_key_rotation,
+            cloud_e2ee::cloud_confirm_key_rotation,
+            cloud_e2ee::cloud_cancel_key_rotation,
+            cloud_e2ee::cloud_history_verification_code,
+            cloud_sync::cloud_sync_status,
+            cloud_sync::cloud_enable_sync,
+            cloud_sync::cloud_sync_now,
+            cloud_sync::cloud_pause_sync,
+            cloud_sync::cloud_resolve_sync,
             backups::export_backup,
             exports::export_accounts_excel,
             backups::preview_backup,

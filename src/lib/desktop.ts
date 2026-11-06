@@ -1,4 +1,4 @@
-import { t } from './i18n'
+import { getLanguage, t } from './i18n'
 import type { LogoChange } from './logos'
 import type { CardBillingData } from './card-billing'
 import { invoke, isTauri } from '@tauri-apps/api/core'
@@ -9,6 +9,62 @@ export interface Settings {
 }
 
 export const desktopAvailable = isTauri()
+
+export interface CloudSubscription {
+  entitlement: { canSync: boolean; reason: string; accessUntil: string | null }
+  billing?: { enabled: boolean; subscriptions: { status: string; periodEnd: string | null; cancelAt: string | null }[] } | null
+}
+export interface CloudStatus { account: { id: string; email: string } | null; online: boolean; deviceRegistered?: boolean; deviceError?: string | null; subscription?: CloudSubscription | null }
+let pendingCloudAccount: Promise<CloudStatus> | undefined
+export function cloudAccount(): Promise<CloudStatus> {
+  // Share overlapping mount checks (including React StrictMode) without caching
+  // credentials or preventing an explicit retry after the request settles.
+  return pendingCloudAccount ??= invoke<CloudStatus>('cloud_account')
+    .finally(() => { pendingCloudAccount = undefined })
+}
+export function cloudSignIn(): Promise<CloudStatus> { return invoke('cloud_sign_in', { language: getLanguage() }) }
+export function cloudCancelSignIn(): Promise<void> { return invoke('cloud_cancel_sign_in') }
+export function cloudSignOut(forgetDevice = false): Promise<boolean> { return invoke('cloud_sign_out', { forgetDevice }) }
+export function cloudManageSubscription(): Promise<void> { return invoke('cloud_manage_subscription') }
+export interface CloudDevice {
+  id: string; name: string; platform: 'macos' | 'windows' | 'linux';
+  createdAt: string; lastSeenAt: string; revokedAt: string | null; current: boolean
+}
+export interface CloudDeviceView { currentDevice: CloudDevice | null; savedName: string | null; page: { devices: CloudDevice[]; nextCursor: string | null } }
+export function cloudDevices(cursor: string | null = null): Promise<CloudDeviceView> { return invoke('cloud_devices', { cursor }) }
+export function cloudRegisterDevice(name: string): Promise<CloudDevice> { return invoke('cloud_register_device', { name }) }
+export function cloudRevokeDevice(deviceId: string): Promise<{ current: boolean; credentialsCleared: boolean }> { return invoke('cloud_revoke_device', { deviceId }) }
+export interface EncryptionStatus { state: 'not_set' | 'pending' | 'locked' | 'unlocked' | 'changed' | 'rotating'; rememberEncryption?: boolean; historyVerified?: boolean; rotationPending?: boolean; unverifiedHistory?: boolean }
+export function cloudEncryptionStatus(): Promise<EncryptionStatus> { return invoke('cloud_encryption_status') }
+export function cloudPrepareEncryption(): Promise<{ recoveryKey: string }> { return invoke('cloud_prepare_encryption') }
+export function cloudConfirmEncryption(recoveryKey: string, saved: boolean, remember: boolean): Promise<EncryptionStatus> { return invoke('cloud_confirm_encryption', { recoveryKey, saved, remember }) }
+export function cloudRecoverEncryption(recoveryKey: string, remember: boolean, historyCode?: string, allowUnverifiedHistory?: boolean): Promise<EncryptionStatus> { return invoke('cloud_recover_encryption', { recoveryKey, remember, ...(historyCode ? { historyCode } : {}), ...(allowUnverifiedHistory ? { allowUnverifiedHistory: true } : {}) }) }
+export function cloudPrepareKeyRotation(): Promise<{ recoveryKey: string }> { return invoke('cloud_prepare_key_rotation') }
+export function cloudConfirmKeyRotation(recoveryKey: string, saved: boolean): Promise<EncryptionStatus> { return invoke('cloud_confirm_key_rotation', { recoveryKey, saved }) }
+export function cloudCancelKeyRotation(): Promise<EncryptionStatus> { return invoke('cloud_cancel_key_rotation') }
+export function cloudHistoryVerificationCode(): Promise<string> { return invoke('cloud_history_verification_code') }
+export function cloudRememberEncryption(remember: boolean): Promise<EncryptionStatus> { return invoke('cloud_remember_encryption', { remember }) }
+export function cloudLockEncryption(): Promise<void> { return invoke('cloud_lock_encryption') }
+export function cloudCancelEncryption(): Promise<void> { return invoke('cloud_cancel_encryption') }
+export function cloudSaveRecoveryKey(): Promise<boolean> { return invoke('cloud_save_recovery_key') }
+
+export interface SyncCategory { name: string; icon: string; isArchived: boolean }
+export type SyncAccount = Omit<Account, 'id' | 'current_balance' | 'paid_off_on' | 'payroll_linked'> & { currency: string }
+export interface SyncLedgerEntry { id: string; type: TransactionType; account_id: string; destination_account_id: string | null; amount: string; date: string; description: string; payee: { id: string; name: string } | null; category_id: string | null; income_source: { id: string; name: string } | null; loan_account_id: string | null; salary_role: string | null; loan_component: string | null }
+export interface SyncPayroll { id: string; income_id: string; occurrence: string; date: string; gross: string; net: string; breakdown: import('./salary-payments').PayrollBreakdown[]; principal_entries: { deduction_id: string; transaction_id: string }[] }
+export interface SyncIncome { currency: string; name: string; type: IncomeType; destination_account_id: string; estimated_amount: string; recurrence_frequency: string; recurrence_day_of_month: number; is_active: boolean; deductions: { id: string; name: string; description: string; amount: string; debt_account_id: string | null }[] }
+export interface SyncLedgerGroup { currency: string; protected: boolean; entries: SyncLedgerEntry[]; payroll?: SyncPayroll; loan?: { id: string; loan_account_id: string; contract_id: string | null; parts: { transaction_id: string; component: string; amount: string }[] }; links?: { borrowing_contract_id: string | null; installment_id: string | null } }
+export interface SyncPlannerOverride { source_type: 'income' | 'deduction'; source_id: string; month: string; currency: 'THB'; amount: string }
+export interface SyncMetadata { kind: string; fields: Record<string, string | null>; children: Record<string, Record<string, string | null>[]> }
+export type SyncDetails = SyncCategory | SyncAccount | SyncLedgerGroup | SyncIncome | SyncPlannerOverride | SyncMetadata
+export interface SyncConflict { entity?: 'category' | 'account' | 'transaction' | 'income' | 'income-plan' | 'metadata'; localDetails?: SyncDetails | null; remoteDetails?: SyncDetails | null; recordId: string; local: SyncCategory | null; remote: SyncCategory | null; localRevision: string; remoteVersion: string }
+export interface CloudSyncStatus { fullEnabled: boolean; plannerEnabled: boolean; incomeEnabled: boolean; financialEnabled: boolean; bound: boolean; enabled: boolean; bootstrapped: boolean; pending: number; conflictCount: number; lastSuccess: string | null; conflicts: SyncConflict[] }
+let pendingSyncStatus: Promise<CloudSyncStatus> | undefined
+export function cloudSyncStatus(): Promise<CloudSyncStatus> { return pendingSyncStatus ??= invoke<CloudSyncStatus>('cloud_sync_status').finally(() => { pendingSyncStatus = undefined }) }
+export function cloudEnableSync(): Promise<CloudSyncStatus> { return invoke('cloud_enable_sync', { confirmed: true }) }
+export function cloudSyncNow(): Promise<CloudSyncStatus> { return invoke('cloud_sync_now') }
+export function cloudPauseSync(): Promise<CloudSyncStatus> { return invoke('cloud_pause_sync') }
+export function cloudResolveSync(conflict: SyncConflict, choice: 'local' | 'remote' | 'rename', name?: string): Promise<CloudSyncStatus> { return invoke('cloud_resolve_sync', { recordId: conflict.recordId, localRevision: conflict.localRevision, remoteVersion: conflict.remoteVersion, choice, name: name ?? null }) }
 
 export function getSettings(): Promise<Settings> {
   return invoke<Settings>('get_settings')
@@ -113,6 +169,7 @@ export async function saveSalaryDeductions(input: { income_id: string; currency:
 
 export type TransactionType = 'income' | 'expense' | 'transfer' | 'repayment'
 export interface Transaction {
+  imported_linked_payment?: boolean
   salary_payment_id?: string | null
   salary_payment_role?: string | null
   loan_account_id?: string | null
@@ -135,7 +192,7 @@ export interface Transaction {
   category_icon?: string | null
   category_name: string | null
 }
-export type NewTransaction = Omit<Transaction, 'loan_account_id' | 'loan_account_name' | 'category_icon' | 'id' | 'income_source_name' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name' | 'has_reconciliation_history'> & { currency: string; cleared_account_ids?: string[] }
+export type NewTransaction = Omit<Transaction, 'imported_linked_payment' | 'loan_account_id' | 'loan_account_name' | 'category_icon' | 'id' | 'income_source_name' | 'account_name' | 'destination_account_name' | 'payee_name' | 'category_name' | 'has_reconciliation_history'> & { currency: string; cleared_account_ids?: string[] }
 export function listTransactions(): Promise<Transaction[]> { return invoke('list_transactions') }
 export async function createTransaction(input: NewTransaction): Promise<Transaction> {
   const result = await invoke<Transaction>('create_transaction', { input })

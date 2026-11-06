@@ -14,6 +14,7 @@ import { Button } from './ui/button'
 import { getLoanAccount, type LoanSnapshot } from '../lib/loans'
 import { LoanAccountSummary } from './LoanAccountSummary'
 import { MarkLoanPaidOffDialog } from './MarkLoanPaidOffDialog'
+import { TransactionHistory } from './TransactionsPage'
 
 export function AccountDetailsPage() {
   const { accountId } = useParams({ from: '/accounts/$accountId/details' })
@@ -78,7 +79,6 @@ function AccountDetails({ accountId }: { accountId: string }) {
       <div><h2 className="text-2xl font-semibold"><AccountLabel id={account.id} name={account.name} iconSize="lg" /></h2>{(account.paid_off_on || account.is_archived) && <p className="mt-1 text-sm text-muted">{account.paid_off_on ? `${translate("Paid off")} ${account.paid_off_on}` : translate("Archived")}</p>}</div>
       <div className="flex flex-wrap gap-2">
         {editable && <Button variant="outline" disabled={loading} onClick={() => setEditing(true)} aria-label={translate("Edit account {value0}", { value0: account.name })}>{translate("Edit account")}</Button>}
-        <Button asChild variant="outline"><Link to="/transactions" search={{ account: account.id }}>{translate("Transaction history")}</Link></Button>
       </div>
     </div>
     <div className="rounded-2xl border border-line bg-card p-6">
@@ -91,12 +91,15 @@ function AccountDetails({ accountId }: { accountId: string }) {
       {['bank', 'wallet', 'credit_card', 'loan'].includes(account.type) && <Button asChild variant="outline"><Link to="/accounts/$accountId" params={{ accountId }}>{translate("Transactions & reconciliation")}</Link></Button>}
       {account.type === 'credit_card' && <Button asChild variant="outline"><Link to="/accounts/$accountId/billing" params={{ accountId }}>{translate("Billing & payments")}</Link></Button>}
     </nav>}
+    <section aria-label={translate("Transaction history")} className="min-w-0 border-t border-line pt-6">
+      <TransactionHistory accountId={account.id} embedded />
+    </section>
     {['loan', 'credit_card'].includes(account.type) && <SelectiveDefaultSettings account={account} />}
-    {!account.paid_off_on && <section className="rounded-2xl border border-line p-6">
+    {!account.paid_off_on && (account.is_archived || account.type === 'loan') && <section className="rounded-2xl border border-line p-6">
       <h3 className="mb-3 font-semibold">{translate("Account status")}</h3>
       <div className="flex flex-wrap gap-3">
       {account.type === 'loan' && editable && <Button variant="outline" disabled={loading} onClick={() => setMarkingPaidOff(true)}>{translate("Mark as paid off")}</Button>}
-      <AccountArchiveAction account={account} currency={currency} />
+      {account.is_archived && <AccountArchiveAction account={account} currency={currency} disabled={loading} />}
       </div>
     </section>}
     {editing && <AccountFormDialog account={account} initialType={account.type} currency={currency} onClose={() => setEditing(false)} onSaved={() => setAttempt(n => n + 1)} />}

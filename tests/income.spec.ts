@@ -268,6 +268,30 @@ test('edit income preserves deductions, protects drafts, supports disable/reacti
   await expect(page.getByRole('heading', { name: 'Updated salary', exact: true })).toBeVisible()
 })
 
+test('cloud income refresh preserves the open draft and edit focus', async ({ page }) => {
+  await setup(page)
+  await page.goto('/#/income')
+  await page.evaluate(() => {
+    localStorage.setItem('test-currency', 'THB'); localStorage.setItem('test-account', 'true')
+    localStorage.setItem('test-income', JSON.stringify([{ id: 'salary', name: 'Monthly Salary', type: 'salary', estimated_amount: '5000000', deductions_total: '0', destination_account_id: 'bank', destination_account_name: 'Everyday bank', recurrence_frequency: 'monthly', recurrence_day_of_month: 28, is_active: true, is_auto_create_transaction: false }]))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Edit Monthly Salary', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit income source', exact: true })
+  await page.getByLabel('Income name', { exact: true }).fill('Unsaved draft')
+  await page.evaluate(() => {
+    const rows = JSON.parse(localStorage.getItem('test-income')!)
+    rows[0].name = 'Downloaded salary'
+    localStorage.setItem('test-income', JSON.stringify(rows))
+    window.dispatchEvent(new CustomEvent('incomes-changed', { detail: { source: 'cloud-sync' } }))
+  })
+  await expect(page.getByLabel('Income name', { exact: true })).toHaveValue('Unsaved draft')
+  await expect(page.getByRole('button', { name: 'Edit Downloaded salary', exact: true, includeHidden: true })).toBeAttached()
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Edit Downloaded salary', exact: true })).toBeFocused()
+})
+
 test('inactive sources remove generated estimates while explicit overrides and actual receipts stay intact', async () => {
   const { cycleTotals, plannerItems, itemAmount } = await import('../src/lib/cashflow')
   const data: import('../src/lib/cashflow').PlannerData = { source_currency: 'THB', period_start_day: 1, categories: [], items: [], months: [], opening: null, debt_accounts: [], installments: [], credit_cards: [], card_transactions: [], expense_categories: [],

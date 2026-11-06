@@ -123,8 +123,8 @@ pub struct Planner {
     period_start_day: i64,
     expense_categories: Vec<ExpenseCategory>,
 }
-async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sqlx::Error> {
-    Ok(Planner {
+pub(crate) async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sqlx::Error> {
+    let mut result=Planner {
         selective_defaults: crate::selective_defaults::periods(conn).await?,
         ledger_transactions: sqlx::query_as("SELECT (SELECT COALESCE(lp.loan_account_id,c.account_id) FROM loan_payment_parts lp LEFT JOIN loan_contracts c ON c.id=lp.contract_id WHERE lp.transaction_id=t.id) AS loan_account_id,(SELECT component FROM loan_payment_parts WHERE transaction_id=t.id) AS loan_component,t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
         card_billing: crate::card_billing::snapshot(conn).await?,
@@ -143,8 +143,16 @@ async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sqlx::Error> {
         months: sqlx::query_as("SELECT month,status FROM planner_months").fetch_all(&mut *conn).await?,
         opening: sqlx::query_as("SELECT month,CAST(amount AS TEXT) AS amount FROM planner_opening WHERE id=1").fetch_optional(&mut *conn).await?,
         period_start_day: sqlx::query_scalar("SELECT period_start_day FROM settings WHERE id=1").fetch_one(&mut *conn).await?,
-        expense_categories: sqlx::query_as("SELECT id,name,icon,is_archived FROM categories ORDER BY name").fetch_all(conn).await?,
-    })
+        expense_categories: sqlx::query_as("SELECT id,name,icon,is_archived FROM categories ORDER BY name").fetch_all(&mut *conn).await?,
+    };
+    let imported=crate::cloud_sync_ledger::imported_entries(conn).await.map_err(sqlx::Error::Protocol)?;
+    for row in result.ledger_transactions.iter_mut().chain(result.card_transactions.iter_mut()) {
+        if let Some((_,entry))=imported.get(&row.id) {
+            if row.loan_account_id.is_none(){row.loan_account_id=entry.loan_account_id.clone();row.loan_component=entry.loan_component.clone();}
+            if row.income_source_name.is_none(){if let Some(source)=&entry.income_source{row.income_source_id=Some(source.id.clone());row.income_source_name=Some(source.name.clone());}}
+        }
+    }
+    Ok(result)
 }
 #[tauri::command]
 pub async fn get_cashflow_planner(pool: tauri::State<'_, SqlitePool>) -> Result<Planner, String> {
@@ -185,7 +193,7 @@ pub enum Change {
         amount: Option<String>,
     },
 }
-fn month_index(value: &str) -> Result<i32, String> {
+pub(crate) fn month_index(value: &str) -> Result<i32, String> {
     let bytes = value.as_bytes();
     if bytes.len() != 7
         || bytes[4] != b'-'
@@ -1343,6 +1351,6 @@ mod tests {
         assert_eq!(data.opening.unwrap().amount, "-10000");
         assert_eq!(data.items.len(), 10);
         pool.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
 }

@@ -3,6 +3,8 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct Entry {
+    #[sqlx(default)]
+    imported_linked_payment: bool,
     salary_payment_id: Option<String>,
     salary_payment_role: Option<String>,
     transaction_id: String,
@@ -70,7 +72,12 @@ async fn snapshot(conn: &mut SqliteConnection, id: &str) -> Result<Snapshot, Str
     let mut entries: Vec<Entry> = sqlx::query_as("SELECT (SELECT payment_id FROM salary_payment_transactions WHERE transaction_id=t.id) salary_payment_id,(SELECT role FROM salary_payment_transactions WHERE transaction_id=t.id) salary_payment_role,t.id AS transaction_id,t.date,t.description,t.type AS kind,CAST(t.amount AS TEXT) AS amount,t.account_id,t.destination_account_id,v.status,CAST(v.reconciliation_id AS TEXT) AS reconciliation_id,'' AS balance_change FROM transactions t JOIN transaction_verifications v ON v.transaction_id=t.id WHERE v.account_id=? ORDER BY t.date DESC,t.created_at DESC,t.id DESC")
         .bind(id).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
     let mut uncleared = 0i128;
+    let imported=crate::cloud_sync_ledger::imported_entries(&mut *conn).await?;
     for entry in &mut entries {
+        if let Some((protected,source))=imported.get(&entry.transaction_id){
+            entry.imported_linked_payment=*protected;
+            if entry.salary_payment_role.is_none(){entry.salary_payment_role=source.salary_role.clone();}
+        }
         let amount = entry.amount.parse::<i64>().map_err(|e| e.to_string())?;
         let inflow =
             if entry.destination_account_id.as_deref() == Some(id) || entry.kind == "income" {
@@ -88,9 +95,9 @@ async fn snapshot(conn: &mut SqliteConnection, id: &str) -> Result<Snapshot, Str
             uncleared += i128::from(change);
         }
     }
-    let history = sqlx::query_as("SELECT CAST(id AS TEXT) AS id,completed_at,CAST(confirmed_balance AS TEXT) AS confirmed_balance,CAST(opening_balance AS TEXT) AS opening_balance,needs_review FROM reconciliations WHERE account_id=? ORDER BY id DESC")
+    let history = sqlx::query_as("SELECT CAST(id AS TEXT) AS id,completed_at,CAST(confirmed_balance AS TEXT) AS confirmed_balance,CAST(opening_balance AS TEXT) AS opening_balance,needs_review FROM reconciliations WHERE account_id=? ORDER BY completed_at DESC,id DESC")
         .bind(id).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
-    let history_entries = sqlx::query_as("SELECT CAST(e.reconciliation_id AS TEXT) AS reconciliation_id,e.transaction_id,e.date,e.description,e.type AS kind,CAST(e.balance_change AS TEXT) AS balance_change FROM reconciliation_entries e JOIN reconciliations r ON r.id=e.reconciliation_id WHERE r.account_id=? ORDER BY r.id DESC,e.transaction_id")
+    let history_entries = sqlx::query_as("SELECT CAST(e.reconciliation_id AS TEXT) AS reconciliation_id,e.transaction_id,e.date,e.description,e.type AS kind,CAST(e.balance_change AS TEXT) AS balance_change FROM reconciliation_entries e JOIN reconciliations r ON r.id=e.reconciliation_id WHERE r.account_id=? ORDER BY r.completed_at DESC,r.id DESC,e.transaction_id")
         .bind(id).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
     let mut result = Snapshot {
         account_id: id.into(),
@@ -148,7 +155,7 @@ async fn mark_review(
     transaction: &str,
     account: Option<&str>,
 ) -> Result<(), String> {
-    sqlx::query("UPDATE reconciliations AS r SET needs_review=1 WHERE (? IS NULL OR r.account_id=?) AND r.id >= (SELECT min(old.id) FROM reconciliations old JOIN reconciliation_entries e ON e.reconciliation_id=old.id WHERE old.account_id=r.account_id AND e.transaction_id=?)")
+    sqlx::query("UPDATE reconciliations AS r SET needs_review=1 WHERE (? IS NULL OR r.account_id=?) AND r.completed_at >= (SELECT min(old.completed_at) FROM reconciliations old JOIN reconciliation_entries e ON e.reconciliation_id=old.id WHERE old.account_id=r.account_id AND e.transaction_id=?)")
         .bind(account).bind(account).bind(transaction).execute(conn).await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -670,7 +677,7 @@ mod tests {
         );
         assert_eq!(balances(&reopened).await, before);
         reopened.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
 
     #[tokio::test]

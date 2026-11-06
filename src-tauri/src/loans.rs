@@ -100,7 +100,15 @@ pub async fn get_loan_account(
         .into_iter()
         .filter(|c| c.account_id == account_id)
         .collect();
-    let transactions=sqlx::query_as(&format!("{} WHERE t.account_id=? OR t.destination_account_id=? OR t.id IN (SELECT p.transaction_id FROM loan_payment_parts p LEFT JOIN loan_contracts c ON c.id=p.contract_id WHERE COALESCE(p.loan_account_id,c.account_id)=?) ORDER BY t.date DESC,t.created_at DESC",crate::transactions::SELECT)).bind(&account_id).bind(&account_id).bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
+    let mut transactions:Vec<crate::transactions::Transaction>=sqlx::query_as(&format!("{} WHERE t.account_id=? OR t.destination_account_id=? OR t.id IN (SELECT p.transaction_id FROM loan_payment_parts p LEFT JOIN loan_contracts c ON c.id=p.contract_id WHERE COALESCE(p.loan_account_id,c.account_id)=?) ORDER BY t.date DESC,t.created_at DESC",crate::transactions::SELECT)).bind(&account_id).bind(&account_id).bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
+    let imported=crate::cloud_sync_ledger::imported_entries(&mut tx).await?;
+    for (id,(_,entry)) in &imported {
+        if entry.loan_account_id.as_deref()==Some(account_id.as_str()) && !transactions.iter().any(|t|&t.id==id) {
+            if let Some(row)=sqlx::query_as(&format!("{} WHERE t.id=?",crate::transactions::SELECT)).bind(id).fetch_optional(&mut *tx).await.map_err(err)? {transactions.push(row);}
+        }
+    }
+    crate::transactions::decorate_in_connection(&mut tx,&mut transactions).await?;
+    transactions.sort_by(|a,b|b.order().cmp(&a.order()));
     let payment_parts=sqlx::query_as("SELECT p.transaction_id,p.payment_id,p.contract_id,p.component,CAST(p.amount AS TEXT) AS amount FROM loan_payment_parts p LEFT JOIN loan_contracts c ON c.id=p.contract_id WHERE COALESCE(p.loan_account_id,c.account_id)=?").bind(&account_id).fetch_all(&mut *tx).await.map_err(err)?;
     let paid_off_on = sqlx::query_scalar("SELECT paid_off_on FROM loan_payoffs WHERE account_id=?").bind(&account_id).fetch_optional(&mut *tx).await.map_err(err)?;
     tx.commit().await.map_err(err)?;
@@ -171,7 +179,7 @@ pub struct SaveContract {
     #[serde(default)]
     acknowledge_over_limit: bool,
 }
-async fn save(pool: &SqlitePool, input: SaveContract) -> Result<(), String> {
+pub(crate) async fn save(pool: &SqlitePool, input: SaveContract) -> Result<(), String> {
     let principal = amount(&input.principal)?;
     let remaining = amount(&input.remaining_principal)?;
     let monthly = amount(&input.monthly_amount)?;
@@ -336,7 +344,7 @@ pub struct Repayment {
     fee: String,
     currency: String,
 }
-async fn repay(pool: &SqlitePool, input: Repayment) -> Result<(), String> {
+pub(crate) async fn repay(pool: &SqlitePool, input: Repayment) -> Result<(), String> {
     let principal = amount(&input.principal)?;
     let interest = amount(&input.interest)?;
     let fee = amount(&input.fee)?;
@@ -897,7 +905,7 @@ mod tests {
                 .unwrap();
         assert_eq!(amount, 0);
         pool.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
     #[tokio::test]
     async fn generic_repayments_cannot_consume_allocated_principal_and_group_history_is_protected()

@@ -290,7 +290,7 @@ mod tests {
         let preserved:(i64,i64,i64)=sqlx::query_as("SELECT a.opening_balance,t.amount,s.amount FROM accounts a JOIN transactions t ON t.account_id=a.id JOIN card_statements s ON s.account_id=a.id").fetch_one(&reopened).await.unwrap();
         assert_eq!(preserved, (9007199254740993, 1, 100));
         reopened.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
     #[tokio::test]
     async fn validates_members_limits_currency_and_rolls_back_failed_updates() {

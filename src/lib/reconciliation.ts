@@ -3,6 +3,7 @@ import type { TransactionType } from './desktop'
 
 export type VerificationStatus = 'uncleared' | 'cleared' | 'reconciled'
 export interface VerificationEntry {
+  imported_linked_payment?: boolean
   salary_payment_id?: string | null; salary_payment_role?: string | null
   transaction_id: string; date: string; description: string; type: TransactionType; amount: string
   account_id: string; destination_account_id: string | null; status: VerificationStatus

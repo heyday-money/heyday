@@ -13,6 +13,7 @@ test('exclusions follow clamped payday cycles with an exclusive resumption bound
 })
 
 test('account details require review, preserve failed drafts, and persist exclusion and resumption history', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 560 })
   await page.clock.setFixedTime(new Date(2026,9,6,12))
   await page.addInitScript(() => {
     Object.defineProperty(window,'isTauri',{value:true})
@@ -52,7 +53,13 @@ test('account details require review, preserve failed drafts, and persist exclus
   await dialog.getByRole('button',{name:'Confirm exclusion'}).click()
   await expect(dialog).toHaveCount(0)
   await page.reload()
-  await page.getByRole('button',{name:'Selective Default',exact:true}).focus()
+  const warning = page.getByRole('button',{name:'Selective Default',exact:true})
+  // History can put the warning below the fold. Finish scrolling before focus:
+  // Radix closes an open tooltip when the trigger's scroll container moves.
+  await warning.scrollIntoViewIfNeeded()
+  await expect(warning).toBeInViewport()
+  await warning.focus()
+  await expect(warning).toBeFocused()
   await expect(page.getByRole('tooltip')).toContainText('since 2026-09')
   await page.getByRole('button',{name:'Resume repayments',exact:true}).click()
   await dialog.getByLabel('Resume cycle').fill('2026-11')
