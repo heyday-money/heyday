@@ -83,6 +83,11 @@ export function SalaryPaymentHistory({ incomeId = null, paymentId = null, accoun
   const [reversing, setReversing] = useState<string | null>(null), [busy, setBusy] = useState(false)
   const lock = useRef(false)
   useEffect(() => { let active = true; listSalaryPayments(incomeId, paymentId, accountId).then(p => { if (active) setPayments(p) }).catch(e => { if (active) setError(String(e)) }); return () => { active = false } }, [incomeId, paymentId, accountId, attempt])
+  useEffect(() => {
+    const refresh = () => setAttempt(value => value + 1)
+    window.addEventListener('transactions-changed', refresh)
+    return () => window.removeEventListener('transactions-changed', refresh)
+  }, [])
   async function reverse() {
     if (!reversing || lock.current) return
     lock.current = true; setBusy(true); setError('')

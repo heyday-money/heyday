@@ -1,6 +1,6 @@
 [package]
 name = "heyday-money"
-version = "0.0.1-beta.4"
+version = "0.0.1-beta.5"
 description = "An offline personal finance desktop app"
 edition = "2021"
 rust-version = "1.89"
@@ -17,6 +17,13 @@ tauri-build = { version = "2", features = [] }
 base64 = "0.22"
 png = "0.18"
 sha2 = "0.10"
+aes-gcm = { version = "0.10.3", features = ["zeroize"] }
+hkdf = "0.12"
+hmac = "0.12"
+zeroize = "1.8"
+subtle = "2.6"
+getrandom = "0.3"
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
@@ -24,7 +31,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "=2.5.4"
 tempfile = "3"
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync", "net", "time", "io-util"] }
 semver = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde_json = "1"

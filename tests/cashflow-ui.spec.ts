@@ -365,3 +365,33 @@ test('archived debt accounts disappear from Outlook rows and return when restore
   await expect(page.getByRole('link',{name:'Archived Loan',exact:true})).toBeVisible()
   await expect(page.getByRole('link',{name:'Archived Visa',exact:true})).toBeVisible()
 })
+
+
+test('cloud forecast refresh preserves an open draft and updates the table after closing', async ({ page }) => {
+  await page.getByRole('button', { name: 'Edit Salary 2026-12 amount', exact: true }).click()
+  await page.getByLabel('Cycle amount (THB)').fill('100')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.evaluate(() => {
+    const data = JSON.parse(localStorage.getItem('planner-test')!)
+    data.incomes = [{ id: 'source', name: 'Employer salary', estimated_amount: '5000000', recurrence_day_of_month: 25, is_active: true, destination_account_name: 'Bank', account_archived: false }]
+    localStorage.setItem('planner-test', JSON.stringify(data))
+    window.dispatchEvent(new CustomEvent('plans-changed', { detail: { source: 'cloud-sync' } }))
+  })
+  const cell = page.getByRole('button', { name: 'Edit Employer salary 2026-12 amount', exact: true, includeHidden: true })
+  await expect(cell).toContainText('50,000.00')
+  await cell.click()
+  await page.getByLabel('Cycle amount (THB)').fill('123.45')
+  await page.evaluate(() => {
+    const data = JSON.parse(localStorage.getItem('planner-test')!)
+    data.amounts.push({ item_id: 'income:source', month: '2026-12', amount: '0' })
+    localStorage.setItem('planner-test', JSON.stringify(data))
+    window.dispatchEvent(new CustomEvent('plans-changed', { detail: { source: 'cloud-sync' } }))
+  })
+  await expect(cell).toContainText('0.00')
+  await expect(page.getByLabel('Cycle amount (THB)')).toHaveValue('123.45')
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  const discard = page.getByRole('button', { name: 'Discard changes', exact: true })
+  if (await discard.isVisible()) await discard.click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(cell).toContainText('0.00')
+})

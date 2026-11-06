@@ -13,12 +13,14 @@ import { AppUpdates } from "./components/AppUpdates";
 import { useLocalDate } from "./lib/useLocalDate";
 import { AccountExport } from "./components/AccountExport";
 import { DatabaseBackups } from "./components/DatabaseBackups";
+import { CloudAccount } from "./components/CloudAccount";
 import { DangerZone } from "./components/DangerZone";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { TransactionOptionsSettings } from "./components/TransactionOptionsSettings";
 import { TransactionShortcut, AddTransactionButton } from "./components/TransactionShortcut";
 import { SidebarAccounts } from "./components/SidebarAccounts";
 import { SidebarResizeHandle } from "./components/SidebarResizeHandle";
+import { SidebarUser } from "./components/SidebarUser";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 import { CurrencySetting } from "./components/CurrencySetting";
@@ -30,7 +32,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   ChartNoAxesCombined,
@@ -166,13 +168,13 @@ export function AppLayout() {
               className="flex min-h-0 flex-1 flex-col gap-1.5"
               aria-label={translate("Main navigation")}
             >
-              {navigation.map(({ to, label, icon: Icon }) => (
+              {navigation.filter(item => item.to !== '/settings').map(({ to, label, icon: Icon }) => (
                 <Fragment key={to}>
                   <Link
                     to={to}
                     activeOptions={{ exact: true }}
                     activeProps={{ "aria-current": "page" }}
-                    className={`flex min-w-0 max-w-full shrink-0 items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[14px] font-medium text-muted hover:bg-page hover:text-ink aria-[current=page]:bg-soft aria-[current=page]:text-brand ${to === "/settings" ? "mt-auto" : ""} ${collapsed ? "justify-center" : ""}`}
+                    className={`flex min-w-0 max-w-full shrink-0 items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[14px] font-medium text-muted hover:bg-page hover:text-ink aria-[current=page]:bg-soft aria-[current=page]:text-brand ${collapsed ? "justify-center" : ""}`}
                     title={collapsed ? translate(label) : undefined}
                     aria-label={translate(label)}
                   >
@@ -191,6 +193,21 @@ export function AppLayout() {
                   )}
                 </Fragment>
               ))}
+              <div className="mt-auto shrink-0 space-y-1.5">
+                <SidebarUser collapsed={collapsed} />
+                <Link
+                  to="/settings"
+                  search={{}}
+                  activeOptions={{ exact: true, includeSearch: false }}
+                  activeProps={{ 'aria-current': 'page' }}
+                  aria-label={translate('Settings')}
+                  title={collapsed ? translate('Settings') : undefined}
+                  className={`flex min-w-0 items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[14px] font-medium text-muted hover:bg-page hover:text-ink aria-[current=page]:bg-soft aria-[current=page]:text-brand ${collapsed ? 'justify-center' : ''}`}
+                >
+                  <SettingsIcon className="shrink-0" size={18} aria-hidden="true" />
+                  {!collapsed && <span>{translate('Settings')}</span>}
+                </Link>
+              </div>
             </nav>
             <button
               className={`mt-3 flex shrink-0 items-center gap-2.5 rounded-[9px] border-0 bg-transparent p-2.5 text-[12px] font-medium text-muted hover:bg-page hover:text-ink ${collapsed ? "justify-center" : ""}`}
@@ -248,6 +265,8 @@ export { IncomePage } from "./components/IncomePage";
 
 export function SettingsPage() {
   useLanguage()
+  const { section = 'general' } = useSearch({ from: '/settings' });
+  const navigate = useNavigate({ from: '/settings' });
 
   const today = useLocalDate();
   const { appearance, setAppearance } = useContext(ThemeContext);
@@ -283,6 +302,15 @@ export function SettingsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!desktopAvailable) return;
+    let active = true;
+    // A first cloud import can establish currency. Preserve an unsaved payday draft.
+    const refresh = () => { void getSettings().then(value => { if (active) setSettings(value); }).catch(() => {}); };
+    window.addEventListener('settings-changed', refresh);
+    return () => { active = false; window.removeEventListener('settings-changed', refresh); };
+  }, []);
+
   async function savePeriod(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -305,7 +333,7 @@ export function SettingsPage() {
         <h2 className="mb-3 text-2xl font-semibold">{translate("Make Heyday yours.")}</h2>
         <p className="text-sm">{translate("Manage your preferences, institutions, payees, and spending categories.")}</p>
       </div>
-      <Tabs defaultValue="general" orientation="vertical" className="grid min-w-0 grid-cols-1 items-stretch gap-0 overflow-clip rounded-2xl border border-line bg-card shadow-sm @min-[640px]:grid-cols-[220px_minmax(0,1fr)]">
+      <Tabs value={section} onValueChange={value => { void navigate({ search: { section: value === 'general' ? undefined : value }, replace: true }); }} orientation="vertical" className="grid min-w-0 grid-cols-1 items-stretch gap-0 overflow-clip rounded-2xl border border-line bg-card shadow-sm @min-[640px]:grid-cols-[220px_minmax(0,1fr)]">
         <TabsList aria-label={translate("Settings sections")} className="h-auto min-w-0 flex-col items-stretch justify-start gap-1 rounded-none border-b border-line bg-soft/50 p-3 @min-[640px]:border-r @min-[640px]:border-b-0">
           {([
             ['general', translate("General"), SettingsIcon],
@@ -314,12 +342,14 @@ export function SettingsPage() {
             ['institutions', translate("Institutions"), Landmark],
             ['providers', translate("Subscriptions"), Repeat],
             ['data', translate("Data"), Database],
+            ['account', translate("Heyday account"), Users],
           ] as const).map(([value, label, Icon]) => <TabsTrigger key={value} value={value} className="w-full flex-none justify-start gap-3 px-3 py-3 text-left">
             <Icon className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 whitespace-normal break-normal">{label}</span>
           </TabsTrigger>)}
         </TabsList>
         <div className="min-w-0 p-4 [overflow-wrap:anywhere] @min-[640px]:p-6 @min-[900px]:p-8 [&_p]:leading-relaxed [&_fieldset]:min-w-0">
         <TabsContent value="providers"><SubscriptionProvidersSettings /></TabsContent>
+        <TabsContent value="account"><CloudAccount /></TabsContent>
         <TabsContent value="institutions"><InstitutionsSettings /></TabsContent>
         <TabsContent value="general" forceMount>
       <section className="min-w-0">

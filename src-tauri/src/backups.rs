@@ -167,6 +167,27 @@ async fn vacuum(conn: &mut SqliteConnection, path: &Path) -> Result<(), String> 
         .and_then(|f| f.sync_all())
         .map_err(err)
 }
+async fn clear_sync_metadata(conn: &mut SqliteConnection) -> Result<(), String> {
+    // Older beta snapshots predate sync. Preserve their schema so the normal
+    // staged migration path can validate and upgrade them on restore.
+    let has_sync: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='cloud_sync_binding')")
+        .fetch_one(&mut *conn).await.map_err(err)?;
+    if !has_sync { return Ok(()); }
+    sqlx::query("PRAGMA secure_delete=ON").execute(&mut *conn).await.map_err(err)?;
+    let mut tx=conn.begin().await.map_err(err)?;
+    for table in ["cloud_sync_binding", "cloud_sync_pending", "cloud_sync_dirty", "cloud_sync_shadow"] {
+        sqlx::query(&format!("DELETE FROM {table}")).execute(&mut *tx).await.map_err(err)?;
+    }
+    tx.commit().await.map_err(err)?;
+    sqlx::query("VACUUM").execute(conn).await.map_err(err)?;
+    Ok(())
+}
+async fn sanitize_sync_snapshot(path: &Path) -> Result<(), String> {
+    let mut conn=connect(path,false).await?;
+    clear_sync_metadata(&mut conn).await?;
+    conn.close().await.map_err(err)?;
+    std::fs::OpenOptions::new().write(true).open(path).and_then(|f|f.sync_all()).map_err(err)
+}
 async fn prepare(source: &Path) -> Result<PreparedBackup, String> {
     if !source.is_file() {
         return Err("Choose an existing Heyday Money backup file.".into());
@@ -183,6 +204,7 @@ async fn prepare(source: &Path) -> Result<PreparedBackup, String> {
         .run_direct(&mut staged)
         .await
         .map_err(|e| format!("Could not upgrade this backup: {e}"))?;
+    clear_sync_metadata(&mut staged).await?;
     validate(&mut staged).await?;
     let preview = BackupPreview {
         token: sqlx::query_scalar("SELECT lower(hex(randomblob(16)))")
@@ -246,6 +268,7 @@ async fn export(pool: &SqlitePool, target: &Path) -> Result<(), String> {
     let snapshot = stage.path().join("export.db");
     let mut conn = pool.acquire().await.map_err(err)?;
     vacuum(&mut conn, &snapshot).await?;
+    sanitize_sync_snapshot(&snapshot).await?;
     std::fs::rename(snapshot, target).map_err(|e| format!("Could not save the backup: {e}"))
 }
 async fn replace(
@@ -265,6 +288,7 @@ async fn replace(
     let mut live = pool.acquire().await.map_err(err)?;
     vacuum(&mut live, &recovery).await?;
     drop(live);
+    sanitize_sync_snapshot(&recovery).await?;
     // Use a dedicated connection: pooled connections keep foreign keys enabled.
     // Disable triggers only transactionally while copying exact validated data;
     // restoring history must not replay ledger or statement-review side effects.
@@ -543,7 +567,76 @@ mod tests {
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&target).await.unwrap(),9007199254740993);
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM salary_payments").fetch_one(&target).await.unwrap(),0);
         let history:Vec<i64>=sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version").fetch_all(&target).await.unwrap();
-        assert_eq!(history,vec![1,2,3]);
+        assert_eq!(history,vec![1,2,3,4,5,6,7,8,9]);
+    }
+
+    #[tokio::test]
+    async fn backups_and_restore_never_copy_sync_ownership_or_pending_uploads() {
+        let dir=tempfile::tempdir().unwrap();let source=dir.path().join("live.db");let pool=database(&source).await;
+        crate::cloud_sync_store::enable(&pool,"https://api.example.test/","private-account","dataset","key").await.unwrap();
+        assert!(crate::cloud_sync_store::binding(&pool).await.unwrap().is_some());
+        sqlx::query("INSERT INTO ledger_sync_imports(group_id,payload) VALUES('history','{\"currency\":\"THB\",\"protected\":true,\"entries\":[]}')").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO ledger_sync_members(transaction_id,group_id) VALUES('deleted-entry','history')").execute(&pool).await.unwrap();
+        let backup=dir.path().join("export.db");export(&pool,&backup).await.unwrap();
+        let mut exported=connect(&backup,false).await.unwrap();
+        for table in ["cloud_sync_binding","cloud_sync_dirty","cloud_sync_pending","cloud_sync_shadow"] {
+            let count:i64=sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}")).fetch_one(&mut exported).await.unwrap();assert_eq!(count,0);
+        }
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM ledger_sync_imports").fetch_one(&mut exported).await.unwrap(),1);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM ledger_sync_members").fetch_one(&mut exported).await.unwrap(),1);
+        exported.close().await.unwrap();
+        assert!(crate::cloud_sync_store::binding(&pool).await.unwrap().is_some());
+        // Even a raw copy containing device state is sanitized during preparation.
+        let raw=dir.path().join("raw.db");vacuum(&mut pool.acquire().await.unwrap(),&raw).await.unwrap();
+        let prepared=prepare(&raw).await.unwrap();
+        replace(&pool,&prepared,&dir.path().join("recovery")).await.unwrap();
+        assert!(crate::cloud_sync_store::binding(&pool).await.unwrap().is_none());
+        let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM cloud_sync_dirty").fetch_one(&pool).await.unwrap();assert_eq!(count,0);
+    }
+
+    #[tokio::test]
+    async fn applied_complete_sync_migration_upgrades_without_changing_data_or_history() {
+        // This is the checksum already installed by the original beta.5 build.
+        // Even whitespace changes to migration 8 must fail this regression test.
+        let original = MIGRATOR.iter().find(|m| m.version == 8).unwrap();
+        let checksum: String = original.checksum.iter().map(|byte| format!("{byte:02x}")).collect();
+        assert_eq!(checksum, "735bacdce83d50164ad239aeecc79d7f8aa1dd5ba7c1b96daaed108284f0e9004b0aa0fd0d5c830f98876a3991775010");
+
+        let directory = tempfile::tempdir().unwrap();
+        let pool = SqlitePoolOptions::new().max_connections(1).connect_with(
+            SqliteConnectOptions::new().filename(directory.path().join("old.db"))
+                .create_if_missing(true).foreign_keys(true),
+        ).await.unwrap();
+        let old = sqlx::migrate::Migrator {
+            migrations: Cow::Owned(MIGRATOR.iter().filter(|m| m.version <= 8).cloned().collect()),
+            ..sqlx::migrate::Migrator::DEFAULT
+        };
+        old.run(&pool).await.unwrap();
+        populate(&pool).await;
+        crate::cloud_sync_store::enable(&pool,"https://example.test","account","dataset","key").await.unwrap();
+        sqlx::raw_sql("UPDATE cloud_sync_binding SET financial_enabled=1,income_enabled=1,planner_enabled=1,full_enabled=1; INSERT INTO cloud_sync_pending(id,record_id,revision,request) VALUES(1,'planner-expense-0',1,'{\"savedCiphertext\":\"unchanged\"}');").execute(&pool).await.unwrap();
+        let before = contents(&pool).await;
+        let history: Vec<(i64,Vec<u8>,bool)> = sqlx::query_as("SELECT version,checksum,success FROM _sqlx_migrations ORDER BY version").fetch_all(&pool).await.unwrap();
+        let backup = directory.path().join("migration-eight.db");
+        export(&pool,&backup).await.unwrap();
+        let backup_bytes = std::fs::read(&backup).unwrap();
+
+        MIGRATOR.run(&pool).await.unwrap();
+        MIGRATOR.run(&pool).await.unwrap();
+        assert_eq!(contents(&pool).await,before);
+        let after: Vec<(i64,Vec<u8>,bool)> = sqlx::query_as("SELECT version,checksum,success FROM _sqlx_migrations WHERE version<=8 ORDER BY version").fetch_all(&pool).await.unwrap();
+        assert_eq!(after,history);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'full_sync_remote_%'").fetch_one(&pool).await.unwrap(),6);
+        // The additive migration installs the remote safety behavior too.
+        sqlx::raw_sql("UPDATE cloud_sync_binding SET applying=1; UPDATE card_statements SET needs_review=1 WHERE id='statement';").execute(&pool).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM cloud_sync_dirty WHERE record_id='metadata:statement:statement'").fetch_one(&pool).await.unwrap(),1);
+
+        // Existing migration-8 backups still validate and upgrade in a staged copy.
+        let prepared = prepare(&backup).await.unwrap();
+        let mut staged = connect(&prepared.directory.path().join("restore.db"),true).await.unwrap();
+        assert_eq!(validate(&mut staged).await.unwrap(),9);
+        assert_eq!(std::fs::read(&backup).unwrap(),backup_bytes);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM cloud_sync_pending").fetch_one(&mut staged).await.unwrap(),0);
     }
     #[tokio::test]
     async fn corrupt_foreign_newer_and_tampered_backups_are_rejected() {

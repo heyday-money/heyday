@@ -66,7 +66,7 @@ fn amount(value: &str) -> Result<i64, String> {
         .map_err(|_| "Amount is outside the supported range.".into())
 }
 
-fn validate_account(mut input: NewAccount, allow_unclassified: bool) -> Result<NewAccount, String> {
+pub(crate) fn validate_account(mut input: NewAccount, allow_unclassified: bool) -> Result<NewAccount, String> {
     let kind = input.account_type.as_str();
     if ![
         "cash",

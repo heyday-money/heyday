@@ -1,0 +1,31 @@
+{
+  "rootKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "localId": "opening:1",
+  "plaintext": "{\"schema\":5,\"entity\":\"metadata\",\"id\":\"opening:1\",\"value\":{\"kind\":\"opening\",\"fields\":{\"id\":\"1\",\"month\":\"2026-11\",\"amount\":\"-9007199254740993\"},\"children\":{}}}",
+  "change": {
+    "sequence": "1",
+    "version": "1",
+    "request": {
+      "protocol": 5,
+      "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+      "mutationId": "public-test-complete-sync",
+      "recordId": "uy3Ip6AaQ8CSe_RU_sqxBpmiidiLRUey93IaMjuDFvc",
+      "baseVersion": "0",
+      "previous": {
+        "sequence": "0",
+        "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "operation": "put",
+      "payload": {
+        "format": "heyday-record-v2",
+        "algorithm": "A256GCM-HKDF-SHA256",
+        "keyId": "test-key-v1",
+        "salt": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+        "nonce": "BAQEBAQEBAQEBAQE",
+        "ciphertext": "w3I3-ehlEV1dYO5nwwL9xcpG2hCAhpET4oPGE4dNkwO6inC4yyqZznAVQgqgui_K8zG9N0wJO8FlZ52i1puhS3pC2-vnw7b6-RRPJe1rQEfMCSZ6ywM4UxHKFQGSnHml-Vgc0XLb7jGlCP8Axrrul4qfUUd__Bn2AliZMt1NhRUHxVztE5PtyDmIUS8pQm6HyejVzLCVgpguwB-PAAgIQb9xeLGXyfAzOg4WuQ4"
+      },
+      "commitHash": "bbcc3b5ed3df2732c1929eff20b10ff9d969f1df6afca2e0b181a979e07dcf0e",
+      "commitMac": "jY3TC0Ce8BIlwq5aUwQKVqNzVu5akO0AD2eDKrUsphE"
+    }
+  }
+}

@@ -1,0 +1,620 @@
+[
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-002",
+      "name": "Bangkok Bank Public Company Limited",
+      "short_name": "BBL",
+      "bank_code": "002",
+      "swift_code": "BKKBTHBK",
+      "logo": "bbl.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-004",
+      "name": "Kasikornbank Public Company Limited",
+      "short_name": "KBANK",
+      "bank_code": "004",
+      "swift_code": "KASITHBK",
+      "logo": "kbank.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-006",
+      "name": "Krungthai Bank Public Company Limited",
+      "short_name": "KTB",
+      "bank_code": "006",
+      "swift_code": "KRUTTHBK",
+      "logo": "ktb.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-014",
+      "name": "The Siam Commercial Bank Public Company Limited",
+      "short_name": "SCB",
+      "bank_code": "014",
+      "swift_code": "SICOTHBK",
+      "logo": "scb.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-024",
+      "name": "United Overseas Bank (Thai) Public Company Limited",
+      "short_name": "UOB",
+      "bank_code": "024",
+      "swift_code": "UOVBTHBK",
+      "logo": "uob.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-025",
+      "name": "Bank of Ayudhya Public Company Limited",
+      "short_name": "BAY",
+      "bank_code": "025",
+      "swift_code": "AYUDTHBK",
+      "logo": "bay.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-033",
+      "name": "Government Housing Bank",
+      "short_name": "GHB",
+      "bank_code": "033",
+      "swift_code": "GHBATHBK",
+      "logo": "ghb.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-067",
+      "name": "TISCO Bank Public Company Limited",
+      "short_name": "TISCO",
+      "bank_code": "067",
+      "swift_code": "TISCTHBK",
+      "logo": "tisco.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-069",
+      "name": "Kiatnakin Phatra Bank Public Company Limited",
+      "short_name": "KKP",
+      "bank_code": "069",
+      "swift_code": "KKPBTHBK",
+      "logo": "kkp.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-011",
+      "name": "TMBThanachart Bank Public Company Limited",
+      "short_name": "TTB",
+      "bank_code": "011",
+      "swift_code": null,
+      "logo": "ttb.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-020",
+      "name": "Standard Chartered Bank (Thai) Public Company Limited",
+      "short_name": "SCBT",
+      "bank_code": "020",
+      "swift_code": null,
+      "logo": "standard-chartred.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-030",
+      "name": "Government Savings Bank",
+      "short_name": "GSB",
+      "bank_code": "030",
+      "swift_code": null,
+      "logo": "gsb.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-031",
+      "name": "The Hongkong and Shanghai Banking Corporation Limited",
+      "short_name": "HSBC",
+      "bank_code": "031",
+      "swift_code": null,
+      "logo": "hsbc.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-034",
+      "name": "Bank for Agriculture and Agricultural Cooperatives",
+      "short_name": "BAAC",
+      "bank_code": "034",
+      "swift_code": null,
+      "logo": "baac.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-065",
+      "name": "Thanachart Bank Public Company Limited (legacy)",
+      "short_name": "TBANK",
+      "bank_code": "065",
+      "swift_code": null,
+      "logo": "thanachart.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-066",
+      "name": "Islamic Bank of Thailand",
+      "short_name": "IBANK",
+      "bank_code": "066",
+      "swift_code": null,
+      "logo": "ibank.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-070",
+      "name": "Industrial and Commercial Bank of China (Thai) Public Company Limited",
+      "short_name": "ICBC",
+      "bank_code": "070",
+      "swift_code": null,
+      "logo": "icbc.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "bank-073",
+      "name": "Land and Houses Bank Public Company Limited",
+      "short_name": "LH Bank",
+      "bank_code": "073",
+      "swift_code": null,
+      "logo": "lh.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "wallet-truemoney",
+      "name": "TrueMoney",
+      "short_name": "TrueMoney",
+      "bank_code": null,
+      "swift_code": null,
+      "logo": "truemoney.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "wallet-line-pay",
+      "name": "LINE Pay",
+      "short_name": "LINE Pay",
+      "bank_code": null,
+      "swift_code": null,
+      "logo": "line-pay.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "institution",
+    "fields": {
+      "id": "wallet-grab-pay",
+      "name": "GrabPay",
+      "short_name": "GrabPay",
+      "bank_code": null,
+      "swift_code": null,
+      "logo": "grab-pay.svg",
+      "is_archived": "0",
+      "logo_asset_id": null,
+      "logo_mode": "default"
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-netflix",
+      "name": "Netflix",
+      "is_archived": "0",
+      "builtin_icon": "netflix",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-spotify",
+      "name": "Spotify",
+      "is_archived": "0",
+      "builtin_icon": "spotify",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-youtube",
+      "name": "YouTube Premium",
+      "is_archived": "0",
+      "builtin_icon": "youtube",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-apple-music",
+      "name": "Apple Music",
+      "is_archived": "0",
+      "builtin_icon": "apple-music",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-icloud",
+      "name": "iCloud+",
+      "is_archived": "0",
+      "builtin_icon": "icloud",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-google-one",
+      "name": "Google One",
+      "is_archived": "0",
+      "builtin_icon": "google-one",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-microsoft-365",
+      "name": "Microsoft 365",
+      "is_archived": "0",
+      "builtin_icon": "microsoft-365",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-disney",
+      "name": "Disney+",
+      "is_archived": "0",
+      "builtin_icon": "disney",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-prime-video",
+      "name": "Prime Video",
+      "is_archived": "0",
+      "builtin_icon": "prime-video",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-adobe",
+      "name": "Adobe Creative Cloud",
+      "is_archived": "0",
+      "builtin_icon": "adobe",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-dropbox",
+      "name": "Dropbox",
+      "is_archived": "0",
+      "builtin_icon": "dropbox",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "provider",
+    "fields": {
+      "id": "provider-canva",
+      "name": "Canva",
+      "is_archived": "0",
+      "builtin_icon": "canva",
+      "logo_mode": "default",
+      "logo_asset_id": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-0",
+      "category_id": "expenses",
+      "name": "Water",
+      "description": "Water bill paid in this cycle.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-0",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-1",
+      "category_id": "expenses",
+      "name": "Electricity",
+      "description": "Electricity bill paid in this cycle.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-1",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-2",
+      "category_id": "expenses",
+      "name": "Telephone",
+      "description": "Mobile or telephone bill.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-2",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-3",
+      "category_id": "expenses",
+      "name": "Internet",
+      "description": "Home or other internet service.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-3",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-4",
+      "category_id": "expenses",
+      "name": "Food / household supplies",
+      "description": "Food, groceries and household supplies.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-4",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-5",
+      "category_id": "expenses",
+      "name": "Transport / fuel",
+      "description": "Transport, fuel, parking and related costs.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-5",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-6",
+      "category_id": "expenses",
+      "name": "Insurance",
+      "description": "Insurance premiums paid in this cycle.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-6",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-7",
+      "category_id": "expenses",
+      "name": "Family / dependents",
+      "description": "Financial support for family or dependents.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-7",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-8",
+      "category_id": "expenses",
+      "name": "Memberships / subscriptions",
+      "description": "Membership and subscription payments.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-8",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "planner-item",
+    "fields": {
+      "id": "expenses-9",
+      "category_id": "expenses",
+      "name": "Medical / healthcare",
+      "description": "Medical and healthcare payments.",
+      "card_name": "",
+      "transaction_category_id": "planner-expense-9",
+      "schedule_amount": null,
+      "schedule_start": null,
+      "schedule_end": null
+    },
+    "children": {}
+  },
+  {
+    "kind": "settings",
+    "fields": {
+      "id": "1",
+      "currency": null,
+      "period_start_day": "1"
+    },
+    "children": {}
+  }
+]

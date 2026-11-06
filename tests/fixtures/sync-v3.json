@@ -1,0 +1,32 @@
+{
+  "notice": "Public test keys only. Never use in an account.",
+  "rootKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "localId": "income:public-test-income",
+  "plaintext": "{\"schema\":3,\"entity\":\"income\",\"id\":\"public-test-income\",\"value\":{\"currency\":\"THB\",\"name\":\"Salary เงินเดือน\",\"type\":\"salary\",\"destination_account_id\":\"bank\",\"estimated_amount\":\"9007199254740993\",\"recurrence_frequency\":\"monthly\",\"recurrence_day_of_month\":25,\"is_active\":true,\"deductions\":[{\"id\":\"tax\",\"name\":\"Tax\",\"description\":\"\",\"amount\":\"123\",\"debt_account_id\":null}]}}",
+  "change": {
+    "sequence": "1",
+    "version": "1",
+    "request": {
+      "protocol": 3,
+      "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+      "mutationId": "public-test-income-v3",
+      "recordId": "tdpLtxLrfgz-SuzghNKet_WbSivFcF3AJOOfMFGCh0M",
+      "baseVersion": "0",
+      "previous": {
+        "sequence": "0",
+        "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "operation": "put",
+      "payload": {
+        "format": "heyday-record-v2",
+        "algorithm": "A256GCM-HKDF-SHA256",
+        "keyId": "test-key-v1",
+        "salt": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+        "nonce": "BAQEBAQEBAQEBAQE",
+        "ciphertext": "6m12W0oN3hKpdUegHgqqeTF8XcSEAFNlxD-G6c2uzkaEDp6_L0qAYmPqULkYbsjgkitV2sYVzXHLRUgbfZ24mOR2Y1cjPfWL_STsd_uYRKVqLqMkSsLqbZpnx5ocEh_VV6CIGW9Z2o_PCb1y0fgC9kf397ImaIGyWxVB_H10JvXW2ux7A-84oUy4Gl9vYSJtV72bPIHhyOIqkTm4O_1mhr41RvTo4DdJ8Ma5SL6LRyzX5SzJKt3UElt-wvhlo9nxN-9PeHoFlpjh-p5fVbek1ad8qtZcrpUp78oEp5zpIXR5T5QwPycVM8PPTAX013e31WKO9jsEhVrYf2vVzRfsI8B1ytSG5OHmnSPeKjMB_SrjVI_NLCfwhJqN_SwZqz_nzm78ExOcvM9p6SzDkZ98Whehk2xV1dr9N0dWyy6HfCI5xxPxikn2k1iYkG_IWkVy7qS-r2qqL0j5OjDxN3expJp2Y7EBEsRNj2k-Lp0LUBaYJDRTheJ-MJK--b92u0mfle1S5pr4fj7OpRB8u8zjRYMMvCc"
+      },
+      "commitHash": "3d3ab7148ed2bb2a567610b0b161fd6e5cdae551d03dcf1a7ff2b107cd020fbb",
+      "commitMac": "S1ZJg-bLqjYEdPB6g6lMUqwpaEogE8UBQ8-6QzMBNVo"
+    }
+  }
+}

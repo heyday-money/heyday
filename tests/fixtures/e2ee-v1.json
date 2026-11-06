@@ -1,0 +1,31 @@
+{
+  "notice": "Public test vectors, never use these keys",
+  "owner": "test-owner",
+  "dataKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "recoveryKey": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+  "envelope": {
+    "format": "heyday-key-v1",
+    "algorithm": "A256GCM",
+    "kdf": "HKDF-SHA256",
+    "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+    "keyId": "test-key-v1",
+    "salt": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    "nonce": "AwMDAwMDAwMDAwMD",
+    "ciphertext": "d29Z_s6Hb9uSWSrc8478TnFqj6tA4EjkB88kuhH_g8KiRE_AZV5Ykg5T-VvfedN_"
+  },
+  "context": {
+    "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+    "recordId": "test-record",
+    "mutationId": "test-mutation",
+    "baseVersion": "0",
+    "operation": "put"
+  },
+  "plaintext": "{\"name\":\"เงิน\",\"amount\":\"9223372036854775807\"}",
+  "record": {
+    "format": "heyday-record-v1",
+    "algorithm": "A256GCM",
+    "keyId": "test-key-v1",
+    "nonce": "BAQEBAQEBAQEBAQE",
+    "ciphertext": "LhFGqQuMWTIqQhRO7clUnboDKvu8sJcrLvsdMKUIX3gJkQeTpaB4ym5H7JhJtO1Cs9procqdQUqtUbzrFpk1NrPlUCjv6Q"
+  }
+}

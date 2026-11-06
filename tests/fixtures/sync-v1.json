@@ -1,0 +1,32 @@
+{
+  "notice": "Public test keys only. Never use in an account.",
+  "rootKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "localId": "public-test-category",
+  "plaintext": "{\"schema\":1,\"entity\":\"category\",\"id\":\"public-test-category\",\"value\":{\"name\":\"Travel ท่องเที่ยว\",\"icon\":\"plane\",\"isArchived\":false}}",
+  "change": {
+    "sequence": "1",
+    "version": "1",
+    "request": {
+      "protocol": 1,
+      "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+      "mutationId": "public-test-mutation",
+      "recordId": "-MVfFNfiqu1fbLZpU1-6laKyWaMrZbfkwIShoGr7wO8",
+      "baseVersion": "0",
+      "previous": {
+        "sequence": "0",
+        "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "operation": "put",
+      "payload": {
+        "format": "heyday-record-v2",
+        "algorithm": "A256GCM-HKDF-SHA256",
+        "keyId": "test-key-v1",
+        "salt": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+        "nonce": "BAQEBAQEBAQEBAQE",
+        "ciphertext": "6Vc4CDFJynCCkkZLVRd8AYpuGZphjEwHxvoVLKk4dp1mNgSad6FwMys-kzemhhLKCm3CP9cYtPZ9P7IRunKPXOgkmJgvDmn5SPJxDIFHrgdIUHj06rLBYk6zupTZulD_TPjXR52ac4uvehjp3QWPZ53AaiwtIRofr_1Hi4eN1ZBfTTSbN1_hwSNvHHeZz1uLnv-LJp3dLKim-s9rbfvWrZIscL2ggXQ"
+      },
+      "commitHash": "33e0689b59d79357f7da8e519e19d4ad3fd57de7053b87b4d8f92102f27382ac",
+      "commitMac": "J202Asr-3ctKeLA_lYFBgLvwD0i_0W4wMYS1ROK88z4"
+    }
+  }
+}

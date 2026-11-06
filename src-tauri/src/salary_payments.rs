@@ -137,6 +137,7 @@ pub(crate) async fn record(pool: &SqlitePool, input: PaymentInput) -> Result<(),
                     );
                 }
             } else if kind == "loan" {
+                crate::cloud_sync_income::require_known_contracts(&mut tx,id).await?;
                 let contracts: bool = sqlx::query_scalar(
                     "SELECT EXISTS(SELECT 1 FROM loan_contracts WHERE account_id=?)",
                 )

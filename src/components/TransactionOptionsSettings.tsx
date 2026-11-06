@@ -39,7 +39,9 @@ export function TransactionOptionsSettings({ kind }: { kind: TransactionOptionKi
     setLoading(true); setLoadError(false)
     listTransactionOptions().then(value => { if (active) setOptions(value) })
       .catch(() => { if (active) setLoadError(true) }).finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
+    const changed = () => setAttempt(value => value + 1)
+    window.addEventListener('transaction-options-changed', changed)
+    return () => { active = false; window.removeEventListener('transaction-options-changed', changed) }
   }, [attempt])
   function replace(kind: TransactionOptionKind, value: TransactionOption) {
     const key = kind === 'payee' ? 'payees' : 'categories'

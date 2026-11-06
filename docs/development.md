@@ -497,3 +497,304 @@ Validation: Rust export tests inspect snapshot contents and workbook XML, curren
 precision and i64 boundaries, formula safety, and empty exports. Browser tests
 cover cancellation, errors/retry, busy controls, and preservation of General
 drafts. Native save-picker and Excel opening smoke tests remain release checks.
+
+## Beta email sign-in
+
+Open **Settings → Heyday account → Sign in with email**. The app opens the hosted
+`/login` page, where the user requests and enters an email code. Rust receives an
+authorization code at a temporary loopback listener and exchanges it using S256
+PKCE. No client secret is embedded in the app. Tokens are kept in the OS credential
+store, with independent entries for each server origin and debug/release mode.
+An unavailable credential store fails closed; there is no plaintext fallback.
+Overlapping account checks share one request, and unchanged account metadata does
+not rewrite the credential. On macOS, choose Always Allow to retain item access
+for the current build. Ad-hoc development rebuilds can prompt again. If access
+still loops after Always Allow, quit the app and remove only its development
+sign-in item (`money.heyday.desktop.cloud.development`) in Keychain Access, then
+relaunch and sign in again. This removes saved cloud tokens, not local finance
+data. Never reset the whole login keychain to troubleshoot this app.
+
+The browser callback shows a bundled Heyday page in the app's selected language
+(English or Thai), with light/dark colors following the browser's system preference.
+It attempts to close the tab automatically after accepting the callback. Browsers
+may block closing tabs opened by a native app; the page also provides a close button
+and manual-close instructions. This page confirms the browser step, while the desktop
+app finishes the token exchange. Invalid callbacks show retry guidance instead.
+Edit `src-tauri/assets/auth-callback.template.html`, then run `bun run callback:build`
+to regenerate the checked-in HTML with embedded Tailwind styles. Rebuild the desktop
+app to update this page; it is served by Rust, independently of the hosted service.
+
+For the local Docker service, start the desktop debug build with:
+
+```sh
+HEYDAY_API_URL=http://localhost:3000 bun run desktop:dev
+```
+
+`HEYDAY_API_URL` is compiled into Rust, so rebuild after changing it. Release builds
+require HTTPS; the default origin is `https://heyday.money`. Use the deployed
+Railway HTTPS origin when building a beta package for a different server.
+The API migration job registers the public `heyday-desktop-beta` client with the
+loopback callback; rebuild/update the service before testing desktop login.
+
+Refresh tokens rotate when the stored access token expires. Opening the account
+panel or choosing Refresh status checks the session. Offline checks retain the
+cached account label without claiming the session is valid. Sign-out deletes
+credentials locally and tries server revocation; a failure to reach the server is
+shown explicitly. Financial records are never uploaded, deleted or switched by
+these actions. Encryption setup and category-sync enablement are separate
+explicit flows described below. Ordinary sign-out retains the encryption key only
+when **Remember encryption on this device** is enabled; credentials are always removed.
+
+### Device management
+
+The signed-in account also appears as a circular initials avatar immediately above
+Settings in the sidebar. Expanded navigation shows its email; collapsed navigation
+provides an accessible label and tooltip. The avatar opens the Heyday account tab
+directly. Email-only beta uses local initials, with no external image request.
+Account metadata is shared in memory after one deduplicated startup check and
+updates on sign-in, sign-out, self-revocation and detected auth expiry. A saved
+offline account keeps its avatar; the account panel explains offline status.
+Opening the panel from the avatar does not reread Keychain; Refresh status remains
+available. `#/settings?section=account` supports direct navigation, and settings
+tab changes preserve unsaved General drafts.
+
+After signing in, choose **Manage devices** in the Heyday account panel. Enter a
+device name and choose **Register this device** to bind the current session to
+this installation. First registration is explicit. Later logins automatically
+reconnect that installation using its saved identity and name.
+The list shows the current device, other devices, last activity and revoked
+entries, with a Load more action for additional pages. Names are fixed in this
+version; later sign-ins reuse the original saved name.
+
+Rust stores a random UUID and the registration name in
+`cloud-installations/development/` or `cloud-installations/release/` beneath the
+app-data directory. Filenames are hashes of server origin and account ID. These
+non-secret identity files are separate from SQLite and financial backups. Tokens
+remain in the OS credential store. Identity/name files are persisted atomically
+before sending registration, and reused for network retries and later logins.
+Corrupt identity files fail closed; a revoked installation is not silently replaced.
+
+Revoke access opens a confirmation describing its effect. Revoking the current
+device signs it out and clears local tokens after server confirmation; if the
+secure store cannot be cleared, the UI reports that separately. Revoking another
+device preserves this account's sign-in. New desktop sessions are independent of
+website sessions. Financial records are never removed. Offline controls are disabled;
+failed actions preserve drafts/confirmation for retry. Expired or revoked tokens
+clear the displayed account/device state instead of appearing as an offline login.
+Explicit re-enrollment of a revoked installation remains future work.
+
+The service must include `/api/v1/me` and device routes and their migrations.
+This step does not create/share encryption keys or enable sync. English/Thai
+browser tests cover registration, saved names, pagination, failed requests and
+revoke confirmations. Rust tests cover stable/scoped identity files, concurrent
+creation and native HTTP pagination. Packaged app/Keychain smoke testing remains.
+
+Automated checks cover the PKCE vector, callback state/issuer validation, loopback
+handling/cancellation and Account UI states. The OS credential-store permission
+prompt and full packaged-app/browser/real-email round trip require native smoke
+testing on macOS and Windows.
+
+### End-to-end encryption keys
+
+After registering the current device, choose **Cloud sync → Set up
+encryption**. Save the displayed recovery key in a safe place (a native file save
+is available), re-enter it and confirm that support cannot recover it. The screen
+expires after ten minutes. The exported text file contains a secret: store it
+separately from the computer. Existing files are never overwritten.
+
+Rust generates independent random 256-bit dataset and recovery keys, derives a
+wrapping key with HKDF-SHA256 and encrypts the dataset key using AES-256-GCM.
+The service stores only the wrapped package. Raw dataset keys never enter React;
+recovery text is limited to setup/recovery input and is not written to browser
+storage, logs or financial backups. Signing in with email alone cannot decrypt.
+
+Cloud sync shows an **End-to-end encrypted** badge. Use **Pause sync / Resume sync**
+for everyday control; pausing keeps the key saved. Previously approved complete
+connections resume directly, while first enablement and scope upgrades still require
+consent. On another registered device, choose **Restore encryption key** when prompted.
+**Advanced security → Remove saved encryption key** confirms the consequence, pauses
+sync successfully first, then removes the raw key from its OS credential entry,
+including while offline. Failure to pause leaves the key intact; a secure-store
+failure leaves sync paused and allows retry. Self-revocation and detected expired
+authentication also lock the key. **Remember encryption on this device** keeps the
+account-scoped key in the OS secure store through ordinary sign-out. This preference
+and manual key-status checks are under Advanced security. Existing entries
+default to off; enable it once while unlocked, or choose it during setup/recovery.
+The next login restores device access and checks the server package against the
+saved pin. **Sign out and forget this device** removes the usable key and remember
+flag, and requires explicit device registration and recovery next time. It retains
+the installation ID, package pin and history checkpoint. Key-store failures are reported without a
+plaintext fallback. The confirmed package remains pinned to detect unexpected
+replacement. These actions leave the existing local financial database available.
+
+The key entry is `money.heyday.desktop.encryption.development` in debug builds and
+`money.heyday.desktop.encryption` in release, scoped by hashed server origin and
+account ID. It is separate from the auth-token entry. **Do not delete this entry
+to troubleshoot login prompts**: it holds the local dataset key and package pin.
+Check that the recovery key is safely retained before any key-store maintenance.
+
+Setup persists its key and exact wrapped package before sending PUT. If the
+response is lost, refresh encryption status; the client recognizes an already
+accepted package or offers **Finish encryption setup** using the saved recovery
+key. It never silently generates a replacement after an interrupted upload.
+Concurrent first-device setup has one winner; use the winning recovery key on
+other devices. A confirmed package changing/missing on the server is blocked.
+
+The service needs migration `0002_encryption_keys.sql` and GET/PUT
+`/api/v1/encryption/keys`. The API requires an active registered session. A new
+login may need **Register this device** again to bind that session to its saved
+installation. No plan quota or premium entitlement is imposed for key management.
+
+Native `cloud_crypto.rs` includes bounded, authenticated record encrypt/decrypt
+helpers and shared public test vectors. Category sync uses native record v2 and
+pinned authenticated history. Rotation, replacement and trusted-device history
+verification are described in [encryption-security.md](encryption-security.md).
+Consent-based financial analysis remains future work. Local SQLite and backups remain plaintext;
+sync metadata is stripped from exports/restores. The desktop remains independent
+of the website repository; fixture copies are checked in to each repository.
+
+Validation: Rust key-wrap/tamper tests, AES-GCM known vector and Web Crypto
+interoperability, local state/pin checks, and exclusive recovery-file writes;
+browser saved-key confirmation, failure/retry, recovery, expiry, locking and
+English/Thai copy. Browser tests use mocked IPC and public keys only. Verify
+packaged macOS/Windows setup, restart, Keychain permissions, native save picker,
+second-device recovery, rotation and logout before release. Independent crypto
+review remains required before production rollout; preparing a reviewer brief is
+not independent approval.
+
+
+## Encrypted category and ledger sync beta
+
+Version `0.0.1-beta.5` syncs all current financial data through protocols 1-5:
+categories, accounts/ledger, income/deductions/payslips, loans/facilities, card
+limits/statements, installments/subscriptions/payment plans, all Outlook forecasts
+and financial settings, reconciliation/verifications, payoff/default history,
+editable catalogs and custom PNG logos. Balances and remaining loan principal
+remain derived; ledger upgrades never post payments twice. Device appearance,
+language, credentials, keys and backup files/paths stay local. Migrations through
+`0009_sync_review_effects.sql` preserve existing financial records and IDs.
+
+For a configured beta service, sign in, register this device, set up/recover E2EE,
+and then confirm **Enable cloud sync** in Settings → Heyday account → Cloud sync.
+Existing category connections require **Add accounts and transactions** confirmation.
+Existing financial connections require **Add income and payroll** confirmation.
+Existing forecast connections require **Add remaining financial data** confirmation.
+The service needs migration `0008_stripe_billing.sql`, `CLOUD_SYNC_ENABLED=true` and
+an unexpired beta grant or verified Stripe paid/trial entitlement. **Manage subscription
+on website** opens `/account` on the configured API origin through Rust. Website
+email login, checkout, invoices, payment methods and period-end cancellation are
+managed separately; no native credentials or financial records go in that URL.
+THB prices are server-configured; trials default off. Stripe setup and sandbox
+purchase verification remain external activation steps documented in `site/docs/billing.md`.
+Settings → Heyday account shows the trial, active, cancellation, payment issue or
+expired state using the authenticated `/api/v1/me` entitlement and billing summary.
+Only safe account metadata crosses native IPC; Stripe identifiers and payment
+details stay on the server. The website remains responsible for checkout and billing.
+Sign in there with the same email shown in the app.
+
+Account status refreshes when the signed-in app regains focus/visibility or reconnects,
+and every minute while visible and online. Concurrent refreshes are deduplicated;
+background checks do not interrupt drafts, and late responses cannot undo sign-out.
+Access expiry clears the synced indicator and blocks new sync attempts, even before
+the next refresh. Unknown/offline status does not claim an active subscription;
+the native API remains authoritative on each sync operation.
+
+An expired grant or subscription stops push/pull/bootstrap while retaining cloud data
+and pending local changes. Restored access retries sync only if already enabled. A
+deliberate Pause and first-upload consent remain unchanged. Encryption, history
+verification and other action-required failures are not cleared by a billing refresh;
+resolve them before using **Sync now**. Installed-app Stripe sandbox checkout and
+OS focus/credential-store validation remain release QA; automated browser tests mock IPC.
+
+For local development, compile the native app with:
+
+```sh
+HEYDAY_API_URL=http://localhost:3000 bun run desktop:dev
+```
+
+The API origin is compile-time configuration. Restart/rebuild the native app after
+changing it; release builds require HTTPS. The optional service's setup/protocol
+is documented in the sibling website repository's `docs/sync-api.md`; desktop
+builds do not depend on that repository.
+
+Sync stores tokens/root keys only natively. Record v2 derives one fresh AES key
+per mutation and authenticates ordered history. Pending ciphertext is durable and
+retried unchanged. Conflicts preserve local changes and offer local/cloud choices
+or a renamed cloud category. Foreign keys block referenced category deletions.
+The queue is scoped to the original account and origin, even across sign-out.
+
+The Cloud sync card shows a green circled check only after a successful sync in
+the current session, with no pending changes or conflicts. Cached status alone
+does not confirm completion. Local edits clear the check immediately, including
+edits made during a request; offline state, errors, pause/resume and conflict
+resolution require a new successful sync. The card shows the last successful
+sync time, distinct waiting/syncing/paused/offline/error states, and limited-scope
+wording until complete financial consent. Scope and retention details are under
+**What syncs**, with English/Thai copy and all three appearance themes.
+
+Financial backup exports, staged restores and pre-restore recovery copies exclude
+cloud binding, queues, pending requests and shadow. Financial grouping/label
+tables `ledger_sync_members` and `ledger_sync_imports` remain in backups. A restored backup requires an explicit reconnect and merge.
+Clear-all-data removes local binding before deleting categories; it does not send
+cloud deletions. Cloud retention is independent of local reset or access expiry.
+Recovery keys remain separate from these plaintext SQLite backups.
+
+Validation includes PostgreSQL concurrency/expiry/rollback in the service repo;
+Rust crypto vectors, queue rollback/restart, two-device reconciliation and backup
+sanitization; and `tests/cloud-sync.spec.ts` for opt-in, conflicts, offline state,
+Thai, retries and expiry. Browser tests mock native IPC. Packaged macOS/Windows
+clients still need real HTTP/keyring/recovery and lost-response smoke tests, plus
+independent crypto review. Rotation and minimum-history proof transfer are now
+implemented; global freshness, packaged verification, Stripe sandbox validation
+and history compaction remain release work.
+
+Income definitions and their deductions sync as one protocol-3 aggregate. Complete
+payslips retain immutable breakdowns, stable payment/group IDs and atomic net/debt
+transactions, including zero-net and zero-ledger history. Existing protocol-2 payroll
+upgrades without reapplying balances; pending ciphertext is retried unchanged.
+Duplicate income/month payments need an explicit conflict choice. Reversals restore
+contract allocations on every complete-sync device; missing contracts
+remain blocked until their definitions arrive. New clients send `X-Heyday-Sync: 5`. The server rejects older clients after upgrade.
+
+## Income forecast cloud sync
+
+SQLite migration `0007_income_planner_sync.sql` adds separate consent and queue
+triggers for Outlook source-linked income and deduction overrides. Rebuild/restart
+the desktop and choose **Settings → Heyday account → Cloud sync → Add income forecasts**.
+The service needs PostgreSQL migration `0006_income_planner_sync.sql`; clients send
+`X-Heyday-Sync: 5` after the complete-sync increment. Existing exact pending requests remain valid on updated clients.
+Zero amounts sync as values; clearing restores estimates. Forecasts never post
+transactions. Protocol 5 now adds other planner entries, opening cash, cycle status
+and payday settings. The native suite covers concurrent months, clear-versus-edit,
+source deletion, dependency validation and consent; browser tests cover draft
+preservation during cloud refresh and the English/Thai conflict interface.
+
+## Complete financial cloud sync
+
+Rebuild/restart the native app to apply SQLite migrations through `0009_sync_review_effects.sql`. Existing
+connections select **Settings > Heyday account > Cloud sync > Add remaining
+financial data**, review the scope and confirm. Keep the existing E2EE key; no key
+rotation or data reset is needed. Rebuild the service and apply PostgreSQL
+`0007_complete_sync.sql` before enabling the desktop scope. Update every device;
+v4 clients stop after the dataset accepts its first v5 record.
+
+Reconciliation IDs are remapped without changing native integer IDs. PNGs use
+content hashes across devices. Full transaction groups restore loan components and
+borrowing/installment references so native deletion can reverse them safely.
+Conflicting local payday/clearing choices remain visible during upgrade. Review
+flags propagate and audit entries survive missing/deleted transactions.
+
+The full-restore tests exercise every metadata kind, concurrency and exact signed
+money, legacy payroll allocations, borrowing/payment reversals, logo deduplication,
+late audit evidence, consent and durable pending ciphertext. Shared v5 Node/Rust
+vectors and isolated PostgreSQL protocol gating pass. Browser tests mock IPC;
+packaged two-device HTTP/credential-store/recovery verification remains release QA.
+
+### Migration 8 startup fix
+
+The original `0008_complete_sync.sql` is preserved byte for byte, including its
+whitespace. Remote review-effect triggers are appended in
+`0009_sync_review_effects.sql`. Restart the normal desktop development command to
+rebuild and apply migration 9. Existing migration-8 databases and backups upgrade
+through normal SQLx validation; stored checksums and financial rows are preserved.
+Do not edit the applied SQL or reset the database to resolve this mismatch.

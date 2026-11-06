@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="__LANG__" data-result="__RESULT__">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="data:,">
+  <title>Return to Heyday Money</title>
+  <style nonce="__NONCE__">__STYLES__</style>
+</head>
+<body class="m-0 min-h-dvh bg-[#f7f4fc] font-sans text-[#292334] antialiased dark:bg-[#17131f] dark:text-[#f4effb]">
+  <main class="flex min-h-dvh flex-col items-center justify-center bg-radial-[at_50%_0%] from-purple-200/40 via-transparent to-transparent px-5 py-10 sm:px-8 dark:from-purple-900/20">
+    <div class="mb-8 flex items-center gap-2.5 text-lg font-bold tracking-tight">
+      <span aria-hidden="true" class="flex size-8 items-center justify-center rounded-xl bg-[#8942fe] text-white">h.</span>
+      <span>Heyday Money</span>
+    </div>
+    <section aria-labelledby="title" class="w-full max-w-lg rounded-[2rem] border border-[#e9dff8] bg-white p-7 text-center shadow-xl shadow-purple-950/5 sm:p-12 dark:border-[#3c304d] dark:bg-[#241d2e]">
+      <div aria-hidden="true" class="mx-auto mb-7 flex size-20 items-center justify-center rounded-3xl bg-[#fff0ad] text-[#7041bd] dark:bg-[#e6cd78]">
+        <svg id="success-icon" class="size-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>
+        <svg id="error-icon" hidden class="size-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m7 7 10 10M7 17 17 7"/></svg>
+      </div>
+      <p id="eyebrow" class="mb-3 text-xs font-semibold tracking-[0.16em] text-[#795c9e] uppercase dark:text-[#bba1dc]">Heyday account</p>
+      <h1 id="title" class="text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">Return to Heyday Money</h1>
+      <p id="description" class="mt-4 text-base leading-7 text-[#71667e] dark:text-[#c4b7d2]">Check the desktop app to finish signing in. You can close this tab.</p>
+      <button id="close-tab" type="button" class="mt-8 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#8942fe] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#7731e8] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-[#c3a0fc] motion-reduce:transition-none">
+        <span id="close-label">Close this tab</span>
+        <svg aria-hidden="true" class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M6 18 18 6"/></svg>
+      </button>
+      <p id="close-status" role="status" aria-live="polite" class="mt-4 min-h-10 text-xs leading-5 text-[#82738e] dark:text-[#b4a2c6]"></p>
+      <p id="shortcut" hidden class="mt-2 text-xs text-[#82738e] dark:text-[#b4a2c6]"></p>
+      <noscript><p class="mt-4 text-sm">You can close this tab using your browser’s close button.</p></noscript>
+    </section>
+    <p id="tagline" class="mt-8 text-xs tracking-wide text-[#8b7d97] dark:text-[#a591b7]">Your money, your Heyday.</p>
+  </main>
+  <script nonce="__NONCE__">
+    (() => {
+      // Remove the one-time authorization code from the visible address/history.
+      try { history.replaceState(null, '', location.pathname); } catch {}
+      const th = document.documentElement.lang === 'th';
+      const success = document.documentElement.dataset.result === 'accepted';
+      const copy = th ? {
+        eyebrow: 'บัญชี Heyday', title: 'กลับไปใช้ Heyday ได้เลย',
+        description: 'ขั้นตอนในเบราว์เซอร์เสร็จแล้ว แอปกำลังดำเนินการเข้าสู่ระบบต่อ คุณปิดแท็บนี้และกลับไปที่ Heyday Money ได้เลย',
+        errorTitle: 'เข้าสู่ระบบต่อในแอป', errorDescription: 'ยืนยันการเข้าสู่ระบบจากแท็บนี้ไม่สำเร็จ กลับไปที่ Heyday Money แล้วลองเข้าสู่ระบบอีกครั้ง',
+        close: 'ปิดแท็บนี้', automatic: 'แท็บนี้จะปิดโดยอัตโนมัติหากเบราว์เซอร์อนุญาต',
+        manual: 'เบราว์เซอร์ไม่อนุญาตให้ปิดแท็บอัตโนมัติ คุณปิดแท็บนี้เองได้เลย',
+        shortcut: 'ปิดแท็บด้วย', tagline: 'เงินของคุณ ชีวิตในแบบคุณ',
+      } : {
+        eyebrow: 'Heyday account', title: 'Back to your Heyday.',
+        description: 'Your browser step is complete. The desktop app is finishing sign-in. You can close this tab and return to Heyday Money.',
+        errorTitle: 'Let’s try that again.', errorDescription: 'This tab could not confirm your sign-in. Return to Heyday Money and start a new sign-in.',
+        close: 'Close this tab', automatic: 'This tab will close automatically if your browser allows it.',
+        manual: 'Your browser kept this tab open. You can safely close it yourself.',
+        shortcut: 'Close tab with', tagline: 'Your money, your Heyday.',
+      };
+      const text = (id, value) => { document.getElementById(id).textContent = value; };
+      text('eyebrow', copy.eyebrow);
+      text('title', success ? copy.title : copy.errorTitle);
+      text('description', success ? copy.description : copy.errorDescription);
+      text('close-label', copy.close);
+      text('tagline', copy.tagline);
+      document.title = success ? (th ? 'กลับไปที่ Heyday Money' : 'Back to Heyday Money') : (th ? 'ลองเข้าสู่ระบบอีกครั้ง — Heyday Money' : 'Try sign-in again — Heyday Money');
+      document.getElementById('success-icon').toggleAttribute('hidden', !success);
+      document.getElementById('error-icon').toggleAttribute('hidden', success);
+      if (success) text('close-status', copy.automatic);
+      let automatic;
+      function closeTab() {
+        clearTimeout(automatic);
+        window.close();
+        setTimeout(() => {
+          text('close-status', copy.manual);
+          const shortcut = document.getElementById('shortcut');
+          shortcut.textContent = copy.shortcut + ' ' + (/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ W' : 'Ctrl W');
+          shortcut.hidden = false;
+        }, 250);
+      }
+      document.getElementById('close-tab').addEventListener('click', closeTab);
+      if (success) automatic = setTimeout(closeTab, 1800);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+{
+  "notice": "Public deterministic test keys; never use for real data.",
+  "owner": "test-owner",
+  "oldKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "newKey": "CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws",
+  "recoveryKey": "DQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0",
+  "rotation": {
+    "format": "heyday-rotation-v1",
+    "previousKey": {
+      "format": "heyday-key-v1",
+      "algorithm": "A256GCM",
+      "kdf": "HKDF-SHA256",
+      "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+      "keyId": "test-key-v1",
+      "salt": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "nonce": "AwMDAwMDAwMDAwMD",
+      "ciphertext": "d29Z_s6Hb9uSWSrc8478TnFqj6tA4EjkB88kuhH_g8KiRE_AZV5Ykg5T-VvfedN_"
+    },
+    "key": {
+      "format": "heyday-key-v1",
+      "algorithm": "A256GCM",
+      "kdf": "HKDF-SHA256",
+      "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+      "keyId": "test-key-v2",
+      "salt": "ERERERERERERERERERERERERERERERERERERERERERE",
+      "nonce": "ExMTExMTExMTExMT",
+      "ciphertext": "Es8jdP9o0gQenQGF7RPrt1xue9nN1knhoz-b3zaoq37-xmmdZIQkdQiVsxBpxyeh"
+    },
+    "head": {
+      "sequence": "0",
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "history": {
+      "salt": "FxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxc",
+      "nonce": "HR0dHR0dHR0dHR0d",
+      "ciphertext": "5OkDm2MVmLARyTUOY0HNPTWgZ75wCx83Sb1ZqO34Qr4KnLGmjVIXIWjNAiHjRqnoTnePuiP04yUxor2S85U7tb11LH8VSdYIHwetLBeyi4a5FXXiG0vqGMDllwhB87w_SVnT3v53MUAEAZN60nYu6R4Js7tcZ9s_45uecW7X4yp7Kxg5iJJ0AP-8fVdC0ENjUT-uQzj4fZ2kG6hDFg-OFHdFUsZUHBJoyOQH26PhhHHxQrv5ypQoAxcJdSHwP8LaZRVR-qYY4iuVSOvIst-X7NW9tCnsvDP4jrqOVpRj1GTonB1eXsPF5fHs575z4xW2DFD69dqnov8vpwM6VQIpY2v6b2Irq699ggvdmlqM10Z6pMVrI4kwzecf0sni5dvFICMvse6CNz4bT0Sddh6WmStDiKlKgO2YBjqhV7ai71JILKhgXZPSNIdb1b2AxdjK__TwxowG2SaCg1X1nSf6H5eOCgj4CpFbhHZhMzXaEoDoUfTSghieOYlHoZc_hEzM4s1aVLfrK7YJbvlSfD-qewk4XHDdo3M0hFVSlcSByCw529MxfHkjGqAcyPiu7_dtlTLU3SCAlGDxlPa0hqNCPF_-7aL6D3tjRI0vpEDZOFHcBtKFXdT2i5_8vGPl7UHsrzDLnKhxDKwnr1eU-88_zZU3YBlEfQdvwFJFJx8WxeBexD1oemI4e0KRWNznrbRInpuHK2EeERy8e_ESzyUikp-BMePnZZJLNy1_nw"
+    },
+    "proof": "RCKw844TTnkv3TtSrZutgGD1lH-o1GdQLHDjbYtpUyc"
+  },
+  "history": [
+    {
+      "envelope": {
+        "format": "heyday-key-v1",
+        "algorithm": "A256GCM",
+        "kdf": "HKDF-SHA256",
+        "datasetId": "c240f005-002b-4d41-9709-3c8532bb7c8a",
+        "keyId": "test-key-v1",
+        "salt": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "nonce": "AwMDAwMDAwMDAwMD",
+        "ciphertext": "d29Z_s6Hb9uSWSrc8478TnFqj6tA4EjkB88kuhH_g8KiRE_AZV5Ykg5T-VvfedN_"
+      },
+      "key": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+      "until": {
+        "sequence": "0",
+        "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "pin": "f7871747e73653e65b82dcba35783c06904a5e8ebf62c7367f0c8c1f387624aa"
+    }
+  ],
+  "historyCode": "HDV1.eyJvcmlnaW4iOiJodHRwczovL2hleWRheS5tb25leS8iLCJhY2NvdW50IjoidGVzdC1vd25lciIsImRhdGFzZXQiOiJjMjQwZjAwNS0wMDJiLTRkNDEtOTcwOS0zYzg1MzJiYjdjOGEiLCJrZXlQaW4iOiI4ZDBlZWY4OTJhZjM4YTQyMDdkMjQxZDU5MWM1YmMyZThiMjEzMGY3NzIyNTk1MDJlYTY1Y2U3MWExM2M1MzhlIiwiaGVhZCI6eyJzZXF1ZW5jZSI6IjAiLCJoYXNoIjoiMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCJ9LCJ1bnZlcmlmaWVkSGlzdG9yeSI6ZmFsc2UsIm1hYyI6ImxyT2FGVXRycm5uSlNEcVdYd2lpWENKdDA3T09WQVloQ1Nwbkk0aVgxRUkifQ"
+}
