@@ -717,7 +717,7 @@ mod tests {
         remove(&pool, &row.id).await.unwrap();
         assert_eq!(balances(&pool).await, vec![("bank".into(), 100, 100)]);
         pool.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
     #[tokio::test]
     async fn optional_description_migration_preserves_history_and_balances() {

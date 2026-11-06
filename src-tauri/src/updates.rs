@@ -271,6 +271,6 @@ mod tests {
         assert_eq!(amount, 123456);
         backup.close().await;
         pool.close().await;
-        std::fs::remove_dir_all(directory).unwrap();
+        crate::test_support::remove_dir_all(&directory).await.unwrap();
     }
 }

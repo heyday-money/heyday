@@ -40,6 +40,8 @@ mod transaction_options;
 mod transactions;
 mod updates;
 mod instance;
+#[cfg(test)]
+mod test_support;
 
 #[derive(Serialize, sqlx::FromRow)]
 struct Settings {

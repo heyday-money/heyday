@@ -1351,6 +1351,6 @@ mod tests {
         assert_eq!(data.opening.unwrap().amount, "-10000");
         assert_eq!(data.items.len(), 10);
         pool.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
 }

@@ -410,6 +410,6 @@ mod tests {
             .unwrap();
         assert_eq!(transactions, 0);
         reopened.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
 }

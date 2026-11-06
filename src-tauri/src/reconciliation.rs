@@ -677,7 +677,7 @@ mod tests {
         );
         assert_eq!(balances(&reopened).await, before);
         reopened.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
 
     #[tokio::test]

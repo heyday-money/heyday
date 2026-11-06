@@ -905,7 +905,7 @@ mod tests {
                 .unwrap();
         assert_eq!(amount, 0);
         pool.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
     #[tokio::test]
     async fn generic_repayments_cannot_consume_allocated_principal_and_group_history_is_protected()

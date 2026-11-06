@@ -410,6 +410,6 @@ mod tests {
         assert_eq!(data.plans[0].category_name.as_deref(), Some("Food"));
         assert!(data.transactions.is_empty());
         reopened.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
 }

@@ -778,7 +778,7 @@ mod tests {
         assert_eq!(snapshot.billing.allocations[0].amount, "1000");
         assert_eq!(balances(&p).await[1].1, 9000);
         p.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
     #[tokio::test]
     async fn original_billing_migration_upgrades_without_rewriting_history() {

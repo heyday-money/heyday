@@ -389,7 +389,7 @@ mod tests {
             .unwrap();
         assert_eq!(count, 0);
         pool.close().await;
-        std::fs::remove_file(path).unwrap();
+        crate::test_support::remove_file(&path).await.unwrap();
     }
     #[tokio::test]
     async fn reject_invalid_and_stale_inputs_without_partial_writes() {

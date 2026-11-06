@@ -351,6 +351,6 @@ mod tests {
         let balance: (i64,i64,i64)=sqlx::query_as("SELECT a.opening_balance,a.current_balance,t.amount FROM accounts a JOIN transactions t ON t.account_id=a.id").fetch_one(&reopened).await.unwrap();
         assert_eq!(balance, (9007199254740993, 9007199254740990, 3));
         reopened.close().await;
-        std::fs::remove_dir_all(directory).unwrap();
+        crate::test_support::remove_dir_all(&directory).await.unwrap();
     }
 }
