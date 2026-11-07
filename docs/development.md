@@ -798,3 +798,32 @@ whitespace. Remote review-effect triggers are appended in
 rebuild and apply migration 9. Existing migration-8 databases and backups upgrade
 through normal SQLx validation; stored checksums and financial rows are preserved.
 Do not edit the applied SQL or reset the database to resolve this mismatch.
+
+## Deleting unused archived accounts
+
+Archived accounts offer Delete account in the account list and account details.
+Confirmation explains that deletion also removes the opening balance and cannot be
+undone. The native command checks archive status and both transaction account
+columns under `BEGIN IMMEDIATE`, so a stale UI cannot bypass eligibility. Existing
+transactions block deletion even when their net balance is zero. Linked records
+must be removed first; foreign keys and explicit checks for cascading planner and
+payoff records preserve them. Paid-off loans keep their separate history flow.
+Existing account-delete triggers queue cloud sync tombstones, and account change
+events refresh the UI. No migration or balance adjustment is needed.
+
+## System appearance and macOS Dock icon
+
+The running macOS app follows system appearance for its Dock icon: the existing
+`src-tauri/icons/icon.png` in light mode and `src-tauri/icons/icon-dark.png` in dark
+mode. Both images are embedded in the executable. Native theme detection in the `RunEvent::Ready` callback
+and `WindowEvent::ThemeChanged` update AppKit's application icon on the main thread.
+Startup must run after Tauri's Ready handler, which resets the development app icon
+to the bundled image after setup.
+This is available to everyone and independent of the web UI appearance preference.
+Finder, desktop shortcuts, the closed-app bundle icon, and other platforms retain
+the existing packaged icons. Do not set a forced native window theme: the main
+window must continue following macOS so these events represent system appearance.
+
+Packaged macOS QA: launch in light and dark system modes; toggle appearance while
+running; verify the Dock changes both ways even with a fixed in-app theme. Check
+that quitting restores the packaged icon and that the sidebar logo is unchanged.

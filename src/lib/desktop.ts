@@ -330,3 +330,8 @@ export async function setAccountArchived(accountId: string, archived: boolean): 
   await invoke('set_account_archived', { accountId, archived })
   window.dispatchEvent(new Event('accounts-changed'))
 }
+
+export async function deleteAccount(accountId: string): Promise<void> {
+  await invoke('delete_account', { accountId })
+  window.dispatchEvent(new Event('accounts-changed'))
+}

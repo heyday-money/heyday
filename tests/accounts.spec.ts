@@ -480,3 +480,50 @@ test('archive in the editor protects drafts and failures; restore preserves acco
   await page.getByRole('link', { name: '← Accounts', exact: true }).click()
   await expect(page.getByText('Archived accounts (1)', { exact: true })).toHaveCount(0)
 })
+
+test('archived account deletion confirms, preserves failures, blocks dismissal while saving and refreshes accounts', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'isTauri', { value: true })
+    let deleted = false
+    const account = { id: 'bank', name: 'Unused savings', type: 'bank', opening_balance: '12345', current_balance: '12345', is_archived: true }
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { includeArchived?: boolean; accountId?: string }) => {
+      switch (command) {
+        case 'get_settings': return { currency: 'THB', period_start_day: 1 }
+        case 'plugin:app|version': return 'test'
+        case 'list_accounts': return args.includeArchived && !deleted ? [account] : []
+        case 'list_institutions': return { institutions: [], accounts: [] }
+        case 'list_card_limit_groups': return { groups: [], cards: [] }
+        case 'list_transactions': return []
+        case 'delete_account':
+          if (args.accountId !== 'bank') throw 'Wrong account'
+          sessionStorage.setItem('delete-calls', String(Number(sessionStorage.getItem('delete-calls') ?? 0) + 1))
+          if (sessionStorage.getItem('fail-delete')) throw 'Accounts with transaction records cannot be deleted.'
+          if (sessionStorage.getItem('hold-delete')) await new Promise<void>(resolve => window.addEventListener('release-delete', () => resolve(), { once: true }))
+          deleted = true; return null
+        default: throw new Error(command)
+      }
+    } } })
+  })
+  await page.goto('/#/accounts')
+  await page.getByText('Archived accounts (1)', { exact: true }).click()
+  await page.getByRole('button', { name: 'Delete account Unused savings', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Delete account Unused savings?' })
+  await expect(dialog).toContainText('opening balance')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(await page.evaluate(() => sessionStorage.getItem('delete-calls'))).toBeNull()
+  await page.goto('/#/accounts/bank/details')
+  await page.getByRole('button', { name: 'Delete account Unused savings', exact: true }).click()
+  await page.evaluate(() => sessionStorage.setItem('fail-delete', 'yes'))
+  await dialog.getByRole('button', { name: 'Delete account', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toHaveText('Accounts with transaction records cannot be deleted.')
+  await page.evaluate(() => { sessionStorage.removeItem('fail-delete'); sessionStorage.setItem('hold-delete', 'yes') })
+  await dialog.getByRole('button', { name: 'Delete account', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: 'Deleting…' })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+  await page.evaluate(() => window.dispatchEvent(new Event('release-delete')))
+  await expect(page).toHaveURL(/#\/accounts$/)
+  await expect(page.getByText('Archived accounts (1)', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Account deleted', { exact: true })).toBeVisible()
+})

@@ -40,6 +40,8 @@ mod transaction_options;
 mod transactions;
 mod updates;
 mod instance;
+#[cfg(target_os = "macos")]
+mod dock_icon;
 #[cfg(test)]
 mod test_support;
 
@@ -118,6 +120,16 @@ pub fn run() {
         .manage(backups::BackupState::default())
         .manage(cloud_auth::CloudAuthState::default())
         .manage(cloud_e2ee::EncryptionState::default())
+        .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
+            if window.label() == "main" {
+                if let tauri::WindowEvent::ThemeChanged(theme) = event {
+                    dock_icon::update(window.app_handle(), *theme);
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (window, event);
+        })
         .setup(|app| {
             let directory = data_directory(app.path().app_data_dir()?, cfg!(debug_assertions));
             std::fs::create_dir_all(&directory)?;
@@ -210,6 +222,7 @@ pub fn run() {
             accounts::update_account,
             accounts::list_accounts,
             accounts::set_account_archived,
+            accounts::delete_account,
             accounts::mark_loan_paid_off,
             selective_defaults::get_selective_default,
             selective_defaults::save_selective_default,
@@ -228,8 +241,23 @@ pub fn run() {
             transaction_options::list_transaction_options,
             transaction_options::save_transaction_option
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Heyday Money");
+        .build(tauri::generate_context!())
+        .expect("failed to build Heyday Money")
+        .run(|app, event| {
+            // Tauri sets the bundled development icon during Ready, after setup.
+            // Apply our appearance icon in the user callback, after that reset.
+            #[cfg(target_os = "macos")]
+            if matches!(event, tauri::RunEvent::Ready) {
+                if let Some(window) = app.get_webview_window("main") {
+                    match window.theme() {
+                        Ok(theme) => dock_icon::update(app, theme),
+                        Err(error) => eprintln!("Could not read system appearance for Dock icon: {error}"),
+                    }
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }
 
 #[cfg(test)]
