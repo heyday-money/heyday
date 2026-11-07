@@ -1,3 +1,4 @@
+import { AccountDeleteAction } from './AccountDeleteAction'
 import { SelectiveDefaultSettings } from './SelectiveDefault'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
@@ -99,6 +100,7 @@ function AccountDetails({ accountId }: { accountId: string }) {
       <h3 className="mb-3 font-semibold">{translate("Account status")}</h3>
       <div className="flex flex-wrap gap-3">
       {account.type === 'loan' && editable && <Button variant="outline" disabled={loading} onClick={() => setMarkingPaidOff(true)}>{translate("Mark as paid off")}</Button>}
+      <AccountDeleteAction account={account} disabled={loading} />
       {account.is_archived && <AccountArchiveAction account={account} currency={currency} disabled={loading} />}
       </div>
     </section>}

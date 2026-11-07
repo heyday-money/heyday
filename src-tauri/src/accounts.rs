@@ -402,6 +402,38 @@ pub async fn set_account_archived(pool: tauri::State<'_, SqlitePool>, account_id
     change_archive(pool.inner(), &account_id, archived).await
 }
 
+pub(crate) async fn remove_archived(pool: &SqlitePool, account_id: &str) -> Result<(), String> {
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(|e| e.to_string())?;
+    let archived: Option<bool> = sqlx::query_scalar("SELECT is_archived FROM accounts WHERE id=?")
+        .bind(account_id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+    if !archived.ok_or("Account not found.")? {
+        return Err("Archive this account before deleting it.".into());
+    }
+    let transactions: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transactions WHERE account_id=? OR destination_account_id=?)")
+        .bind(account_id).bind(account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    if transactions {
+        return Err("Accounts with transaction records cannot be deleted.".into());
+    }
+    // Preserve children whose foreign keys would otherwise cascade on deletion.
+    let linked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM planner_debt_amounts WHERE account_id=?) OR EXISTS(SELECT 1 FROM loan_payoffs WHERE account_id=?)")
+        .bind(account_id).bind(account_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    if linked {
+        return Err("This account has linked records. Remove its links before deleting it.".into());
+    }
+    sqlx::query("DELETE FROM accounts WHERE id=?").bind(account_id).execute(&mut *tx).await.map_err(|error| {
+        if error.as_database_error().is_some_and(|error| error.is_foreign_key_violation() || error.message() == "FOREIGN KEY constraint failed") {
+            "This account has linked records. Remove its links before deleting it.".to_owned()
+        } else { error.to_string() }
+    })?;
+    tx.commit().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_account(pool: tauri::State<'_, SqlitePool>, account_id: String) -> Result<(), String> {
+    let _operation = crate::backups::operation()?;
+    remove_archived(pool.inner(), &account_id).await
+}
+
 pub(crate) async fn mark_paid_off(pool: &SqlitePool, account_id: &str) -> Result<(), String> {
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(|e| e.to_string())?;
     let account: Option<(String, i64, bool)> = sqlx::query_as("SELECT type,current_balance,is_archived FROM accounts WHERE id=?")
@@ -447,6 +479,34 @@ mod tests {
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
         pool
     }
+    #[tokio::test]
+    async fn delete_archived_checks_both_transaction_sides_and_preserves_links() {
+        let pool = database().await;
+        sqlx::raw_sql("INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('bank','Bank','bank',100,100),('other','Other','bank',0,0);").execute(&pool).await.unwrap();
+        assert!(remove_archived(&pool, "missing").await.unwrap_err().contains("not found"));
+        assert!(remove_archived(&pool, "bank").await.unwrap_err().contains("Archive"));
+        change_archive(&pool, "bank", true).await.unwrap();
+        for (source, destination) in [("bank", "other"), ("other", "bank")] {
+            sqlx::query("INSERT INTO transactions(id,date,description,type,amount,account_id,destination_account_id) VALUES('tx','2026-01-01','','transfer',10,?,?)")
+                .bind(source).bind(destination).execute(&pool).await.unwrap();
+            assert!(remove_archived(&pool, "bank").await.unwrap_err().contains("transaction records"));
+            sqlx::query("DELETE FROM transactions").execute(&pool).await.unwrap();
+        }
+        sqlx::raw_sql("INSERT INTO incomes(id,name,destination_account_id,type,estimated_amount,recurrence_day_of_month) VALUES('income','Income','bank','salary',100,1)").execute(&pool).await.unwrap();
+        assert!(remove_archived(&pool, "bank").await.unwrap_err().contains("linked records"));
+        sqlx::query("DELETE FROM incomes").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO planner_debt_amounts(account_id,month,amount) VALUES('bank','2026-01',10)").execute(&pool).await.unwrap();
+        assert!(remove_archived(&pool, "bank").await.unwrap_err().contains("linked records"));
+        assert_eq!(sqlx::query_scalar::<_, i64>("SELECT amount FROM planner_debt_amounts").fetch_one(&pool).await.unwrap(), 10);
+        sqlx::query("DELETE FROM planner_debt_amounts").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO cloud_sync_binding(id,origin,account_id,dataset_id,key_id,hash,financial_enabled) VALUES(1,'https://example.test','user','dataset','key','hash',1)").execute(&pool).await.unwrap();
+        remove_archived(&pool, "bank").await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM cloud_sync_dirty WHERE record_id='account:bank'").fetch_one(&pool).await.unwrap(), 1);
+        assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM accounts WHERE id='bank'").fetch_one(&pool).await.unwrap(), 0);
+        assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM accounts WHERE id='other'").fetch_one(&pool).await.unwrap(), 1);
+        assert!(remove_archived(&pool, "bank").await.is_err());
+    }
+
     #[tokio::test]
     async fn general_archive_is_reversible_and_preserves_references_and_balances() {
         let pool = database().await;

@@ -1,3 +1,4 @@
+import { AccountDeleteAction } from './AccountDeleteAction'
 import { Link } from '@tanstack/react-router'
 import { History, Pencil } from 'lucide-react'
 import { t as translate, useLanguage } from '../lib/i18n'
@@ -16,5 +17,6 @@ export function AccountActions({ account, onEdit }: { account: Account; onEdit: 
       <TooltipTrigger asChild><Button asChild variant="ghost" size="icon-sm"><Link to="/transactions" search={{ account: account.id }} aria-label={translate("Transaction history")}><History aria-hidden="true" /></Link></Button></TooltipTrigger>
       <TooltipContent>{translate("Transaction history")}</TooltipContent>
     </Tooltip>
+  <AccountDeleteAction account={account} />
   </div></TooltipProvider>
 }

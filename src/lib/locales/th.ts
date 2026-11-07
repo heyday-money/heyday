@@ -1,5 +1,13 @@
 // Interface copy only. Never translate user-entered records or persisted identifiers.
 export const thai: Record<string, string> = {
+  "This account has linked records. Remove its links before deleting it.": "บัญชีนี้มีข้อมูลเชื่อมโยง กรุณายกเลิกการเชื่อมโยงก่อนลบ",
+  "Accounts with transaction records cannot be deleted.": "ไม่สามารถลบบัญชีที่มีรายการธุรกรรมได้",
+  "Archive this account before deleting it.": "เก็บบัญชีนี้ถาวรก่อนลบ",
+  "Permanently delete this archived account and its opening balance? This cannot be undone. Accounts with transaction records or linked records cannot be deleted.": "ลบบัญชีที่เก็บถาวรนี้และยอดเงินเริ่มต้นอย่างถาวรหรือไม่? การดำเนินการนี้ไม่สามารถยกเลิกได้ บัญชีที่มีธุรกรรมหรือข้อมูลเชื่อมโยงไม่สามารถลบได้",
+  "Account deleted": "ลบบัญชีแล้ว",
+  "Delete account {value0}?": "ลบบัญชี {value0}?",
+  "Delete account {value0}": "ลบบัญชี {value0}",
+  "Delete account": "ลบบัญชี",
   "Hide this account from active accounts and forecasts. Your balance and transaction history are kept, and you can restore the account later.": "ซ่อนบัญชีนี้จากบัญชีที่ใช้งานและการคาดการณ์ ยอดเงินและประวัติธุรกรรมจะยังคงอยู่ และคุณสามารถกู้คืนบัญชีได้ภายหลัง",
   "Save or discard your changes before archiving this account.": "บันทึกหรือละทิ้งการเปลี่ยนแปลงก่อนเก็บบัญชีนี้ถาวร",
   "All recorded activity for this account, newest first.": "ธุรกรรมทั้งหมดของบัญชีนี้ เรียงจากรายการล่าสุด",
