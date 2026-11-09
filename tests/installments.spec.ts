@@ -259,6 +259,12 @@ test('calendar shows a 12-month item matrix with monthly and remaining totals', 
   await dialog.getByRole('button', { name: 'This month', exact: true }).click()
   await expect(row('Total').getByRole('cell').last()).toHaveText('2,900.00')
   await page.setViewportSize({ width: 600, height: 700 })
+  // Resizing transitions the dialog's geometry. Measure sticky positioning only
+  // after layout settles, so scrolling is the only change between measurements.
+  await page.evaluate(async () => { await document.fonts.ready })
+  await dialog.evaluate(async element => {
+    await Promise.all(element.getAnimations().map(animation => animation.finished))
+  })
   expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   const region = dialog.getByRole('region', { name: 'Scrollable monthly installment schedule' })
   await region.evaluate(element => { element.scrollLeft = 0 })

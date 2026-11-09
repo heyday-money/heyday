@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
     const read = (key: string, fallback: any) => JSON.parse(localStorage.getItem(key) ?? JSON.stringify(fallback))
     const institutions = () => read('logo-institutions', [{id:'bank-002',name:'Bangkok Bank',logo:'bbl.svg',logo_mode:'default',logo_asset_id:null,is_archived:false}])
     const payees = () => read('logo-payees', [{id:'shop',name:'Corner Shop',is_archived:false,logo_asset_id:null}])
-    const accounts = [{id:'bank',name:'Everyday',type:'bank',institution:'Bangkok Bank',institution_id:'bank-002',current_balance:'1000',opening_balance:'1000'}]
+    const accounts = read('logo-accounts', [{id:'bank',name:'Everyday',type:'bank',institution:'Bangkok Bank',institution_id:'bank-002',current_balance:'1000',opening_balance:'1000'}])
     const setLogo = (item: any, change: any) => {
       if (!change) return
       item.logo_mode = change.kind
@@ -20,6 +20,15 @@ test.beforeEach(async ({ page }) => {
       if(command==='list_accounts')return accounts
       if(command==='list_transaction_options')return {payees:payees(),categories:[]}
       if(command==='get_logo_asset')return read('logo-assets',{})[args.id]
+      if(command==='list_card_limit_groups')return {groups:[],cards:[]}
+      if(command==='update_account'){
+        if(sessionStorage.getItem('fail-logo'))throw 'Could not save logo. Try again.'
+        const item={...accounts.find((a:any)=>a.id===args.input.id),...args.input}
+        setLogo(item,args.logoChange)
+        accounts.splice(accounts.findIndex((a:any)=>a.id===item.id),1,item)
+        localStorage.setItem('logo-accounts',JSON.stringify(accounts))
+        return item
+      }
       if(command==='save_institution'||command==='save_transaction_option'){
         if(sessionStorage.getItem('fail-logo'))throw 'Could not save logo. Try again.'
         const key=command==='save_institution'?'logo-institutions':'logo-payees'
@@ -136,4 +145,36 @@ test('payee logos persist through rename/archive, appear in history and entry, a
   await page.getByRole('button',{name:'Add transaction',exact:true}).click()
   await page.getByLabel('Payee (optional)',{exact:true}).fill('New')
   await expect(page.getByRole('option',{name:'New Shop',exact:true}).locator('img')).toHaveAttribute('src',/^data:/)
+})
+
+
+test('cash account logo upload persists, failed replacement keeps draft, and removal preserves balance', async ({ page }) => {
+  await page.goto('/#/accounts')
+  await page.evaluate(() => localStorage.setItem('logo-accounts', JSON.stringify([{id:'cash',name:'Pocket cash',type:'cash',institution:null,institution_id:null,current_balance:'12500',opening_balance:'12500'}])))
+  await page.reload()
+  await page.getByRole('button', {name:'Edit account Pocket cash', exact:true}).click()
+  const dialog=page.getByRole('dialog')
+  await dialog.getByLabel('Choose logo file').setInputFiles(await source(page))
+  await expect(dialog.getByRole('button', {name:'Replace logo',exact:true})).toBeEnabled()
+  await dialog.getByRole('button',{name:'Save account',exact:true}).click()
+  await expect(dialog).not.toBeVisible()
+  const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('logo-accounts')!)[0])
+  expect(stored.logo_asset_id).toBeTruthy()
+  expect(stored.current_balance).toBe('12500')
+  await page.reload()
+  await page.getByRole('button',{name:'Edit account Pocket cash',exact:true}).click()
+  await expect(dialog.locator('img')).toHaveAttribute('src',/^data:image\/png/)
+  await page.evaluate(()=>sessionStorage.setItem('fail-logo','true'))
+  await dialog.getByLabel('Choose logo file').setInputFiles(await source(page, 'image/jpeg'))
+  await expect(dialog.getByRole('button',{name:'Replace logo',exact:true})).toBeEnabled()
+  await dialog.getByRole('button',{name:'Save account',exact:true}).click()
+  await expect(dialog.getByRole('alert')).toContainText('Could not save logo')
+  await expect(dialog.locator('img')).toHaveAttribute('src',/^data:image\/png/)
+  await page.evaluate(()=>sessionStorage.removeItem('fail-logo'))
+  await dialog.getByRole('button',{name:'Remove logo',exact:true}).click()
+  await dialog.getByRole('button',{name:'Save account',exact:true}).click()
+  await expect(dialog).not.toBeVisible()
+  const removed=await page.evaluate(()=>JSON.parse(localStorage.getItem('logo-accounts')!)[0])
+  expect(removed.logo_asset_id).toBeNull()
+  expect(removed.current_balance).toBe('12500')
 })

@@ -81,6 +81,7 @@ test('income prerequisites and all source types with safe save and reload', asyn
     await trigger.click()
     await page.getByLabel('Income name', { exact: true }).fill(`My ${type}`)
     await page.getByLabel('Income type', { exact: true }).selectOption(type)
+    await page.getByLabel('Planning', { exact: true }).selectOption('monthly')
     await page.getByLabel('Destination account', { exact: true }).selectOption('bank')
     await page.getByLabel('Day of month', { exact: true }).selectOption('31')
     await page.getByLabel('Estimated amount (THB)').fill('50000.25')
@@ -331,4 +332,49 @@ test('can disable a source with an unavailable destination and edit explicit zer
   const input = await page.evaluate(() => JSON.parse(sessionStorage.getItem('update-input')!))
   expect(input).toMatchObject({ id: 'archived-source', estimated_amount: '0', currency: 'JPY', destination_account_id: 'archived', is_active: false, is_auto_create_transaction: false })
   await expect(page.getByText('Inactive', { exact: true })).toBeVisible()
+})
+
+test('irregular income saves without amount or day and can become scheduled', async ({ page }) => {
+  await setup(page)
+  await page.goto('/#/income')
+  await page.evaluate(() => { localStorage.setItem('test-currency', 'THB'); localStorage.setItem('test-account', 'true') })
+  await page.reload()
+  await page.getByRole('button', { name: 'Add income source', exact: true }).click()
+  await page.getByLabel('Income name', { exact: true }).fill('Freelance')
+  await page.getByLabel('Income type', { exact: true }).selectOption('variable')
+  await expect(page.getByLabel('Planning', { exact: true })).toHaveValue('irregular')
+  await expect(page.getByLabel('Estimated amount (THB)')).toHaveCount(0)
+  await expect(page.getByLabel('Day of month', { exact: true })).toHaveCount(0)
+  await page.getByLabel('Destination account', { exact: true }).selectOption('bank')
+  await page.getByRole('button', { name: 'Save income source', exact: true }).click()
+  await page.reload()
+  await expect(page.getByText('When received', { exact: true })).toBeVisible()
+  await expect(page.getByText('Not estimated', { exact: true })).toHaveCount(2)
+  const source = await page.evaluate(() => JSON.parse(localStorage.getItem('test-income')!)[0])
+  expect(source).toMatchObject({ recurrence_frequency: 'irregular', estimated_amount: '0', is_active: true })
+  await page.getByRole('button', { name: 'Edit Freelance', exact: true }).click()
+  await page.getByLabel('Planning', { exact: true }).selectOption('monthly')
+  await page.getByLabel('Estimated amount (THB)').fill('1000')
+  await page.getByLabel('Day of month', { exact: true }).selectOption('15')
+  await page.getByRole('button', { name: 'Save income source', exact: true }).click()
+  await expect(page.getByText('When received', { exact: true })).toHaveCount(0)
+})
+
+test('irregular forecasts distinguish missing and zero, preserve overrides and multiple receipts', async () => {
+  const { cycleTotals, plannerItems, itemAmount } = await import('../src/lib/cashflow')
+  const data: import('../src/lib/cashflow').PlannerData = {
+    source_currency: 'THB', period_start_day: 1, categories: [], items: [], months: [], opening: null,
+    debt_accounts: [], installments: [], credit_cards: [], card_transactions: [], expense_categories: [], income_deductions: [], amounts: [],
+    incomes: [{ id: 'gig', name: 'Gig', estimated_amount: '0', recurrence_frequency: 'irregular', recurrence_day_of_month: 1, destination_account_name: 'Bank', is_active: true, account_archived: false }],
+    ledger_transactions: ['10000', '25000'].map((amount, i) => ({ id: `receipt${i}`, type: 'income', account_id: 'bank', account_type: 'bank', destination_account_id: null, destination_account_type: null, amount, date: '2026-01-20', income_source_id: 'gig' })),
+  }
+  const item = plannerItems(data).find(row => row.income?.id === 'gig')!
+  expect(itemAmount(data, item, '2026-01', 'forecast').value).toBeNull()
+  expect(cycleTotals(data, '2026-01', 'actual').netIncome).toBe(35000n)
+  data.amounts = [{ item_id: item.id, month: '2026-01', amount: '0' }]
+  expect(itemAmount(data, item, '2026-01', 'forecast').value).toBe(0n)
+  data.amounts[0].amount = '45000'
+  expect(cycleTotals(data, '2026-01', 'forecast').netIncome).toBe(45000n)
+  expect(itemAmount(data, item, '2026-02', 'forecast').value).toBeNull()
+  expect(cycleTotals(data, '2026-01', 'actual').netIncome).toBe(35000n)
 })

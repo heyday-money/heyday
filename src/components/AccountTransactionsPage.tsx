@@ -8,7 +8,7 @@ import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { Check, Circle, LockKeyhole } from 'lucide-react'
 import { toast } from 'sonner'
-import { desktopAvailable, deleteTransaction, listAccounts, type Account } from '../lib/desktop'
+import { desktopAvailable, listTransactions, type Transaction, deleteTransaction, listAccounts, type Account } from '../lib/desktop'
 import { decimalToInteger, formatAmount, fractionDigits } from '../lib/money'
 import { getReconciliation, finishReconciliation, setVerification, type ReconciliationSnapshot, type VerificationEntry, type VerificationStatus } from '../lib/reconciliation'
 import { AddTransactionDialog } from './AddTransactionDialog'
@@ -47,6 +47,7 @@ function AccountTransactions({ accountId, startReconcile }: { accountId: string;
   const [posted, setPosted] = useState('')
   const [cardBalanceKind, setCardBalanceKind] = useState<'owed' | 'credit'>('owed')
   const [openingConfirmed, setOpeningConfirmed] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Account | null>(null)
   const [loadingEditor, setLoadingEditor] = useState(false)
@@ -71,6 +72,17 @@ function AccountTransactions({ accountId, startReconcile }: { accountId: string;
     events.forEach(event => window.addEventListener(event, listener))
     return () => { request.current++; events.forEach(event => window.removeEventListener(event, listener)) }
   }, [refresh])
+  async function editTransaction(id: string) {
+    setLoadingEditor(true); setError(null)
+    try {
+      const row = (await listTransactions()).find(row => row.id === id)
+      if (!row) throw new Error("Transaction no longer exists. Reload the page.")
+      if (row.has_reconciliation_history) throw new Error("Transactions with reconciliation history cannot be edited.")
+      if (row.salary_payment_id || row.loan_account_id || row.imported_linked_payment) throw new Error("Linked salary, loan, and installment entries cannot be edited here. Open their source record to review them.")
+      setEditingTransaction(row)
+    } catch (error) { setError(message(error)) }
+    finally { setLoadingEditor(false) }
+  }
   async function editAccount() {
     setLoadingEditor(true); setError(null)
     try {
@@ -118,6 +130,7 @@ function AccountTransactions({ accountId, startReconcile }: { accountId: string;
   }
   const requiresConfirmation = forceConfirmation || correction?.kind === 'unlock' || !!data?.history_entries.some(entry => entry.transaction_id === correction?.entry.transaction_id)
   const columns: ColumnDef<VerificationEntry>[] = [
+    { id: 'edit', header: translate("Edit"), cell: ({ row: { original: entry } }) => <Button variant="outline" size="xs" disabled={disabled || loadingEditor || entry.status === 'reconciled' || !!entry.salary_payment_id || !!entry.imported_linked_payment || !!data?.history_entries.some(row => row.transaction_id === entry.transaction_id)} onClick={() => void editTransaction(entry.transaction_id)} aria-label={translate("Edit {value0}", { value0: entry.description || entry.type })}>{translate("Edit")}</Button> },
     { id: 'select', header: translate("Select"), cell: ({ row: { original: entry } }) => <Input type="checkbox" className="size-4 p-0" aria-label={translate("Select {value0} {value1}", { value0: entry.description || entry.type, value1: entry.date })} disabled={disabled || entry.status === 'reconciled'} checked={selected.has(entry.transaction_id)} onChange={event => setSelected(current => { const next = new Set(current); if (event.target.checked) next.add(entry.transaction_id); else next.delete(entry.transaction_id); return next })} /> },
     { id: 'date', header: translate("Date"), accessorKey: 'date' },
     { id: 'description', header: translate("Description"), meta: { rowHeader: true }, cell: ({ row: { original: entry } }) => <>{entry.description || entry.type}{entry.salary_payment_id && <Button variant="link" size="xs" onClick={() => setSalaryPayment(entry.salary_payment_id!)}>{translate("Payslip breakdown")}</Button>}</> },
@@ -161,6 +174,7 @@ function AccountTransactions({ accountId, startReconcile }: { accountId: string;
       <section aria-label={translate("Reconciliation history")} className="mt-8"><h3 className="mb-3 text-lg font-semibold">{translate("Reconciliation history")}</h3>{!data.history.length && <p className="text-sm">{translate("No completed reconciliations.")}</p>}<div className="space-y-3">{data.history.map(history => <details key={history.id} className="rounded-xl border border-line bg-card p-4"><summary className="cursor-pointer text-sm font-medium">{new Date(history.completed_at).toLocaleString(getLocale())} · {balance(history.confirmed_balance)} · {history.needs_review ? translate("Needs review") : translate("Completed")}</summary><p className="my-3 text-xs">{translate("Opening balance:")}{" "}{balance(history.opening_balance)}{translate(". Entries below are saved evidence from completion, including entries later unlocked or deleted.")}{history.needs_review && translate(" A correction affected this confirmation or a balance carried into it. Review against your provider and complete a new reconciliation when ready.")}</p><ul className="space-y-2 text-sm">{data.history_entries.filter(entry => entry.reconciliation_id === history.id).map(entry => <li key={entry.transaction_id} className="flex flex-wrap justify-between gap-2"><span>{entry.date} · {entry.description || entry.type}</span><span className="tabular-nums">{money(entry.balance_change)}</span></li>)}</ul>{!data.history_entries.some(entry => entry.reconciliation_id === history.id) && <p className="text-sm">{translate("No newly cleared entries were included.")}</p>}</details>)}</div></section>
     </>}
     {editing && data && <AccountFormDialog account={editing} initialType={editing.type} currency={data.currency} onClose={() => setEditing(null)} onSaved={() => { void refresh() }} />}
+    {editingTransaction && <AddTransactionDialog editing={editingTransaction} onClose={() => setEditingTransaction(null)} />}
     {adding && <AddTransactionDialog initialAccountId={accountId} onClose={() => setAdding(false)} />}
     <Dialog open={!!correction} onOpenChange={open => { if (!open && !saving) { setCorrection(null); setError(null) } }}><DialogContent showCloseButton={!saving} onInteractOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (saving) event.preventDefault() }}><DialogHeader><DialogTitle>{correction?.kind === 'unlock' ? translate("Unlock reconciled transaction?") : translate("Delete transaction?")}</DialogTitle><DialogDescription>{correction?.kind === 'unlock' ? translate("This account’s entry will become Cleared. Its reconciliation and later confirmations will be marked as needing review. Balances and the other account’s verification stay unchanged.") : translate("Deleting reverses this transaction in every participating account. Linked loan payment components are all reversed together. Saved reconciliation evidence is retained; affected history in either account will need review.")}</DialogDescription></DialogHeader>{correction?.kind === 'delete' && correction.entry.salary_payment_id && <p>{translate("Deleting this entry reverses the entire salary payment, including its bank deposit and all linked loan repayments.")}</p>}{correction?.kind === 'delete' && correction.entry.imported_linked_payment && <p role="status">{translate("Delete this linked payment on the device with its payroll, loan, or installment details, then sync again.")}</p>}{requiresConfirmation && <label className="flex items-start gap-2 text-sm"><Input type="checkbox" className="mt-0.5 size-4 shrink-0 p-0" checked={correctionConfirmed} disabled={saving} onChange={event => setCorrectionConfirmed(event.target.checked)} />{translate("I confirm this correction and understand affected reconciliations will need review.")}</label>}{error && <p role="alert">{translate(error)}</p>}<DialogFooter><Button variant="outline" disabled={saving} onClick={() => setCorrection(null)}>{translate("Cancel")}</Button><Button variant="destructive" disabled={disabled || (correction?.kind === 'delete' && correction.entry.imported_linked_payment) || (requiresConfirmation && !correctionConfirmed)} onClick={() => correction && void mutate(() => correction.kind === 'unlock' ? setVerification(accountId, [correction.entry], 'cleared', correctionConfirmed) : deleteTransaction(correction.entry.transaction_id, correctionConfirmed), correction.kind === 'unlock' ? translate("Transaction unlocked. Review reconciliation history.") : translate("Transaction deleted. Balances updated."))}>{correction?.kind === 'unlock' ? translate("Unlock transaction") : translate("Delete transaction")}</Button></DialogFooter></DialogContent></Dialog>
   </>

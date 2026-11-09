@@ -2,7 +2,7 @@ import { t as translate, useLanguage } from "../lib/i18n"
 import { useEffect, useRef, useState, type ComponentProps } from 'react'
 import { NativeSelect } from './ui/native-select'
 import { useInstitutions } from './InstitutionProvider'
-import { InstitutionLogo } from './InstitutionLogo'
+import { AccountIcon } from './InstitutionLogo'
 export function AccountSelect({ value, defaultValue, onChange, children, className, accountIds, ...props }: ComponentProps<typeof NativeSelect> & { accountIds?: Record<string, string> }) {
   useLanguage()
 
@@ -14,5 +14,5 @@ export function AccountSelect({ value, defaultValue, onChange, children, classNa
   const id = accountIds?.[selectedValue] ?? selectedValue
   const account = directory.accounts.find(a => a.id === id)
   const institution = directory.institutions.find(i => i.id === account?.institution_id)
-  return <div className="flex min-w-0 items-center gap-2"><span className="mb-2 shrink-0 self-end" title={institution?.name}><InstitutionLogo institution={institution} name={account?.name ?? ''} /></span><NativeSelect ref={select} {...props} className={className} value={value} defaultValue={defaultValue} onChange={e => { setSelected(e.target.value); onChange?.(e) }}>{children}</NativeSelect></div>
+  return <div className="flex min-w-0 items-center gap-2"><span className="mb-2 shrink-0 self-end" title={institution?.name}><AccountIcon logoAssetId={account?.logo_asset_id} type={account?.type} institution={institution} name={account?.name ?? ''} /></span><NativeSelect ref={select} {...props} className={className} value={value} defaultValue={defaultValue} onChange={e => { setSelected(e.target.value); onChange?.(e) }}>{children}</NativeSelect></div>
 }

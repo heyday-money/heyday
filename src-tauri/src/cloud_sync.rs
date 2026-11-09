@@ -6,7 +6,6 @@ use crate::{
     cloud_sync_store::{self as store, Status},
 };
 use reqwest::{Client, Response, Url};
-use serde::Deserialize;
 use sqlx::SqlitePool;
 
 const NETWORK: &str = "Could not sync. Check your connection and try again.";
@@ -60,26 +59,6 @@ async fn context() -> Result<(Client, Url, Credentials), String> {
     let credentials = cloud_devices::credentials(&client, &base).await?;
     Ok((client, base, credentials))
 }
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Cursor {
-    dataset_id: String,
-    sequence: String,
-    hash: String,
-}
-fn cursor_head(cursor: &str, dataset: &str) -> Result<Head, String> {
-    let bytes = crate::cloud_crypto::decode(cursor, 1, 384)?;
-    let parsed: Cursor = serde_json::from_slice(&bytes).map_err(|_| UNSAFE)?;
-    if parsed.dataset_id != dataset {
-        return Err(UNSAFE.into());
-    }
-    let head = Head {
-        sequence: parsed.sequence,
-        hash: parsed.hash,
-    };
-    head.number()?;
-    Ok(head)
-}
 async fn get_page(
     client: &Client,
     base: &Url,
@@ -116,22 +95,71 @@ async fn get_page(
     )
     .await
 }
-async fn pin(
+struct DesktopAdapter<'a> {
+    client: &'a Client,
+    base: &'a Url,
+    credentials: &'a Credentials,
+}
+impl heyday_core::sync::engine::Adapter for DesktopAdapter<'_> {
+    async fn page(
+        &self,
+        dataset: &str,
+        cursor: Option<&str>,
+        boundary: Option<&str>,
+        bootstrap: bool,
+    ) -> Result<Page, String> {
+        get_page(
+            self.client,
+            self.base,
+            self.credentials,
+            dataset,
+            cursor,
+            boundary,
+            bootstrap,
+        )
+        .await
+    }
+    async fn push(&self, sent: &Mutation) -> Result<PushResult, String> {
+        json(
+            self.client
+                .post(self.base.join("api/v1/sync/push").map_err(|_| NETWORK)?)
+                .header("X-Heyday-Sync", "5")
+                .header("X-Heyday-Keys", "2")
+                .bearer_auth(&self.credentials.access_token)
+                .json(sent)
+                .send()
+                .await
+                .map_err(|_| NETWORK)?,
+            self.base,
+        )
+        .await
+    }
+    async fn save_checkpoint(
+        &self,
+        envelope: &crate::cloud_crypto::KeyEnvelope,
+        head: &Head,
+    ) -> Result<(), String> {
+        cloud_e2ee::save_sync_checkpoint(self.base, &self.credentials.account.id, envelope, head)
+            .await
+    }
+}
+pub(super) async fn verified_head(
+    client: &Client,
     base: &Url,
     credentials: &Credentials,
-    key: &mut SyncKey,
-    head: &Head,
-) -> Result<(), String> {
-    if head.number()? == key.checkpoint.number()? && head.hash != key.checkpoint.hash {
-        return Err(UNSAFE.into());
-    }
-    if head.number()? > key.checkpoint.number()? {
-        cloud_e2ee::save_sync_checkpoint(base, &credentials.account.id, &key.envelope, head)
-            .await?;
-        key.checkpoint = head.clone();
-    }
-    Ok(())
+    key: &SyncKey,
+) -> Result<Head, String> {
+    heyday_core::sync::engine::verified_head(
+        &DesktopAdapter {
+            client,
+            base,
+            credentials,
+        },
+        key,
+    )
+    .await
 }
+#[cfg(test)]
 async fn verified_pages(
     client: &Client,
     base: &Url,
@@ -140,305 +168,37 @@ async fn verified_pages(
     start: Head,
     cursor: Option<&str>,
 ) -> Result<(Vec<tempfile::NamedTempFile>, Head), String> {
-    use std::io::Write;
-    let mut after = start;
-    let mut cursor = cursor.map(str::to_owned);
-    let mut boundary: Option<String> = None;
-    let mut files = Vec::new();
-    let mut total = 0usize;
-    for _ in 0..8192 {
-        let page = get_page(
+    heyday_core::sync::engine::verified_pages(
+        &DesktopAdapter {
             client,
             base,
             credentials,
-            &key.envelope.dataset_id,
-            cursor.as_deref(),
-            boundary.as_deref(),
-            true,
-        )
-        .await?;
-        let target = cursor_head(&page.boundary, &key.envelope.dataset_id)?;
-        if page.dataset_id != key.envelope.dataset_id
-            || page.changes.len() > 50
-            || (page.has_more && page.changes.is_empty())
-            || page.head.number()? < key.checkpoint.number()?
-            || (page.head.sequence == key.checkpoint.sequence
-                && page.head.hash != key.checkpoint.hash)
-            || target.number()? < after.number()?
-            || target.number()? > page.head.number()?
-            || boundary.as_ref().is_some_and(|b| b != &page.boundary)
-            || (boundary.is_none() && target != page.head)
-        {
-            return Err(UNSAFE.into());
-        }
-        for change in &page.changes {
-            after = protocol::verify_change(change, &after)?;
-            key.ring.decode(change)?;
-            if after.sequence == key.checkpoint.sequence && after.hash != key.checkpoint.hash {
-                return Err(UNSAFE.into());
-            }
-        }
-        if cursor_head(&page.cursor, &key.envelope.dataset_id)? != after
-            || after.number()? > target.number()?
-            || (!page.has_more && after != target)
-        {
-            return Err(UNSAFE.into());
-        }
-        let bytes = serde_json::to_vec(&page).map_err(|_| UNSAFE)?;
-        total += bytes.len();
-        if total > 536_870_912 {
-            return Err("Cloud history is too large to verify in this app version. Update the app before syncing.".into());
-        }
-        let mut file = tempfile::NamedTempFile::new().map_err(|_| NETWORK)?;
-        file.write_all(&bytes).map_err(|_| NETWORK)?;
-        files.push(file);
-        if !page.has_more {
-            if after.number()? < key.checkpoint.number()? {
-                return Err(UNSAFE.into());
-            }
-            if let Some(last) = key.ring.history.last() {
-                if after.number()? < last.until.number()?
-                    || (after.sequence == last.until.sequence && after.hash != last.until.hash)
-                {
-                    return Err(UNSAFE.into());
-                }
-            }
-            return Ok((files, after));
-        }
-        cursor = Some(page.cursor);
-        boundary = Some(page.boundary);
-    }
-    Err(
-        "Cloud history is too large to verify in this app version. Update the app before syncing."
-            .into(),
+        },
+        key,
+        start,
+        cursor,
     )
-}
-pub(super) async fn verified_head(
-    client: &Client,
-    base: &Url,
-    credentials: &Credentials,
-    key: &SyncKey,
-) -> Result<Head, String> {
-    let (_, head) = verified_pages(client, base, credentials, key, Head::default(), None).await?;
-    Ok(head)
-}
-async fn push(
-    pool: &SqlitePool,
-    client: &Client,
-    base: &Url,
-    credentials: &Credentials,
-    key: &mut SyncKey,
-    sent: &Mutation,
-) -> Result<(), String> {
-    let response: PushResult = json(
-        client
-            .post(base.join("api/v1/sync/push").map_err(|_| NETWORK)?)
-            .header("X-Heyday-Sync", "5")
-            .header("X-Heyday-Keys", "2")
-            .bearer_auth(&credentials.access_token)
-            .json(sent)
-            .send()
-            .await
-            .map_err(|_| NETWORK)?,
-        base,
-    )
-    .await?;
-    match response {
-        PushResult::Accepted { change } => {
-            if change.request != *sent {
-                return Err(UNSAFE.into());
-            }
-            let head = protocol::verify_change(&change, &sent.previous)?;
-            key.ring.decode(&change)?;
-            // An accepted write is a durable checkpoint even before the next pull.
-            pin(base, credentials, key, &head).await?;
-        }
-        PushResult::Conflict { head, current } => {
-            if head.number()? < key.checkpoint.number()?
-                || (head.sequence == key.checkpoint.sequence && head.hash != key.checkpoint.hash)
-            {
-                return Err(UNSAFE.into());
-            }
-            if let Some(current) = current {
-                protocol::verify_change(&current, &current.request.previous)?;
-                key.ring.decode(&current)?;
-                if current.request.record_id != sent.record_id {
-                    return Err(UNSAFE.into());
-                }
-            }
-            // Definitive rejection permits re-encryption after pulling the winner.
-            // Network failures never discard a pending request.
-            store::discard_pending(pool).await?;
-        }
-    }
-    Ok(())
+    .await
 }
 async fn perform(
     pool: &SqlitePool,
     client: &Client,
     base: &Url,
     credentials: &Credentials,
-    mut key: SyncKey,
+    key: SyncKey,
 ) -> Result<Status, String> {
-    let (identity, identity_id) = key.ring.identity()?;
-    let initial = store::binding(pool).await?.ok_or(store::ACCOUNT)?;
-    initial.owner(base.as_str(), &credentials.account.id)?;
-    if initial.dataset_id != key.envelope.dataset_id || initial.key_id != identity_id {
-        return Err(UNSAFE.into());
-    }
-    let epoch_head = key
-        .ring
-        .history
-        .last()
-        .map(|h| h.until.number())
-        .transpose()?
-        .unwrap_or(0);
-    if initial.enabled
-        && (initial.sequence < key.checkpoint.number()? || initial.sequence < epoch_head)
-    {
-        // Verify the complete prefix against the independent checkpoint BEFORE any
-        // financial data is applied. Temporary files contain ciphertext only.
-        let (pages, head) = verified_pages(
+    heyday_core::sync::engine::perform(
+        pool,
+        base.as_str(),
+        &credentials.account.id,
+        &DesktopAdapter {
             client,
             base,
             credentials,
-            &key,
-            initial.head(),
-            initial.cursor.as_deref(),
-        )
-        .await?;
-        pin(base, credentials, &mut key, &head).await?;
-        let mut previous = initial.head();
-        for file in pages {
-            let page: Page =
-                serde_json::from_slice(&std::fs::read(file.path()).map_err(|_| NETWORK)?)
-                    .map_err(|_| UNSAFE)?;
-            let mut decoded = Vec::new();
-            let mut end = previous.clone();
-            for change in page.changes {
-                end = protocol::verify_change(&change, &end)?;
-                let record = key.ring.decode(&change)?;
-                decoded.push((change, record));
-            }
-            store::apply_page(
-                pool,
-                &previous,
-                &decoded,
-                &end,
-                &page.cursor,
-                !page.has_more,
-            )
-            .await?;
-            previous = end;
-        }
-    }
-    // Bounded work; the scheduler continues any remaining queue next time.
-    for _ in 0..12 {
-        let bound = store::binding(pool).await?.ok_or(store::ACCOUNT)?;
-        bound.owner(base.as_str(), &credentials.account.id)?;
-        if bound.dataset_id != key.envelope.dataset_id || bound.key_id != identity_id {
-            return Err(UNSAFE.into());
-        }
-        if !bound.enabled {
-            break;
-        }
-        if bound.sequence.to_string() == key.checkpoint.sequence
-            && bound.hash != key.checkpoint.hash
-        {
-            return Err(UNSAFE.into());
-        }
-        if let Some(sent) = store::pending(pool).await? {
-            match push(pool, client, base, credentials, &mut key, &sent).await {
-                Err(e)
-                    if e == crate::cloud_key_protocol::CHANGED
-                        && sent.payload.key_id != key.envelope.key_id =>
-                {
-                    // An explicit server rejection proves this old request was not
-                    // accepted. Preserve dirty revisions and re-encrypt after pull.
-                    store::discard_pending(pool).await?;
-                }
-                result => result?,
-            }
-        }
-        let mut boundary: Option<String> = None;
-        let mut complete = false;
-        for _ in 0..8 {
-            let bound = store::binding(pool).await?.ok_or(store::ACCOUNT)?;
-            let page = get_page(
-                client,
-                base,
-                credentials,
-                &bound.dataset_id,
-                bound.cursor.as_deref(),
-                boundary.as_deref(),
-                !bound.bootstrapped,
-            )
-            .await?;
-            let target = cursor_head(&page.boundary, &bound.dataset_id)?;
-            if page.dataset_id != bound.dataset_id
-                || page.changes.len() > 50
-                || (page.has_more && page.changes.is_empty())
-                || page.head.number()? < key.checkpoint.number()?
-                || (page.head.sequence == key.checkpoint.sequence
-                    && page.head.hash != key.checkpoint.hash)
-                || target.number()? < bound.sequence
-                || target.number()? > page.head.number()?
-                || boundary.as_ref().is_some_and(|b| b != &page.boundary)
-                || (boundary.is_none() && target != page.head)
-            {
-                return Err(UNSAFE.into());
-            }
-            let mut end = bound.head();
-            let mut decoded = Vec::new();
-            for change in page.changes {
-                end = protocol::verify_change(&change, &end)?;
-                let record = key.ring.decode(&change)?;
-                if end.sequence == key.checkpoint.sequence && end.hash != key.checkpoint.hash {
-                    return Err(UNSAFE.into());
-                }
-                decoded.push((change, record));
-            }
-            if cursor_head(&page.cursor, &bound.dataset_id)? != end
-                || end.number()? > target.number()?
-                || (!page.has_more && end != target)
-            {
-                return Err(UNSAFE.into());
-            }
-            // Pin before applying data. A crash can leave the pin ahead of SQLite;
-            // replaying the immutable history verifies and repairs that situation.
-            if end.number()? >= key.checkpoint.number()? {
-                pin(base, credentials, &mut key, &end).await?;
-            }
-            store::apply_page(
-                pool,
-                &bound.head(),
-                &decoded,
-                &end,
-                &page.cursor,
-                !page.has_more,
-            )
-            .await?;
-            boundary = Some(page.boundary);
-            if !page.has_more {
-                complete = true;
-                break;
-            }
-        }
-        if !complete {
-            break;
-        }
-        if store::pending(pool).await?.is_some() {
-            return Err(UNSAFE.into());
-        }
-        let bound = store::binding(pool).await?.ok_or(store::ACCOUNT)?;
-        if store::prepare_epoch(pool, &key.ring.key, &key.envelope.key_id, &identity, &bound)
-            .await?
-            .is_none()
-        {
-            break;
-        }
-    }
-    store::status(pool, base.as_str(), &credentials.account.id).await
+        },
+        key,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn cloud_sync_status(
@@ -446,7 +206,7 @@ pub async fn cloud_sync_status(
     auth: tauri::State<'_, CloudAuthState>,
 ) -> Result<Status, String> {
     let _auth = auth.operation.lock().await;
-    let _db = crate::backups::operation()?;
+    let _db = heyday_core::database::operations::operation()?;
     let base = cloud_auth::origin()?;
     let credentials = cloud_auth::load(&base)
         .await?
@@ -463,7 +223,7 @@ pub async fn cloud_enable_sync(
         return Err("Confirm that you want to sync categories, accounts, and transactions with this account.".into());
     }
     let _auth = auth.operation.lock().await;
-    let _db = crate::backups::operation()?;
+    let _db = heyday_core::database::operations::operation()?;
     let (client, base, credentials) = context().await?;
     if let Some(bound) = store::binding(&pool).await? {
         bound.owner(base.as_str(), &credentials.account.id)?;
@@ -502,7 +262,7 @@ pub async fn cloud_sync_now(
     auth: tauri::State<'_, CloudAuthState>,
 ) -> Result<Status, String> {
     let _auth = auth.operation.lock().await;
-    let _db = crate::backups::operation()?;
+    let _db = heyday_core::database::operations::operation()?;
     let base = cloud_auth::origin()?;
     let saved = cloud_auth::load(&base)
         .await?
@@ -524,7 +284,7 @@ pub async fn cloud_pause_sync(
     auth: tauri::State<'_, CloudAuthState>,
 ) -> Result<Status, String> {
     let _auth = auth.operation.lock().await;
-    let _db = crate::backups::operation()?;
+    let _db = heyday_core::database::operations::operation()?;
     let base = cloud_auth::origin()?;
     let credentials = cloud_auth::load(&base)
         .await?
@@ -543,7 +303,7 @@ pub async fn cloud_resolve_sync(
     name: Option<String>,
 ) -> Result<Status, String> {
     let _auth = auth.operation.lock().await;
-    let _db = crate::backups::operation()?;
+    let _db = heyday_core::database::operations::operation()?;
     let base = cloud_auth::origin()?;
     let credentials = cloud_auth::load(&base)
         .await?
@@ -614,7 +374,7 @@ mod history_tests {
         let envelope = crypto::wrap("alice", "dataset", &root, &Zeroizing::new([9; 32])).unwrap();
         let ring = Ring::open("alice", root.clone(), &envelope, None).unwrap();
         let make = |head: &Head, version| {
-            let request=protocol::encrypt(&root,"dataset",&envelope.key_id,"test-category",version,head,false,br#"{"schema":1,"entity":"category","id":"test-category","value":{"name":"Private groceries","icon":"utensils","isArchived":false}}"#).unwrap();
+            let request=protocol::encrypt_with_identity(&root,"dataset",&envelope.key_id,&root,&envelope.key_id,"test-category",version,head,false,br#"{"schema":1,"entity":"category","id":"test-category","value":{"name":"Private groceries","icon":"utensils","isArchived":false}}"#,1).unwrap();
             protocol::Change {
                 sequence: (head.number().unwrap() + 1).to_string(),
                 version: (version + 1).to_string(),

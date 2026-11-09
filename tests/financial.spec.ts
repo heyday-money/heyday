@@ -180,3 +180,12 @@ test('repayment reminders clamp due days and exclude archived, paid-off and non-
   expect(repaymentDeadlines(accounts, 2025, 11).map(d => d.date)).toEqual(['2025-12-05', '2025-12-31'])
   expect(JSON.stringify(accounts)).toBe(before)
 })
+
+test('irregular sources never produce dated forecasts in account outlook', () => {
+  const input = data()
+  input.incomes = [{ ...income('gig', 'bank', 25, '99999'), recurrence_frequency: 'irregular' }]
+  input.transactions = [transaction('income', 'bank', '3000')]
+  const periods = monthlyOutlook(input, new Date(2026, 0, 15))
+  expect(periods[0].buckets.income.actual).toBe(3000n)
+  expect(periods.every(period => period.buckets.income.forecast === 0n)).toBe(true)
+})

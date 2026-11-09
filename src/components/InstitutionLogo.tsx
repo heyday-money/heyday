@@ -1,4 +1,5 @@
 import { t as translate, useLanguage } from "../lib/i18n"
+import type { AccountType } from '../lib/desktop'
 import { LogoImage, useLogoAsset } from './LogoImage'
 import type { Institution } from '../lib/institutions'
 import { useInstitutions } from './InstitutionProvider'
@@ -16,6 +17,11 @@ export function InstitutionLogo({ institution, name = '', className = '' }: { in
   const src = useInstitutionLogo(institution)
   return <LogoImage src={src} name={institution?.name || name} className={className} />
 }
+export function AccountIcon({ type, logoAssetId, institution, name = '', className = '' }: { type?: AccountType; logoAssetId?: string | null; institution?: Institution; name?: string; className?: string }) {
+  const custom = useLogoAsset(logoAssetId)
+  if (type === 'cash') return <LogoImage src={custom} name={name} className={className} />
+  return <InstitutionLogo institution={institution} name={name} className={className} />
+}
 export function AccountLabel({ id, name, compact = false, iconSize = 'sm' }: { id?: string | null; name: string; compact?: boolean; iconSize?: 'sm' | 'lg' }) {
   useLanguage()
 
@@ -24,7 +30,7 @@ export function AccountLabel({ id, name, compact = false, iconSize = 'sm' }: { i
   const institution = directory.institutions.find(i => i.id === account?.institution_id)
   const label = account?.name ?? name
   return <span className={`inline-flex min-w-0 max-w-full items-center align-middle ${iconSize === 'lg' ? 'gap-3' : 'gap-1.5'} ${compact ? 'w-full' : ''}`} title={institution ? translate("{value0} · {value1}", { value0: label, value1: institution.name }) : label}>
-    <InstitutionLogo institution={institution} name={label} className={iconSize === 'lg' ? 'size-12 rounded-xl text-xl' : ''} />
+    <AccountIcon logoAssetId={account?.logo_asset_id} type={account?.type} institution={institution} name={label} className={iconSize === 'lg' ? 'size-12 rounded-xl text-xl' : ''} />
     <span className={compact ? 'min-w-0 truncate' : 'min-w-0 break-words'}>{label}{institution && !compact && <span className="block text-[10px] font-normal text-muted">{institution.name}</span>}</span>
   </span>
 }

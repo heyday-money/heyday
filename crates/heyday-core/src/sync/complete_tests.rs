@@ -134,7 +134,7 @@ async fn db(full: bool) -> SqlitePool {
         )
         .await
         .unwrap();
-    sqlx::migrate!("./migrations").run(&p).await.unwrap();
+    crate::database::MIGRATOR.run(&p).await.unwrap();
     connect(&p, full).await;
     p
 }
@@ -260,6 +260,7 @@ async fn seed(p: &SqlitePool) -> (String, String, String) {
     let hash = format!("{:x}", sha2::Sha256::digest(&bytes));
     sqlx::query("INSERT INTO logo_assets(id,content_hash,mime_type,width,height,data) VALUES('local-logo',?,'image/png',1,1,?)").bind(hash).bind(bytes).execute(p).await.unwrap();
     sqlx::raw_sql("INSERT INTO payees(id,name,name_key,logo_asset_id) VALUES('payee','Shop','shop','local-logo'); UPDATE institutions SET logo_mode='custom',logo_asset_id='local-logo' WHERE id='bank-002'; UPDATE subscription_providers SET logo_mode='custom',logo_asset_id='local-logo' WHERE id='provider-spotify'; UPDATE subscriptions SET logo_asset_id='local-logo' WHERE id='subscription';").execute(p).await.unwrap();
+    sqlx::raw_sql("INSERT INTO accounts(id,name,type) VALUES('cash','Cash','cash'); INSERT INTO account_logos VALUES('cash','local-logo')").execute(p).await.unwrap();
     (purchase, payment, loan_payment)
 }
 async fn metadata_records(p: &SqlitePool) -> Vec<store::Record> {
@@ -580,9 +581,9 @@ async fn reconciliation_ids_are_remapped_and_logo_hash_deduplicates() {
 
 #[tokio::test]
 async fn payroll_upgrade_maps_equal_contract_deductions_exactly_and_reverses() {
-    let a = crate::salary_payments::tests::database().await;
+    let a = crate::sync::test_support::database().await;
     sqlx::raw_sql("UPDATE accounts SET loan_type='personal_loan' WHERE id='home'; INSERT INTO loan_facilities VALUES('home',3000000); INSERT INTO loan_contracts(id,account_id,name,principal,remaining_principal,borrowing_date,receiving_account_id,payment_account_id,interest_rate,monthly_amount,installment_count,first_due_date,borrowing_kind) VALUES('contract','home','Contract',2000000,2000000,'2023-01-01','bank','bank',0,920000,12,'2024-01-25','existing'); UPDATE income_deductions SET debt_account_id='home' WHERE id='student';").execute(&a).await.unwrap();
-    let mut input = crate::salary_payments::tests::input();
+    let mut input = crate::sync::test_support::input();
     for line in input.deductions.iter_mut().take(2) {
         line.contract_id = Some("contract".into());
         line.debt_account_id = Some("home".into());

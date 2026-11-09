@@ -1,12 +1,13 @@
 {
   "name": "heyday-money",
-  "version": "0.0.1-beta.6",
+  "version": "0.0.1-beta.7",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "packageManager": "bun@1.4.2",
   "scripts": {
     "callback:build": "bun scripts/build-auth-callback.ts",
+    "test:domain": "playwright test --config playwright.domain.config.ts",
     "test:e2e": "playwright test",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

@@ -1,0 +1,57 @@
+[
+  {
+    "version": 1,
+    "file": "0001_initial.sql",
+    "sha384": "cea80c38884044fbe1fcc8aae1bcbffc893551fe99518aec779bc11bfa44295c2f73002431e879b71158b82a0ff9b40a"
+  },
+  {
+    "version": 2,
+    "file": "0002_salary_payments.sql",
+    "sha384": "e15357a7a786a2e28745b0cded14105afcdfe37d1df362c2f4ac06385bcfa86ac682e9bdd101a8910ecee7be68df98c8"
+  },
+  {
+    "version": 3,
+    "file": "0003_subscription_providers.sql",
+    "sha384": "5e0735c5e5415853f5538754606b4e048b13c3bf3175378a34c92102118d0ff164ac332b6726d11908513ddc46a9414e"
+  },
+  {
+    "version": 4,
+    "file": "0004_category_sync.sql",
+    "sha384": "819585a3e0d0cd108a61af709d21fbf7e9bc65e215a6616365f9ab16bbaa97b4b313c6b210504d7ae231ad2ff7efc285"
+  },
+  {
+    "version": 5,
+    "file": "0005_ledger_sync.sql",
+    "sha384": "90ec2938a35a37dfb3dc44040a6b5fe64157404c05c21b372e8b6c82ca19f299b57649aa8fa67d0d7a9b1cadb27cbdbd"
+  },
+  {
+    "version": 6,
+    "file": "0006_income_sync.sql",
+    "sha384": "57b34e084860ccca6cd4912ac275cd871d0376e3968af1b480d7b2f3fb9e6aefa93d732f863c52cac5ca0fba3f1366a1"
+  },
+  {
+    "version": 7,
+    "file": "0007_income_planner_sync.sql",
+    "sha384": "d35abcebcc6b5b859559f3ff4532f81824a5c276606cde65ea7b5cb8595478fefdcb7d4da61407e01a5b53432c4382a9"
+  },
+  {
+    "version": 8,
+    "file": "0008_complete_sync.sql",
+    "sha384": "735bacdce83d50164ad239aeecc79d7f8aa1dd5ba7c1b96daaed108284f0e9004b0aa0fd0d5c830f98876a3991775010"
+  },
+  {
+    "version": 9,
+    "file": "0009_sync_review_effects.sql",
+    "sha384": "b1edd31e7d075715722d4cb32dd92f1a364a5bb57f8be7aa63e438c4bfcd4ffdcfe8c6988b0ed0cd43ea3da79c5e9bda"
+  },
+  {
+    "version": 10,
+    "file": "0010_irregular_income.sql",
+    "sha384": "405de471647e7dc3f01b4affda96b7e8290c4f073bab8fe7f35beb77776fc7599fb1c0132f129903901c86875da2bd05"
+  },
+  {
+    "version": 11,
+    "file": "0011_cash_account_logos.sql",
+    "sha384": "d241391b0ae53ab6a27f7ee77aca668d9e460ef91824244fd47a3b760c2e3f56e7533d54ce14f376b03a30f664a59016"
+  }
+]

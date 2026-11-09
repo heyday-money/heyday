@@ -1,4 +1,3 @@
-use serde::Serialize;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
@@ -15,10 +14,6 @@ mod cloud_sync_ledger;
 mod cloud_sync_income;
 mod cloud_sync_planner;
 mod cloud_sync_metadata;
-mod cloud_sync_metadata_rules;
-mod cloud_sync_loans;
-#[cfg(test)]
-mod cloud_sync_complete_tests;
 mod exports;
 mod card_limits;
 mod institutions;
@@ -45,60 +40,29 @@ mod dock_icon;
 #[cfg(test)]
 mod test_support;
 
-#[derive(Serialize, sqlx::FromRow)]
-struct Settings {
-    currency: Option<String>,
-    period_start_day: i64,
-}
-
+use heyday_core::database::settings::{Settings, save_period, save_currency};
 #[tauri::command]
 async fn get_settings(pool: tauri::State<'_, SqlitePool>) -> Result<Settings, String> {
-    let _database_operation = crate::backups::operation()?;
-    sqlx::query_as::<_, Settings>("SELECT currency, period_start_day FROM settings WHERE id = 1")
-        .fetch_one(pool.inner())
-        .await
-        .map_err(|error| error.to_string())
+    let _database_operation = heyday_core::database::operations::operation()?;
+    heyday_core::database::settings::get_settings(pool.inner()).await
 }
 
-async fn save_period(pool: &SqlitePool, day: i64) -> Result<Settings, String> {
-    if !(1..=31).contains(&day) {
-        return Err("Period start day must be between 1 and 31.".into());
-    }
-    sqlx::query_as::<_, Settings>(
-        "UPDATE settings SET period_start_day = ? WHERE id = 1 RETURNING currency, period_start_day",
-    )
-    .bind(day)
-    .fetch_one(pool)
-    .await
-    .map_err(|error| error.to_string())
-}
+
 
 #[tauri::command]
 async fn update_period(pool: tauri::State<'_, SqlitePool>, day: i64) -> Result<Settings, String> {
-    let _database_operation = crate::backups::operation()?;
+    let _database_operation = heyday_core::database::operations::operation()?;
     save_period(pool.inner(), day).await
 }
 
-async fn save_currency(pool: &SqlitePool, currency: &str) -> Result<Settings, String> {
-    if ![
-        "THB", "USD", "EUR", "GBP", "JPY", "CNY", "SGD", "AUD", "CAD", "CHF", "INR", "KRW", "VND",
-        "KWD", "BHD",
-    ]
-    .contains(&currency)
-    {
-        return Err("Choose a supported currency.".into());
-    }
-    sqlx::query_as::<_, Settings>("UPDATE settings SET currency = ? WHERE id = 1 AND (currency = ? OR (NOT EXISTS (SELECT 1 FROM accounts) AND NOT EXISTS (SELECT 1 FROM incomes))) RETURNING currency, period_start_day")
-        .bind(currency).bind(currency).fetch_optional(pool).await.map_err(|e| e.to_string())?
-        .ok_or_else(|| "Currency cannot change after accounts or income have been created.".into())
-}
+
 
 #[tauri::command]
 async fn update_currency(
     pool: tauri::State<'_, SqlitePool>,
     currency: String,
 ) -> Result<Settings, String> {
-    let _database_operation = crate::backups::operation()?;
+    let _database_operation = heyday_core::database::operations::operation()?;
     save_currency(pool.inner(), &currency).await
 }
 
@@ -142,7 +106,7 @@ pub fn run() {
                 .foreign_keys(true);
             let pool = tauri::async_runtime::block_on(async {
                 let pool = SqlitePool::connect_with(options).await?;
-                sqlx::migrate!("./migrations").run(&pool).await?;
+                heyday_core::database::MIGRATOR.run(&pool).await?;
                 Ok::<_, Box<dyn std::error::Error>>(pool)
             })?;
             app.manage(pool);
@@ -235,6 +199,7 @@ pub fn run() {
             income_deductions::list_income_deductions,
             income_deductions::save_salary_deductions,
             transactions::create_transaction,
+            transactions::update_transaction,
             transactions::list_transactions,
             transactions::get_expense_report,
             transactions::delete_transaction,
@@ -283,7 +248,7 @@ mod tests {
         let alpha = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
         let beta = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
         sqlx::migrate!("./tests/fixtures/alpha-migrations").run(&alpha).await.unwrap();
-        for migration in sqlx::migrate!("./migrations").iter().filter(|m| m.version == 1) {
+        for migration in heyday_core::database::MIGRATOR.iter().filter(|m| m.version == 1) {
             use sqlx::migrate::Migrate;
             let mut conn = beta.acquire().await.unwrap();
             conn.ensure_migrations_table().await.unwrap();
@@ -327,7 +292,7 @@ mod tests {
             let beta_dir = data_directory(dir.path().to_owned(), development);
             std::fs::create_dir_all(&beta_dir).unwrap();
             let beta = SqlitePool::connect_with(SqliteConnectOptions::new().filename(beta_dir.join("heyday.db")).create_if_missing(true).foreign_keys(true)).await.unwrap();
-            sqlx::migrate!("./migrations").run(&beta).await.unwrap();
+            heyday_core::database::MIGRATOR.run(&beta).await.unwrap();
             assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM accounts").fetch_one(&beta).await.unwrap(), 0);
             assert_eq!(std::fs::read(&alpha_path).unwrap(), before);
             assert_eq!(std::fs::read(&backup).unwrap(), before);
@@ -346,8 +311,8 @@ mod tests {
             )
             .await
             .unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        heyday_core::database::MIGRATOR.run(&pool).await.unwrap();
+        heyday_core::database::MIGRATOR.run(&pool).await.unwrap();
         let settings: Settings = sqlx::query_as("SELECT currency, period_start_day FROM settings")
             .fetch_one(&pool)
             .await

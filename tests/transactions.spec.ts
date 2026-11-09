@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
     Object.assign(window, { uiErrors })
     window.addEventListener('error', event => uiErrors.push(event.message))
     Object.defineProperty(window, 'isTauri', { value: true })
-    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: NewTransaction & SaveTransactionOption; id: string }) => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: async (command: string, args: { input: NewTransaction & SaveTransactionOption & { expected?: Transaction }; id: string }) => {
       const rows = (): Transaction[] => JSON.parse(localStorage.getItem('transactions') ?? '[]')
       const accounts = [{ id: 'bank', name: 'Bank', type: 'bank', opening_balance: '10000', current_balance: '10000' }, { id: 'card', name: 'Card', type: 'credit_card', opening_balance: '5000', current_balance: '5000' }].map(account => ({ ...account, institution: null, last_four: null, notes: null, credit_limit: null, statement_day: null, payment_due_day: null, interest_rate_ten_thousandths: null, monthly_installment: null }))
       if (sessionStorage.getItem('loan-count') !== null) accounts.push({ ...accounts[0], id: 'loan', name: 'Home loan', type: 'loan', current_balance: '1000000' })
@@ -47,6 +47,14 @@ test.beforeEach(async ({ page }) => {
           if (sessionStorage.getItem('fail')) throw 'Save failed. Try again.'
           const row = { ...args.input, id: crypto.randomUUID(), account_name: accounts.find(a => a.id === args.input.account_id)!.name, destination_account_name: args.input.destination_account_id ? 'Card' : null }
           localStorage.setItem('transactions', JSON.stringify([row, ...rows()]))
+          return row
+        }
+        case 'update_transaction': {
+          if (sessionStorage.getItem('fail')) throw 'Save failed. Try again.'
+          const { expected, ...changes } = args.input
+          const row = { ...expected!, ...changes, account_name: accounts.find(a => a.id === changes.account_id)!.name, destination_account_name: changes.destination_account_id ? 'Card' : null }
+          localStorage.setItem('transactions', JSON.stringify(rows().map(value => value.id === expected!.id ? row : value)))
+          localStorage.setItem('last-edit', JSON.stringify(args.input))
           return row
         }
         case 'delete_transaction': localStorage.setItem('transactions', JSON.stringify(rows().filter(row => row.id !== args.id))); return
@@ -683,4 +691,32 @@ test('linked loan principal and charges share a recipient and loan history filte
   await expect(history.getByRole('row')).toHaveCount(2)
   await expect(history).toContainText('Unassigned purchase')
   await expect(history).not.toContainText('Interest payment')
+})
+
+
+test('edit unreconciled transaction preserves identity, fills fields and retains failed drafts', async ({ page }) => {
+  await page.goto('/#/transactions')
+  await page.evaluate(() => localStorage.setItem('transactions', JSON.stringify([{ id: 'original', type: 'expense', account_id: 'bank', account_name: 'Bank', destination_account_id: null, destination_account_name: null, amount: '12345', date: '2024-02-29', description: 'Original purchase', payee_id: null, category_id: null, payee_name: null, category_name: null, income_source_id: null, has_reconciliation_history: false }])))
+  await page.reload()
+  await page.getByRole('button', { name: 'Edit Original purchase', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit transaction', exact: true })
+  await expect(dialog.getByLabel('Amount (THB)', { exact: true })).toHaveValue('123.45')
+  await expect(dialog.getByLabel('Date', { exact: true })).toHaveValue('2024-02-29')
+  await expect(dialog.getByRole('button', { name: 'Save & add another' })).toHaveCount(0)
+  await dialog.getByLabel('Amount (THB)', { exact: true }).fill('140.50')
+  await dialog.getByLabel('Description (optional)').fill('Corrected purchase')
+  await page.evaluate(() => sessionStorage.setItem('fail', 'true'))
+  await dialog.getByRole('button', { name: 'Save transaction', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toHaveText('Save failed. Try again.')
+  await expect(dialog.getByLabel('Amount (THB)', { exact: true })).toHaveValue('140.50')
+  await page.evaluate(() => sessionStorage.removeItem('fail'))
+  await dialog.getByRole('button', { name: 'Save transaction', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit Corrected purchase', exact: true })).toBeVisible()
+  const rows = await page.evaluate(() => JSON.parse(localStorage.getItem('transactions')!))
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({ id: 'original', amount: '14050', description: 'Corrected purchase', date: '2024-02-29' })
+  await page.evaluate(() => { const rows = JSON.parse(localStorage.getItem('transactions')!); rows[0].has_reconciliation_history = true; localStorage.setItem('transactions', JSON.stringify(rows)) })
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Edit Corrected purchase', exact: true })).toBeDisabled()
 })

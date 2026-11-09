@@ -185,3 +185,11 @@ test('payroll principal reduces debt without inflating Home income received', ()
   data.transactions.push({ ...transaction('Payroll principal', 'income', '2026-09-25', '700000', 'loan'), salary_payment_id: 'salary', salary_payment_role: 'principal' })
   expect(homeOverview(data, '', new Date(2026, 9, 1)).incomeReceived).toBe(4500000n)
 })
+
+test('irregular sources stay out of upcoming income without removing received income', () => {
+  const data = example()
+  data.incomes[0].recurrence_frequency = 'irregular'
+  const result = homeOverview(data, '', new Date(2026, 9, 2))
+  expect(result.upcomingIncome).toHaveLength(0)
+  expect(result.incomeReceived).toBe(4500000n)
+})

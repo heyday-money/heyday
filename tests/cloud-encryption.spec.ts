@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 
-const raw = JSON.parse(readFileSync(new URL('./fixtures/e2ee-v1.json', import.meta.url), 'utf8')) as { recoveryKey: string }
+const raw = JSON.parse(readFileSync(new URL('../crates/heyday-core/tests/fixtures/e2ee-v1.json', import.meta.url), 'utf8')) as { recoveryKey: string }
 const checksum = createHash('sha256').update(Buffer.from(raw.recoveryKey, 'base64url')).digest('hex').slice(0, 8)
 const fixture = { recoveryKey: `HDK1.${raw.recoveryKey}.${checksum}` }
 

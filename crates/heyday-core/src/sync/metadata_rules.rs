@@ -1,4 +1,4 @@
-use super::cloud_sync_metadata::{self as meta, get, number, optional, Metadata, Spec};
+use crate::cloud_sync_metadata::{self as meta, get, number, optional, Metadata, Spec};
 use crate::{
     cloud_sync_ledger::BLOCKED,
     cloud_sync_protocol::UNSAFE,
@@ -157,9 +157,8 @@ pub async fn dependencies(
             add("id", "account");
             add("institution_id", "metadata:institution");
         }
-        "facility" | "default-history" | "payoff" | "reconciliation" | "debt-amount" => {
-            add("account_id", "account")
-        }
+        "account-logo" | "facility" | "default-history" | "payoff" | "reconciliation"
+        | "debt-amount" => add("account_id", "account"),
         "contract" => {
             add("account_id", "metadata:facility");
             add("account_id", "account");
@@ -257,6 +256,9 @@ pub async fn relationships(conn: &mut SqliteConnection, v: &Metadata) -> Result<
                 &["bank", "wallet", "credit_card", "loan", "investment"],
             )
             .await?
+        }
+        "account-logo" => {
+            account_type(conn, get(f, "account_id")?, &["cash"]).await?;
         }
         "facility" => {
             let ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type='loan' AND loan_type='personal_loan')").bind(get(f,"account_id")?).fetch_one(&mut *conn).await.map_err(|_|DATABASE)?;
@@ -444,8 +446,7 @@ pub async fn install_logo(conn: &mut SqliteConnection, v: &Metadata) -> Result<(
 }
 
 pub fn unchanged_seed(record: &Record) -> bool {
-    let Ok(seeds) =
-        serde_json::from_str::<Vec<Metadata>>(include_str!("../data/sync-metadata-seeds.json"))
+    let Ok(seeds) = serde_json::from_str::<Vec<Metadata>>(crate::database::SYNC_METADATA_SEEDS)
     else {
         return false;
     };

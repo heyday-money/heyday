@@ -1,3 +1,4 @@
+import { AddTransactionDialog } from './AddTransactionDialog'
 import { SalaryPaymentHistory } from './SalaryPaymentDialog'
 import { t as translate, useLanguage, getLanguage } from "../lib/i18n"
 import { TransactionPayee } from './TransactionPayee'
@@ -40,6 +41,7 @@ export function TransactionHistory({ accountId: historyAccount, embedded = false
 
   const [payrollHistory, setPayrollHistory] = useState(false)
   const [salaryPayment, setSalaryPayment] = useState<string | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [records, setRecords] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [currency, setCurrency] = useState<string | null>(null)
@@ -112,13 +114,14 @@ export function TransactionHistory({ accountId: historyAccount, embedded = false
       const flow = moneyFlow(row, filter)
       return <span className={flow === 'in' ? 'text-green-700 dark:text-green-400' : flow === 'out' ? 'text-red-700 dark:text-red-400' : 'text-ink'}>{row.salary_payment_role === 'principal' ? '−' : row.type === 'income' ? '+' : row.type === 'expense' ? '−' : ''}{currency ? formatAmount(row.amount, currency) : '—'}</span>
     } },
-    { id: 'actions', header: translate("Actions"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap text-right', cellClassName: 'px-3 py-1.5 text-right align-middle' }, cell: ({ row: { original: row } }) => <><Button size="xs" variant="outline" aria-label={translate("Delete {value0}", { value0: row.description || labels[row.type] })} onClick={() => { setError(null); setConfirmReconciled(false); setNeedsConfirmation(!!row.has_reconciliation_history); setDeleting(row) }}>{translate("Delete")}</Button></> },
+    { id: 'actions', header: translate("Actions"), meta: { headerClassName: 'px-3 py-2 font-semibold whitespace-nowrap text-right', cellClassName: 'px-3 py-1.5 text-right align-middle' }, cell: ({ row: { original: row } }) => <><Button size="xs" variant="outline" className="mr-2" title={row.has_reconciliation_history ? translate("Transactions with reconciliation history cannot be edited.") : row.salary_payment_id || row.loan_account_id || row.imported_linked_payment ? translate("Linked salary, loan, and installment entries cannot be edited here. Open their source record to review them.") : translate("Edit transaction")} aria-label={translate("Edit {value0}", { value0: row.description || labels[row.type] })} disabled={!!row.has_reconciliation_history || !!row.salary_payment_id || !!row.loan_account_id || !!row.imported_linked_payment} onClick={() => setEditingTransaction(row)}>{translate("Edit")}</Button><Button size="xs" variant="outline" aria-label={translate("Delete {value0}", { value0: row.description || labels[row.type] })} onClick={() => { setError(null); setConfirmReconciled(false); setNeedsConfirmation(!!row.has_reconciliation_history); setDeleting(row) }}>{translate("Delete")}</Button></> },
   ], [currency, filter, getLanguage()])
   const table = useReactTable({ data: visible, columns, getRowId: row => row.id, getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: embedded ? getPaginationRowModel() : undefined, initialState: { pagination: { pageSize: 10, pageIndex: 0 } } })
   const clearFilters = () => { if (!embedded) setFilter(''); setTypeFilter(''); setPayeeFilter(''); setCategoryFilter('') }
   const historyAccountDetails = accounts.find(account => account.id === historyAccount)
   return <>
+    {editingTransaction && <AddTransactionDialog editing={editingTransaction} onClose={() => setEditingTransaction(null)} />}
       {!embedded && historyAccount && <nav aria-label={translate("Breadcrumb")} className="mb-4 text-sm">
         <ol className="flex flex-wrap items-center gap-2 text-muted">
           <li><Link to="/accounts" className="text-brand hover:underline">{translate("Accounts")}</Link></li>

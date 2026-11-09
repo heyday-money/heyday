@@ -1,3 +1,6 @@
+import { LogoPicker } from './LogoPicker'
+import { useLogoAsset } from './LogoImage'
+import type { LogoChange } from '../lib/logos'
 import { t as translate, useLanguage } from "../lib/i18n"
 import { InstitutionCombobox } from "./InstitutionCombobox"
 import { useInstitutions } from "./InstitutionProvider"
@@ -47,6 +50,10 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
   useLanguage()
 
   const directory = useInstitutions()
+  const [logoChange, setLogoChange] = useState<LogoChange>()
+  const [logoBusy, setLogoBusy] = useState(false)
+  const logoAssetId = directory.accounts.find(a => a.id === editing?.id)?.logo_asset_id
+  const savedLogo = useLogoAsset(logoAssetId)
   const limits = useCardLimits()
   const sharedLimit = editing ? sharedCredit(limits.data, editing.id) : null
   const preserveIndividualLimit = !!editing && (!!sharedLimit || limits.loading || limits.error)
@@ -58,7 +65,7 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
   const [revolving, setRevolving] = useState(false)
   const [saving, setSaving] = useState(false)
   const [archiving, setArchiving] = useState(false)
-  const busy = saving || archiving
+  const busy = saving || archiving || logoBusy
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
@@ -88,6 +95,7 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
       const details = {
         loan_type: (loanType || null) as LoanType | null,
         name: text('name'), type, currency,
+        logo_change: type === 'cash' ? logoChange : undefined,
         institution: type === 'cash' ? null : draftInstitution,
         institution_id: type === 'cash' ? null : institutionId || null,
         last_four: optional('last_four'),
@@ -136,6 +144,7 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
                 <p className="mt-4 text-[12px]">{editing ? translate("Opening balance cannot be edited. Record transactions to update the current balance.") : debt ? translate("Enter debt as a positive amount. Use a negative amount for an overpayment or credit.") : translate("Enter the balance you own. Use a negative amount for an overdraft.")} {!editing && translate("This is a manual starting balance.")}</p>
                 {type === 'loan' && <p className="mt-3 text-xs">{translate("Initial Loan Amount is the original borrowed principal, separate from the remaining debt entered as Amount owed. It is for reference only and does not change balances. For revolving cash cards, manage the approved Credit Limit in the loan overview.")}</p>}
                 {type === 'loan' && <p className="mt-3 text-xs">{translate("Enter the full monthly installment, including interest and fees. Outlook subtracts linked payroll deductions first and forecasts only the uncovered amount. Explicit cycle entries remain additional payments. Leave blank if unknown; zero means no scheduled payment. Saving does not change your balance.")}{currency !== 'THB' && translate(" This account is excluded from the THB planner; no currency conversion is applied.")}</p>}
+                {type === 'cash' && <div className="mt-5"><LogoPicker name={editing?.name ?? translate("Cash")} value={logoChange} savedSource={savedLogo} hasSavedLogo={!!logoAssetId} disabled={saving || archiving} onChange={change => { setLogoChange(change); setDirty(true) }} onBusyChange={setLogoBusy} /></div>}
                 <details open={editing ? true : undefined} className="mt-5 rounded-xl border border-line p-4">
                   <summary className="cursor-pointer text-[13px] font-semibold">{translate("Optional details")}</summary>
                   <div className="mt-4 grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">

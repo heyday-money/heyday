@@ -1,5 +1,25 @@
 // Interface copy only. Never translate user-entered records or persisted identifiers.
 export const thai: Record<string, string> = {
+  "Cash account logo": "โลโก้บัญชีเงินสด",
+  "Only cash accounts support an account logo.": "เฉพาะบัญชีเงินสดเท่านั้นที่รองรับโลโก้บัญชี",
+  "PNG, JPG, WebP, or SVG, up to 5 MB. Resized to fit 128 × 128 pixels. Saved with this record.": "PNG, JPG, WebP หรือ SVG ขนาดไม่เกิน 5 MB ปรับขนาดให้ไม่เกิน 128 × 128 พิกเซล และบันทึกพร้อมข้อมูลนี้",
+
+  "Edit transaction": "แก้ไขธุรกรรม",
+  "Transaction updated.": "อัปเดตธุรกรรมแล้ว",
+  "Correct this transaction without deleting it. Saving updates account balances and resets verification; mark the corrected entry as cleared if needed.": "แก้ไขธุรกรรมนี้โดยไม่ต้องลบ การบันทึกจะปรับยอดบัญชีและรีเซ็ตสถานะตรวจสอบ สามารถทำเครื่องหมายรายการที่แก้ไขแล้วว่าผ่านรายการได้",
+  "Transactions with reconciliation history cannot be edited.": "ไม่สามารถแก้ไขธุรกรรมที่มีประวัติการกระทบยอดได้",
+  "This transaction changed. Close the editor and reload before trying again.": "ธุรกรรมนี้มีการเปลี่ยนแปลง กรุณาปิดหน้าต่างแก้ไขและโหลดใหม่ก่อนลองอีกครั้ง",
+  "Linked salary, loan, and installment entries cannot be edited here. Open their source record to review them.": "ไม่สามารถแก้ไขรายการที่เชื่อมโยงกับเงินเดือน เงินกู้ หรือการผ่อนชำระได้ที่นี่ กรุณาเปิดข้อมูลต้นทางเพื่อตรวจสอบ",
+
+  "Planning": "การวางแผน",
+  "Irregular / When received": "ไม่สม่ำเสมอ / เมื่อได้รับ",
+  "When received": "เมื่อได้รับ",
+  "Not estimated": "ยังไม่ประมาณการ",
+  "Record payments when received. Optionally enter estimates for specific cycles in Outlook; no monthly income is assumed.": "บันทึกเมื่อได้รับเงิน สามารถระบุประมาณการสำหรับแต่ละรอบใน Outlook ได้ โดยไม่คาดการณ์รายได้รายเดือนอัตโนมัติ",
+  "Irregular income. Enter an estimate only for the cycle when you expect payment.": "รายได้ไม่สม่ำเสมอ ระบุประมาณการเฉพาะรอบที่คาดว่าจะได้รับเงิน",
+  "Choose monthly or irregular income.": "เลือกรายได้รายเดือนหรือไม่สม่ำเสมอ",
+  "Irregular income has no recurring estimate. Enter estimates in Outlook.": "รายได้ไม่สม่ำเสมอไม่มีประมาณการประจำ ระบุประมาณการใน Outlook",
+
   "This account has linked records. Remove its links before deleting it.": "บัญชีนี้มีข้อมูลเชื่อมโยง กรุณายกเลิกการเชื่อมโยงก่อนลบ",
   "Accounts with transaction records cannot be deleted.": "ไม่สามารถลบบัญชีที่มีรายการธุรกรรมได้",
   "Archive this account before deleting it.": "เก็บบัญชีนี้ถาวรก่อนลบ",

@@ -1,109 +1,21 @@
-use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::Deserialize;
-use sha2::{Digest, Sha256};
-use sqlx::{SqliteConnection, SqlitePool};
-use std::io::Cursor;
-
-#[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum LogoChange {
-    Custom { data: String },
-    Default,
-    None,
-}
-const MAX_BYTES: usize = 102_400;
-
-// The WebView normalizes selected PNG/JPEG/WebP images. Validate and re-encode
-// that small PNG here so persisted bytes never rely on browser validation.
-fn normalize(data: &str) -> Result<(Vec<u8>, u32, u32), String> {
-    let error = || "Choose a valid logo image, resized to at most 128 × 128 pixels.".to_string();
-    let encoded = data
-        .strip_prefix("data:image/png;base64,")
-        .ok_or_else(error)?;
-    if encoded.len() > MAX_BYTES.div_ceil(3) * 4 {
-        return Err("Logo image is too large.".into());
-    }
-    let bytes = STANDARD.decode(encoded).map_err(|_| error())?;
-    if bytes.len() > MAX_BYTES {
-        return Err("Logo image is too large.".into());
-    }
-    let mut decoder =
-        png::Decoder::new_with_limits(Cursor::new(bytes), png::Limits { bytes: 1_048_576 });
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
-    let mut reader = decoder.read_info().map_err(|_| error())?;
-    let (width, height) = (reader.info().width, reader.info().height);
-    if !(1..=128).contains(&width)
-        || !(1..=128).contains(&height)
-        || reader.info().animation_control.is_some()
-    {
-        return Err(error());
-    }
-    let mut buffer = vec![
-        0;
-        reader
-            .output_buffer_size()
-            .filter(|size| *size <= 128 * 128 * 4)
-            .ok_or_else(error)?
-    ];
-    let info = reader.next_frame(&mut buffer).map_err(|_| error())?;
-    let mut normalized = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut normalized, width, height);
-        encoder.set_color(info.color_type);
-        encoder.set_depth(info.bit_depth);
-        let mut writer = encoder.write_header().map_err(|_| error())?;
-        writer
-            .write_image_data(&buffer[..info.buffer_size()])
-            .map_err(|_| error())?;
-    }
-    if normalized.len() > MAX_BYTES {
-        return Err("Logo image is too large.".into());
-    }
-    Ok((normalized, width, height))
-}
-
-pub async fn asset(
-    conn: &mut SqliteConnection,
-    change: &LogoChange,
-) -> Result<Option<String>, String> {
-    let LogoChange::Custom { data } = change else {
-        return Ok(None);
-    };
-    let (bytes, width, height) = normalize(data)?;
-    let hash = format!("{:x}", Sha256::digest(&bytes));
-    sqlx::query("INSERT INTO logo_assets(id,content_hash,mime_type,width,height,data) VALUES(lower(hex(randomblob(16))),?,'image/png',?,?,?) ON CONFLICT(content_hash) DO NOTHING")
-        .bind(&hash).bind(width).bind(height).bind(bytes).execute(&mut *conn).await.map_err(|e| e.to_string())?;
-    sqlx::query_scalar("SELECT id FROM logo_assets WHERE content_hash=?")
-        .bind(hash)
-        .fetch_one(&mut *conn)
-        .await
-        .map(Some)
-        .map_err(|e| e.to_string())
-}
-
-pub async fn prune(conn: &mut SqliteConnection) -> Result<(), String> {
-    sqlx::query("DELETE FROM logo_assets WHERE NOT EXISTS(SELECT 1 FROM institutions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM payees WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscriptions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscription_providers WHERE logo_asset_id=logo_assets.id)")
-        .execute(conn).await.map_err(|e| e.to_string())?;
-    Ok(())
-}
+//! Desktop IPC adapters; financial operations live in heyday-core.
+use heyday_core::services::logos as service;
+pub use heyday_core::services::logos::*;
+use sqlx::SqlitePool;
 
 #[tauri::command]
 pub async fn get_logo_asset(
     pool: tauri::State<'_, SqlitePool>,
     id: String,
 ) -> Result<String, String> {
-    let _database_operation = crate::backups::operation()?;
-    let bytes: Vec<u8> = sqlx::query_scalar("SELECT data FROM logo_assets WHERE id=?")
-        .bind(id)
-        .fetch_optional(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("Logo is no longer available.")?;
-    Ok(format!("data:image/png;base64,{}", STANDARD.encode(bytes)))
+    let _operation = heyday_core::database::operations::operation()?;
+    service::get_logo_asset(pool.inner(), id).await
 }
 
 #[cfg(test)]
 mod tests {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use std::io::Cursor;
     use super::*;
     use crate::institutions::{save as save_institution, SaveInstitution};
     use crate::transaction_options::{save as save_option, OptionKind, SaveOption};
@@ -156,7 +68,7 @@ mod tests {
             )
             .await
             .unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        heyday_core::database::MIGRATOR.run(&pool).await.unwrap();
         pool
     }
     #[test]
@@ -296,7 +208,8 @@ mod tests {
             .await
             .unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0003_subscription_providers.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../../crates/heyday-core/migrations/0003_subscription_providers.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../../crates/heyday-core/migrations/0011_cash_account_logos.sql").split("CREATE TRIGGER").next().unwrap()).execute(&pool).await.unwrap();
         let baseline: (String, Option<String>) =
             sqlx::query_as("SELECT logo_mode,logo_asset_id FROM institutions WHERE id='bank-002'")
                 .fetch_one(&pool)

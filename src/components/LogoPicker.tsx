@@ -33,7 +33,7 @@ export function LogoPicker({ name, value, savedSource, defaultSource, hasSavedLo
       {(src || savedSource || hasSavedLogo || value?.kind === 'custom') && <Button type="button" variant="ghost" onClick={() => { setError(null); onChange({ kind: 'none' }) }}>{translate("Remove logo")}</Button>}
       {defaultSource && src !== defaultSource && <Button type="button" variant="ghost" onClick={() => { setError(null); onChange({ kind: 'default' }) }}>{translate("Use default logo")}</Button>}
     </div>
-    <p className="text-xs">{translate("PNG, JPG, WebP, or SVG, up to 5 MB. Resized to fit 128 × 128 pixels. Stored only on this device when you save.")}</p>
+    <p className="text-xs">{translate("PNG, JPG, WebP, or SVG, up to 5 MB. Resized to fit 128 × 128 pixels. Saved with this record.")}</p>
     {error && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{translate(error)}</p>}
   </fieldset>
 }

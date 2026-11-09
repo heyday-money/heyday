@@ -77,7 +77,7 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
       }
     }
     for (const income of data.incomes) {
-      if (!income.is_active || !cash.has(income.destination_account_id)) continue
+      if (income.recurrence_frequency === 'irregular' || !income.is_active || !cash.has(income.destination_account_id)) continue
       // Boundaries and income occurrences clamp independently in each calendar month.
       for (let offset = 0; offset <= 1; offset++) {
         const date = dateKey(monthlyDate(from.getFullYear(), from.getMonth() + offset, income.recurrence_day_of_month))
@@ -101,7 +101,7 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
     const payroll = new Map<string, bigint>()
     for (const deduction of data.income_deductions ?? []) {
       const salary = data.incomes.find(i => i.id === deduction.income_id)
-      if (!deduction.debt_account_id || !salary?.is_active || !cash.has(salary.destination_account_id)) continue
+      if (salary?.recurrence_frequency === 'irregular' || !deduction.debt_account_id || !salary?.is_active || !cash.has(salary.destination_account_id)) continue
       if (!data.accounts.some(a => a.id === deduction.debt_account_id && a.type === 'loan')) continue
       for (let offset = 0; offset <= 1; offset++) {
         const date = dateKey(monthlyDate(from.getFullYear(), from.getMonth() + offset, salary.recurrence_day_of_month))
