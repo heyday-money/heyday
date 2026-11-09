@@ -49,7 +49,7 @@ pruned. Large-history compaction/streaming remains follow-up work.
 
 ## Validation and independent review
 
-Public `tests/fixtures/key-rotation-v1.json` vectors are independently checked by
+Public `crates/heyday-core/tests/fixtures/key-rotation-v1.json` vectors are independently checked by
 Rust and the companion service's Web Crypto tests. Native tests cover multiple
 epochs, stable IDs, old-key future-write rejection, tampering, account/origin pins,
 recovery-warning inheritance, late-page forks, encrypted staging and retention of

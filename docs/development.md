@@ -46,7 +46,7 @@ uses that name. Quit and relaunch after changing native icons or metadata.
 - `src/`: React dashboard, TanStack routes, styling, and typed native calls.
 - `public/`: bundled branding and artwork.
 - `src-tauri/src/`: native startup, database setup, and Rust commands.
-- `src-tauri/migrations/`: beta baseline and future versioned SQL migrations.
+- `crates/heyday-core/migrations/`: beta baseline and future versioned SQL migrations.
 - `src-tauri/tests/fixtures/alpha-migrations/`: frozen alpha SQL used only by regression tests.
 - `src-tauri/tauri.conf.json`: window, build, and bundle configuration, following
   the [Tauri Vite guide](https://v2.tauri.app/start/frontend/vite/).
@@ -76,7 +76,7 @@ Beta deliberately starts empty; alpha was the MVP data format. Existing alpha
 databases and backups are not moved, copied, overwritten, or deleted. Alpha
 backups cannot be restored into beta, and restore explains this explicitly.
 
-`src-tauri/migrations/0001_initial.sql` creates the complete current schema and
+`crates/heyday-core/migrations/0001_initial.sql` creates the complete current schema and
 bundled reference records in one migration. Currency starts unset and no personal
 records or balances are seeded. Future releases must append migrations rather
 than rewrite this baseline. The `v1` storage directory is a stable schema
@@ -827,3 +827,15 @@ window must continue following macOS so these events represent system appearance
 Packaged macOS QA: launch in light and dark system modes; toggle appearance while
 running; verify the Dock changes both ways even with a fixed in-app theme. Check
 that quitting restores the packaged icon and that the sidebar logo is unchanged.
+
+
+### Shared encryption and sync core
+
+`crates/heyday-core/src/crypto` owns encryption and key/history protocols;
+`src/sync` owns durable sync state, all financial record handlers, and execution.
+Desktop `cloud_sync` supplies authenticated HTTP and secure checkpoint persistence.
+Authentication, keyring access, recovery presentation, and lifecycle scheduling remain
+application-owned. See [Phase 4 extraction](shared-core-phase-4.md) and the
+[core README](../crates/heyday-core/README.md) for adapter/locking requirements.
+Crypto vectors now live in `crates/heyday-core/tests/fixtures`, shared by native
+and browser tests. Run core tests as well as desktop tests after sync changes.

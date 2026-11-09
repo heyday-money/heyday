@@ -134,7 +134,7 @@ async fn db(full: bool) -> SqlitePool {
         )
         .await
         .unwrap();
-    sqlx::migrate!("./migrations").run(&p).await.unwrap();
+    crate::database::MIGRATOR.run(&p).await.unwrap();
     connect(&p, full).await;
     p
 }
@@ -581,9 +581,9 @@ async fn reconciliation_ids_are_remapped_and_logo_hash_deduplicates() {
 
 #[tokio::test]
 async fn payroll_upgrade_maps_equal_contract_deductions_exactly_and_reverses() {
-    let a = crate::salary_payments::tests::database().await;
+    let a = crate::sync::test_support::database().await;
     sqlx::raw_sql("UPDATE accounts SET loan_type='personal_loan' WHERE id='home'; INSERT INTO loan_facilities VALUES('home',3000000); INSERT INTO loan_contracts(id,account_id,name,principal,remaining_principal,borrowing_date,receiving_account_id,payment_account_id,interest_rate,monthly_amount,installment_count,first_due_date,borrowing_kind) VALUES('contract','home','Contract',2000000,2000000,'2023-01-01','bank','bank',0,920000,12,'2024-01-25','existing'); UPDATE income_deductions SET debt_account_id='home' WHERE id='student';").execute(&a).await.unwrap();
-    let mut input = crate::salary_payments::tests::input();
+    let mut input = crate::sync::test_support::input();
     for line in input.deductions.iter_mut().take(2) {
         line.contract_id = Some("contract".into());
         line.debt_account_id = Some("home".into());

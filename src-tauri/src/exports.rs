@@ -200,7 +200,7 @@ pub async fn export_accounts_excel(
     {
         return Err("Choose an Excel filename ending in .xlsx.".into());
     }
-    let _guard = crate::backups::operation()?;
+    let _guard = heyday_core::database::operations::operation()?;
     crate::backups::protect_live_path(pool.inner(), &target)?;
     let (currency, rows) = snapshot(pool.inner()).await?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -240,7 +240,7 @@ mod tests {
     #[tokio::test]
     async fn exports_all_statuses_and_shared_limits_without_mutation() {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        heyday_core::database::MIGRATOR.run(&pool).await.unwrap();
         sqlx::raw_sql("UPDATE settings SET currency='KWD'; INSERT INTO accounts(id,name,type,current_balance,is_archived,last_four) VALUES('a','=1+1','credit_card',-9007199254740993,1,'0001'),('b','Bank','bank',0,0,NULL),('c','Loan','loan',0,1,NULL); INSERT INTO loan_payoffs VALUES('c','2026-01-01'); INSERT INTO card_limit_groups VALUES('g','Shared','shared',12345); INSERT INTO card_limit_members VALUES('a','g');").execute(&pool).await.unwrap();
         let (currency, rows) = snapshot(&pool).await.unwrap();
         assert_eq!(rows.len(), 3);
@@ -270,7 +270,7 @@ mod tests {
     #[tokio::test]
     async fn empty_database_exports_with_headers() {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        heyday_core::database::MIGRATOR.run(&pool).await.unwrap();
         let (currency, rows) = snapshot(&pool).await.unwrap();
         assert!(currency.is_none());
         assert!(rows.is_empty());

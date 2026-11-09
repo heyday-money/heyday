@@ -8,22 +8,13 @@ use std::{
 };
 use tauri_plugin_dialog::DialogExt;
 use tempfile::TempDir;
-use tokio::sync::{RwLock, RwLockReadGuard};
+use heyday_core::database::operations::operation;
+use heyday_core::database::{operations, MIGRATOR};
 
-static DATABASE_OPERATIONS: RwLock<()> = RwLock::const_new(());
 // Fingerprint of the alpha initial migration, for a clear fresh-start error.
 const ALPHA_INITIAL_CHECKSUM: &[u8] = &[0x70, 0xf9, 0x9b, 0x4a, 0x12, 0x21, 0x10, 0xee, 0xba, 0x4b, 0x47, 0xc9, 0x02, 0xac, 0x9c, 0x06, 0x96, 0x0e, 0xfe, 0x54, 0x38, 0x2e, 0x89, 0xed, 0x31, 0xaa, 0x5d, 0x1b, 0xbe, 0x23, 0x6c, 0x03, 0xe3, 0x15, 0x53, 0x4b, 0x88, 0x96, 0x4d, 0xf0, 0xd0, 0xbc, 0x3a, 0x69, 0x96, 0xb5, 0xca, 0xee];
-static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 const CONFIRMATION: &str = "RESTORE BACKUP";
 
-// Every native database command holds a shared guard for its entire operation.
-// Restore waits for existing operations and rejects new ones rather than replaying
-// writes from stale forms against a different set of financial records.
-pub fn operation() -> Result<RwLockReadGuard<'static, ()>, String> {
-    DATABASE_OPERATIONS.try_read().map_err(|_| {
-        "Database restore is in progress. Wait for the app to reload before trying again.".into()
-    })
-}
 #[derive(Debug, Clone, Serialize)]
 pub struct BackupPreview {
     token: String,
@@ -400,7 +391,7 @@ pub async fn restore_backup(
         }
         pending.take().unwrap()
     };
-    let _guard = DATABASE_OPERATIONS.write().await;
+    let _guard = operations::exclusive().await;
     // Never trust a path supplied by the webview: restore only our staged file.
     let mut checked = connect(&prepared.directory.path().join("restore.db"), true).await?;
     validate(&mut checked).await?;
@@ -809,9 +800,9 @@ mod tests {
     #[tokio::test]
     async fn restore_gate_waits_for_inflight_operations_and_rejects_new_commands() {
         let read = operation().unwrap();
-        assert!(DATABASE_OPERATIONS.try_write().is_err());
+        assert!(tokio::time::timeout(Duration::from_millis(10), operations::exclusive()).await.is_err());
         drop(read);
-        let exclusive = DATABASE_OPERATIONS.write().await;
+        let exclusive = operations::exclusive().await;
         assert!(operation().is_err());
         drop(exclusive);
         assert!(operation().is_ok());

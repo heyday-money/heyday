@@ -666,14 +666,7 @@ pub async fn cloud_lock_encryption(
     Ok(())
 }
 
-pub(super) struct SyncKey {
-    pub ring: Ring,
-    pub envelope: KeyEnvelope,
-    pub checkpoint: crate::cloud_sync_protocol::Head,
-    pub rotation: Option<Rotation>,
-    pub unverified_history: bool,
-    pub rotation_supported: bool,
-}
+pub(super) use heyday_core::sync::engine::SyncKey;
 pub(super) async fn sync_key(
     client: &Client,
     base: &Url,
@@ -1231,7 +1224,7 @@ mod tests {
             net::TcpListener,
         };
         let fixture: serde_json::Value =
-            serde_json::from_str(include_str!("../../tests/fixtures/e2ee-v1.json")).unwrap();
+            serde_json::from_str(include_str!("../../crates/heyday-core/tests/fixtures/e2ee-v1.json")).unwrap();
         let envelope: KeyEnvelope = serde_json::from_value(fixture["envelope"].clone()).unwrap();
         let sent = envelope.clone();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

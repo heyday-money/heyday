@@ -70,6 +70,8 @@ jobs:
 
       - name: Test Rust operations
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+      - name: Shared core tests
+        run: cargo test --locked --manifest-path crates/heyday-core/Cargo.toml --target x86_64-pc-windows-msvc --target-dir src-tauri/target
 
       # Tauri runs beforeBuildCommand (TypeScript checks and Vite build),
       # and automatically merges src-tauri/tauri.windows.conf.json.
