@@ -39,6 +39,7 @@ pub const SPECS: &[Spec] = &[
     Spec{kind:"institution",table:"institutions",keys:"id",columns:"id=id,name=name,short_name=text:100?,bank_code=text:100?,swift_code=text:100?,logo=path?,is_archived=int:0:1,logo_asset_id=logo?,logo_mode=enum:default|custom|none",children:&[]},
     Spec{kind:"payee",table:"payees",keys:"id",columns:"id=id,name=name,is_archived=int:0:1,logo_asset_id=logo?",children:&[]},
     Spec{kind:"provider",table:"subscription_providers",keys:"id",columns:"id=id,name=name,is_archived=int:0:1,builtin_icon=path?,logo_mode=enum:default|custom|none,logo_asset_id=logo?",children:&[]},
+    Spec{kind:"account-logo",table:"account_logos",keys:"account_id",columns:"account_id=id,logo_asset_id=logo",children:&[]},
     Spec{kind:"account-link",table:"accounts",keys:"id",columns:"id=id,institution_id=id",children:&[]},
     Spec{kind:"facility",table:"loan_facilities",keys:"account_id",columns:"account_id=id,credit_limit=money",children:&[]},
     Spec{kind:"contract",table:"loan_contracts",keys:"id",columns:"id=id,account_id=id,name=name,principal=int:1:9223372036854775807,basis_principal=money,borrowing_date=date,receiving_account_id=id,payment_account_id=id,interest_rate=int:0:1000000,monthly_amount=int:1:9223372036854775807,installment_count=int:1:600,first_due_date=date,schedule_end=date?,notes=text:2000,borrowing_kind=enum:new|existing,borrowing_transaction_id=id?,needs_review=int:0:1",children:&[]},

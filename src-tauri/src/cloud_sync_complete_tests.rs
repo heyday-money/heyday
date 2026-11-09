@@ -260,6 +260,7 @@ async fn seed(p: &SqlitePool) -> (String, String, String) {
     let hash = format!("{:x}", sha2::Sha256::digest(&bytes));
     sqlx::query("INSERT INTO logo_assets(id,content_hash,mime_type,width,height,data) VALUES('local-logo',?,'image/png',1,1,?)").bind(hash).bind(bytes).execute(p).await.unwrap();
     sqlx::raw_sql("INSERT INTO payees(id,name,name_key,logo_asset_id) VALUES('payee','Shop','shop','local-logo'); UPDATE institutions SET logo_mode='custom',logo_asset_id='local-logo' WHERE id='bank-002'; UPDATE subscription_providers SET logo_mode='custom',logo_asset_id='local-logo' WHERE id='provider-spotify'; UPDATE subscriptions SET logo_asset_id='local-logo' WHERE id='subscription';").execute(p).await.unwrap();
+    sqlx::raw_sql("INSERT INTO accounts(id,name,type) VALUES('cash','Cash','cash'); INSERT INTO account_logos VALUES('cash','local-logo')").execute(p).await.unwrap();
     (purchase, payment, loan_payment)
 }
 async fn metadata_records(p: &SqlitePool) -> Vec<store::Record> {

@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{SqliteConnection, SqlitePool};
 
-#[derive(Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Transaction {
     #[sqlx(default)]
+    #[serde(default)]
     imported_linked_payment: bool,
     pub(crate) id: String,
     #[serde(rename = "type")]
@@ -126,6 +127,9 @@ async fn adjust(
     inflow: i64,
     active: bool,
 ) -> Result<String, String> {
+    adjust_wide(conn, id, i128::from(inflow), active).await
+}
+async fn adjust_wide(conn: &mut SqliteConnection, id: &str, inflow: i128, active: bool) -> Result<String, String> {
     let (kind, balance, archived): (String, i64, bool) =
         sqlx::query_as("SELECT type, current_balance, is_archived FROM accounts WHERE id = ?")
             .bind(id)
@@ -137,26 +141,26 @@ async fn adjust(
         return Err("Choose an active account.".into());
     }
     let debt = ["credit_card", "loan"].contains(&kind.as_str());
-    let next = if debt {
-        balance.checked_sub(inflow)
-    } else {
-        balance.checked_add(inflow)
-    }
-    .ok_or("This transaction would put an account balance outside the supported range.")?;
-    sqlx::query(
+    let next = i64::try_from(if debt { i128::from(balance) - inflow } else { i128::from(balance) + inflow })
+        .map_err(|_| "This transaction would put an account balance outside the supported range.")?;
+    if next != balance { sqlx::query(
         "UPDATE accounts SET current_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
     )
     .bind(next)
     .bind(id)
     .execute(conn)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())?; }
     Ok(kind)
 }
 
-pub(crate) async fn insert_in_connection(
+pub(crate) async fn insert_in_connection(conn: &mut SqliteConnection, input: NewTransaction) -> Result<Transaction, String> {
+    write_in_connection(conn, input, None).await
+}
+async fn write_in_connection(
     conn: &mut SqliteConnection,
     input: NewTransaction,
+    existing_id: Option<&str>,
 ) -> Result<Transaction, String> {
     if !["income", "expense", "transfer", "repayment"].contains(&input.kind.as_str()) {
         return Err("Choose a transaction type.".into());
@@ -198,11 +202,14 @@ pub(crate) async fn insert_in_connection(
     if input.kind != "expense" && (input.payee_id.is_some() || input.category_id.is_some()) {
         return Err("Payee and spending category apply only to expenses.".into());
     }
+    let retained: Option<(Option<String>, Option<String>, Option<String>)> = if let Some(id) = existing_id {
+        sqlx::query_as("SELECT payee_id,category_id,income_source_id FROM transactions WHERE id=?").bind(id).fetch_optional(&mut *conn).await.map_err(|e| e.to_string())?
+    } else { None };
     if let Some(id) = &input.income_source_id {
         if input.kind != "income" { return Err("Income source applies only to money received.".into()); }
         let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM incomes i JOIN accounts a ON a.id=i.destination_account_id WHERE i.id=? AND i.is_active=1 AND a.is_archived=0)")
             .bind(id).fetch_one(&mut *conn).await.map_err(|e| e.to_string())?;
-        if !active { return Err("Choose an existing, active income source.".into()); }
+        if !active && retained.as_ref().and_then(|r| r.2.as_ref()) != Some(id) { return Err("Choose an existing, active income source.".into()); }
     }
     for (table, id, label) in [
         ("payees", &input.payee_id, "payee"),
@@ -216,7 +223,8 @@ pub(crate) async fn insert_in_connection(
             .fetch_one(&mut *conn)
             .await
             .map_err(|e| e.to_string())?;
-            if !active {
+            let unchanged = retained.as_ref().and_then(|r| if table == "payees" { r.0.as_ref() } else { r.1.as_ref() }) == Some(id);
+            if !active && !unchanged {
                 return Err(format!("Choose an existing, active {label}."));
             }
         }
@@ -238,26 +246,41 @@ pub(crate) async fn insert_in_connection(
             );
         }
     }
-    adjust(
-        &mut *conn,
-        &input.account_id,
-        if input.kind == "income" {
-            amount
-        } else {
-            -amount
-        },
-        true,
-    )
-    .await?;
-    if let Some(id) = &input.destination_account_id {
-        let kind = adjust(&mut *conn, id, amount, true).await?;
-        if input.kind == "repayment" && !["credit_card", "loan"].contains(&kind.as_str()) {
-            return Err("Repayments must go to a credit card or loan.".into());
+    if let Some(id) = existing_id {
+        let old: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id=?")).bind(id).fetch_one(&mut *conn).await.map_err(|e| e.to_string())?;
+        let old_amount = old.amount.parse::<i128>().map_err(|e| e.to_string())?;
+        let mut changes = std::collections::BTreeMap::<String, i128>::new();
+        *changes.entry(old.account_id).or_default() += if old.kind == "income" { -old_amount } else { old_amount };
+        if let Some(destination) = old.destination_account_id { *changes.entry(destination).or_default() -= old_amount; }
+        *changes.entry(input.account_id.clone()).or_default() += if input.kind == "income" { i128::from(amount) } else { -i128::from(amount) };
+        if let Some(destination) = &input.destination_account_id { *changes.entry(destination.clone()).or_default() += i128::from(amount); }
+        for (account, change) in changes {
+            let active = account == input.account_id || input.destination_account_id.as_ref() == Some(&account);
+            let kind = adjust_wide(conn, &account, change, active).await?;
+            if input.kind == "repayment" && input.destination_account_id.as_ref() == Some(&account) && !["credit_card", "loan"].contains(&kind.as_str()) {
+                return Err("Repayments must go to a credit card or loan.".into());
+            }
+        }
+    } else {
+        adjust(conn, &input.account_id, if input.kind == "income" { amount } else { -amount }, true).await?;
+        if let Some(id) = &input.destination_account_id {
+            let kind = adjust(conn, id, amount, true).await?;
+            if input.kind == "repayment" && !["credit_card", "loan"].contains(&kind.as_str()) {
+                return Err("Repayments must go to a credit card or loan.".into());
+            }
         }
     }
-    let id: String = sqlx::query_scalar("INSERT INTO transactions (id, type, account_id, destination_account_id, amount, date, description, payee_id, category_id, income_source_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id")
+    let id: String = if let Some(id) = existing_id {
+        sqlx::query("UPDATE transactions SET type=?,account_id=?,destination_account_id=?,amount=?,date=?,description=?,payee_id=?,category_id=?,income_source_id=? WHERE id=?")
+            .bind(&input.kind).bind(&input.account_id).bind(&input.destination_account_id).bind(amount).bind(&input.date).bind(description).bind(&input.payee_id).bind(&input.category_id).bind(&input.income_source_id).bind(id)
+            .execute(&mut *conn).await.map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM transaction_verifications WHERE transaction_id=?").bind(id).execute(&mut *conn).await.map_err(|e| e.to_string())?;
+        sqlx::query("INSERT INTO transaction_verifications(transaction_id,account_id) SELECT id,account_id FROM transactions WHERE id=? UNION ALL SELECT id,destination_account_id FROM transactions WHERE id=? AND destination_account_id IS NOT NULL")
+            .bind(id).bind(id).execute(&mut *conn).await.map_err(|e| e.to_string())?;
+        id.to_owned()
+    } else { sqlx::query_scalar("INSERT INTO transactions (id, type, account_id, destination_account_id, amount, date, description, payee_id, category_id, income_source_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id")
         .bind(input.kind).bind(input.account_id).bind(input.destination_account_id).bind(amount).bind(input.date).bind(description).bind(input.payee_id).bind(input.category_id).bind(input.income_source_id)
-        .fetch_one(&mut *conn).await.map_err(|e| e.to_string())?;
+        .fetch_one(&mut *conn).await.map_err(|e| e.to_string())? };
     for account in &input.cleared_account_ids {
         sqlx::query("UPDATE transaction_verifications SET status='cleared' WHERE transaction_id=? AND account_id=?")
             .bind(&id).bind(account).execute(&mut *conn).await.map_err(|e| e.to_string())?;
@@ -275,6 +298,13 @@ pub(crate) async fn insert(
     input: NewTransaction,
 ) -> Result<Transaction, String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    validate_manual(&mut tx, &input).await?;
+    let row = insert_in_connection(&mut tx, input).await?;
+    crate::loans::validate_allocations(&mut tx).await?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(row)
+}
+async fn validate_manual(tx: &mut SqliteConnection, input: &NewTransaction) -> Result<(), String> {
     if matches!(input.kind.as_str(), "repayment" | "transfer") {
         if let Some(destination) = &input.destination_account_id {
             let has_contracts: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loan_contracts WHERE account_id=?)")
@@ -289,10 +319,52 @@ pub(crate) async fn insert(
             .bind(source).bind(&input.date).bind(&input.date).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
         if exists { return Err("A salary payment already exists for this month. Review it in Income before adding another receipt.".into()); }
     }
-    let row = insert_in_connection(&mut tx, input).await?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+pub struct UpdateTransaction {
+    expected: Transaction,
+    #[serde(flatten)]
+    changes: NewTransaction,
+}
+async fn update(pool: &SqlitePool, input: UpdateTransaction) -> Result<Transaction, String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let id = &input.expected.id;
+    let old: Transaction = sqlx::query_as(&format!("{SELECT} WHERE t.id=?")).bind(id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?.ok_or("Transaction no longer exists. Reload the page.")?;
+    let reconciled: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transaction_verifications WHERE transaction_id=? AND status='reconciled') OR EXISTS(SELECT 1 FROM reconciliation_entries WHERE transaction_id=?)")
+        .bind(id).bind(id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    if reconciled { return Err("Transactions with reconciliation history cannot be edited.".into()); }
+    let expected = &input.expected;
+    if old.kind != expected.kind || old.account_id != expected.account_id || old.destination_account_id != expected.destination_account_id || old.amount != expected.amount || old.date != expected.date || old.description != expected.description || old.payee_id != expected.payee_id || old.category_id != expected.category_id || old.income_source_id != expected.income_source_id {
+        return Err("This transaction changed. Close the editor and reload before trying again.".into());
+    }
+    crate::cloud_sync_ledger::protect_imported_deletion(&mut tx, id).await?;
+    let linked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM salary_payment_transactions WHERE transaction_id=?) OR EXISTS(SELECT 1 FROM loan_payment_parts WHERE transaction_id=?) OR EXISTS(SELECT 1 FROM loan_contracts WHERE borrowing_transaction_id=?) OR EXISTS(SELECT 1 FROM installments WHERE purchase_transaction_id=?) OR EXISTS(SELECT 1 FROM ledger_sync_members WHERE transaction_id=? AND group_id != transaction_id)")
+        .bind(id).bind(id).bind(id).bind(id).bind(id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    if linked { return Err("Linked salary, loan, and installment entries cannot be edited here. Open their source record to review them.".into()); }
+    validate_manual(&mut tx, &input.changes).await?;
+    let row = write_in_connection(&mut tx, input.changes, Some(id)).await?;
+    // Imported labels are fallbacks, not authoritative after an explicit edit.
+    sqlx::query("DELETE FROM ledger_sync_imports WHERE group_id=(SELECT group_id FROM ledger_sync_members WHERE transaction_id=?)")
+        .bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    // Any statement touched by either version must be reviewed.
+    for version in [&old, &row] {
+        sqlx::query("UPDATE card_statements SET needs_review=1 WHERE (account_id=? OR account_id=?) AND end_date>=?")
+            .bind(&version.account_id).bind(&version.destination_account_id).bind(&version.date).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    }
+    sqlx::query("DELETE FROM card_payment_allocations WHERE transaction_id=? AND NOT EXISTS(SELECT 1 FROM transactions t JOIN accounts a ON a.id=t.account_id JOIN card_statements s ON s.id=card_payment_allocations.statement_id WHERE t.id=card_payment_allocations.transaction_id AND t.type IN ('repayment','transfer') AND a.type IN ('cash','bank','wallet') AND t.destination_account_id=s.account_id)")
+        .bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
     crate::loans::validate_allocations(&mut tx).await?;
+    sqlx::query("INSERT INTO cloud_sync_dirty(record_id) SELECT 'transaction:'||group_id FROM ledger_sync_members WHERE transaction_id=? AND EXISTS(SELECT 1 FROM cloud_sync_binding WHERE applying=0 AND financial_enabled=1) ON CONFLICT(record_id) DO UPDATE SET revision=revision+1")
+        .bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(row)
+}
+#[tauri::command]
+pub async fn update_transaction(pool: tauri::State<'_, SqlitePool>, input: UpdateTransaction) -> Result<Transaction, String> {
+    let _database_operation = crate::backups::operation()?;
+    update(pool.inner(), input).await
 }
 
 #[cfg(test)]
@@ -402,6 +474,86 @@ pub(crate) async fn decorate_in_connection(conn:&mut SqliteConnection,rows:&mut 
 mod tests {
     use super::*;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    async fn editable_database() -> SqlitePool {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(":memory:").foreign_keys(true)).await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('bank','Bank','bank',10000,10000),('card','Card','credit_card',2000,2000),('cash','Cash','cash',0,0);").execute(&pool).await.unwrap();
+        pool
+    }
+    async fn saved(pool: &SqlitePool, id: &str) -> Transaction {
+        sqlx::query_as(&format!("{SELECT} WHERE t.id=?")).bind(id).fetch_one(pool).await.unwrap()
+    }
+    #[tokio::test]
+    async fn editing_keeps_identity_updates_both_balances_and_queues_sync() {
+        let pool = editable_database().await;
+        crate::cloud_sync_store::enable(&pool,"https://example.test","account","dataset","key").await.unwrap();
+        sqlx::query("UPDATE cloud_sync_binding SET financial_enabled=1").execute(&pool).await.unwrap();
+        let mut original = input("expense","card",None,"1000"); original.cleared_account_ids=vec!["card".into()];
+        let old = insert(&pool, original).await.unwrap(); let id=old.id.clone();
+        sqlx::query("UPDATE transactions SET created_at='2001-01-01' WHERE id=?").bind(&id).execute(&pool).await.unwrap();
+        sqlx::query("DELETE FROM cloud_sync_dirty").execute(&pool).await.unwrap();
+        let result = update(&pool, UpdateTransaction { expected: old, changes: input("transfer","bank",Some("cash"),"700") }).await.unwrap();
+        assert_eq!(result.id,id);
+        assert_eq!(balances(&pool).await,vec![("bank".into(),10000,9300),("card".into(),2000,2000),("cash".into(),0,700)]);
+        let verification: Vec<(String,String)> = sqlx::query_as("SELECT account_id,status FROM transaction_verifications WHERE transaction_id=? ORDER BY account_id").bind(&id).fetch_all(&pool).await.unwrap();
+        assert_eq!(verification,vec![("bank".into(),"uncleared".into()),("cash".into(),"uncleared".into())]);
+        let stored:(i64,String)=sqlx::query_as("SELECT count(*),created_at FROM transactions").fetch_one(&pool).await.unwrap(); assert_eq!(stored,(1,"2001-01-01".into()));
+        let revision:i64=sqlx::query_scalar("SELECT revision FROM cloud_sync_dirty WHERE record_id=?").bind(format!("transaction:{id}")).fetch_one(&pool).await.unwrap();assert_eq!(revision,1);
+        let mut conn=pool.acquire().await.unwrap();
+        let record=crate::cloud_sync_ledger::current(&mut conn,"transaction",&id).await.unwrap();
+        let Some(crate::cloud_sync_store::Value::Transaction(group))=record.value else {panic!("missing transaction")};
+        assert_eq!(group.entries[0].amount,"700");assert_eq!(group.entries[0].kind,"transfer");
+    }
+    #[tokio::test]
+    async fn editing_rejects_reconciliation_on_either_side_and_retained_history() {
+        let pool=editable_database().await;
+        let old=insert(&pool,input("transfer","bank",Some("card"),"500")).await.unwrap();let id=old.id.clone();
+        let before=balances(&pool).await;
+        sqlx::raw_sql("INSERT INTO reconciliations(id,account_id,confirmed_balance,opening_balance) VALUES(1,'card',1500,2000)").execute(&pool).await.unwrap();
+        sqlx::query("UPDATE transaction_verifications SET status='reconciled',reconciliation_id=1 WHERE transaction_id=? AND account_id='card'").bind(&id).execute(&pool).await.unwrap();
+        assert!(update(&pool,UpdateTransaction{expected:old,changes:input("expense","bank",None,"200")}).await.unwrap_err().contains("reconciliation history"));
+        sqlx::query("INSERT INTO reconciliation_entries(reconciliation_id,transaction_id,date,description,type,balance_change) VALUES(1,?,'2024-02-29','Test','transfer',-500)").bind(&id).execute(&pool).await.unwrap();
+        sqlx::query("UPDATE transaction_verifications SET status='cleared',reconciliation_id=NULL WHERE transaction_id=?").bind(&id).execute(&pool).await.unwrap();
+        assert!(update(&pool,UpdateTransaction{expected:saved(&pool,&id).await,changes:input("income","bank",None,"200")}).await.is_err());
+        assert_eq!(balances(&pool).await,before);assert_eq!(saved(&pool,&id).await.amount,"500");
+    }
+    #[tokio::test]
+    async fn editing_invalid_and_stale_changes_roll_back_every_balance_and_keep_references() {
+        let pool=editable_database().await;
+        sqlx::raw_sql("INSERT INTO payees(id,name,name_key) VALUES('shop','Shop','shop'); INSERT INTO categories(id,name,name_key) VALUES('custom','Custom','custom');").execute(&pool).await.unwrap();
+        let mut original=input("expense","bank",None,"1000");original.payee_id=Some("shop".into());original.category_id=Some("custom".into());
+        let old=insert(&pool,original).await.unwrap();let id=old.id.clone();let before=balances(&pool).await;
+        let mut invalid=input("repayment","bank",Some("cash"),"800");invalid.description="Invalid".into();
+        assert!(update(&pool,UpdateTransaction{expected:old,changes:invalid}).await.is_err());
+        assert_eq!(balances(&pool).await,before);assert_eq!(saved(&pool,&id).await.amount,"1000");
+        let stale=saved(&pool,&id).await;
+        sqlx::query("UPDATE transactions SET description='Changed elsewhere' WHERE id=?").bind(&id).execute(&pool).await.unwrap();
+        assert!(update(&pool,UpdateTransaction{expected:stale,changes:input("expense","bank",None,"900")}).await.unwrap_err().contains("transaction changed"));
+        sqlx::raw_sql("UPDATE payees SET is_archived=1 WHERE id='shop'; UPDATE categories SET is_archived=1 WHERE id='custom'").execute(&pool).await.unwrap();
+        let mut changes=input("expense","bank",None,"900");changes.payee_id=Some("shop".into());changes.category_id=Some("custom".into());
+        let row=update(&pool,UpdateTransaction{expected:saved(&pool,&id).await,changes}).await.unwrap();assert_eq!(row.payee_id.as_deref(),Some("shop"));assert_eq!(row.category_id.as_deref(),Some("custom"));
+    }
+    #[tokio::test]
+    async fn editing_large_amounts_uses_the_final_balance_without_intermediate_overflow() {
+        let pool=editable_database().await;
+        sqlx::query("UPDATE accounts SET opening_balance=0,current_balance=0 WHERE id='bank'").execute(&pool).await.unwrap();
+        let old=insert(&pool,input("expense","bank",None,"9223372036854775807")).await.unwrap();
+        let row=update(&pool,UpdateTransaction{expected:old,changes:input("income","bank",None,"9223372036854775807")}).await.unwrap();
+        assert_eq!(row.amount,"9223372036854775807");
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&pool).await.unwrap(),i64::MAX);
+    }
+    #[tokio::test]
+    async fn editing_card_payment_reviews_statement_and_removes_invalid_allocation() {
+        let pool=editable_database().await;
+        let old=insert(&pool,input("repayment","bank",Some("card"),"500")).await.unwrap();let id=old.id.clone();
+        sqlx::raw_sql("INSERT INTO card_statements(id,account_id,start_date,end_date,due_date,amount,minimum) VALUES('bill','card','2024-02-01','2024-02-29','2024-03-15',2000,100)").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO card_payment_allocations VALUES(?,'bill')").bind(&id).execute(&pool).await.unwrap();
+        update(&pool,UpdateTransaction{expected:old,changes:input("expense","bank",None,"400")}).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT needs_review FROM card_statements WHERE id='bill'").fetch_one(&pool).await.unwrap(),1);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM card_payment_allocations").fetch_one(&pool).await.unwrap(),0);
+        sqlx::query("UPDATE ledger_sync_members SET group_id='loan-group' WHERE transaction_id=?").bind(&id).execute(&pool).await.unwrap();
+        assert!(update(&pool,UpdateTransaction{expected:saved(&pool,&id).await,changes:input("expense","bank",None,"100")}).await.unwrap_err().contains("Linked salary"));
+    }
     async fn database() -> SqlitePool {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)

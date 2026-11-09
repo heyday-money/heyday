@@ -18,8 +18,11 @@ pub struct Institution {
 #[derive(Serialize, sqlx::FromRow)]
 pub struct AccountIdentity {
     id: String,
+    #[serde(rename = "type")]
+    kind: String,
     name: String,
     institution_id: Option<String>,
+    logo_asset_id: Option<String>,
 }
 #[derive(Serialize)]
 pub struct InstitutionDirectory {
@@ -140,7 +143,7 @@ pub async fn list_institutions(
             .fetch_all(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
-    let accounts = sqlx::query_as("SELECT id,name,institution_id FROM accounts")
+    let accounts = sqlx::query_as("SELECT id,name,type AS kind,institution_id,(SELECT logo_asset_id FROM account_logos WHERE account_id=accounts.id) AS logo_asset_id FROM accounts")
         .fetch_all(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;

@@ -47,7 +47,7 @@ export function homeOverview(data: FinancialData, month: string, today: Date) {
     if (row.type === 'income' && row.salary_payment_role !== 'principal') incomeReceived += BigInt(row.amount)
     if (row.type === 'expense') spending += BigInt(row.amount)
   }
-  const upcomingIncome = data.incomes.filter(source => source.is_active && accounts.has(source.destination_account_id)).map(source => {
+  const upcomingIncome = data.incomes.filter(source => source.is_active && source.recurrence_frequency !== 'irregular' && accounts.has(source.destination_account_id)).map(source => {
     let date = monthDate(today.getFullYear(), today.getMonth(), source.recurrence_day_of_month)
     if (dateKey(date) < todayKey) date = monthDate(today.getFullYear(), today.getMonth() + 1, source.recurrence_day_of_month)
     return { source, date: dateKey(date), amount: BigInt(source.estimated_amount) - BigInt(source.deductions_total ?? '0') }

@@ -1,10 +1,11 @@
+import type { AccountType } from './desktop'
 import type { LogoChange } from './logos'
 import { invoke } from '@tauri-apps/api/core'
 export interface Institution {
   id: string; name: string; short_name: string | null; bank_code: string | null
   swift_code: string | null; logo: string | null; logo_asset_id?: string | null; logo_mode?: 'default' | 'custom' | 'none'; is_archived: boolean
 }
-export interface AccountIdentity { id: string; name: string; institution_id: string | null }
+export interface AccountIdentity { id: string; type: AccountType; logo_asset_id?: string | null; name: string; institution_id: string | null }
 export interface InstitutionDirectory { institutions: Institution[]; accounts: AccountIdentity[] }
 export const listInstitutions = () => invoke<InstitutionDirectory>('list_institutions')
 export async function deleteInstitution(id: string) {

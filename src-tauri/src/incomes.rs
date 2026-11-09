@@ -19,7 +19,7 @@ pub struct Income {
     updated_at: String,
 }
 
-pub(crate) const SELECT: &str = "SELECT i.id, i.name, i.destination_account_id, a.name AS destination_account_name, i.type AS income_type, CAST(i.estimated_amount AS TEXT) AS estimated_amount, CAST(COALESCE((SELECT SUM(d.amount) FROM income_deductions d WHERE d.income_id=i.id),0) AS TEXT) AS deductions_total, i.recurrence_frequency, i.recurrence_day_of_month, i.is_auto_create_transaction, i.is_active, i.created_at, i.updated_at FROM incomes i JOIN accounts a ON a.id = i.destination_account_id";
+pub(crate) const SELECT: &str = "SELECT i.id, i.name, i.destination_account_id, a.name AS destination_account_name, i.type AS income_type, CAST(i.estimated_amount AS TEXT) AS estimated_amount, CAST(COALESCE((SELECT SUM(d.amount) FROM income_deductions d WHERE d.income_id=i.id),0) AS TEXT) AS deductions_total, CASE WHEN i.is_irregular=1 THEN 'irregular' ELSE i.recurrence_frequency END AS recurrence_frequency, i.recurrence_day_of_month, i.is_auto_create_transaction, i.is_active, i.created_at, i.updated_at FROM incomes i JOIN accounts a ON a.id = i.destination_account_id";
 
 #[derive(Deserialize)]
 pub struct NewIncome {
@@ -53,8 +53,11 @@ fn validate_definition(input: &NewIncome) -> Result<i64, String> {
         return Err("Estimated amount cannot be negative.".into());
     }
     crate::income_deductions::validate(&input.deductions, amount, input.income_type == "salary")?;
-    if input.recurrence_frequency != "monthly" {
-        return Err("Only monthly recurrence is currently supported.".into());
+    if !["monthly", "irregular"].contains(&input.recurrence_frequency.as_str()) {
+        return Err("Choose monthly or irregular income.".into());
+    }
+    if input.recurrence_frequency == "irregular" && amount != 0 {
+        return Err("Irregular income has no recurring estimate. Enter estimates in Outlook.".into());
     }
     if !(1..=31).contains(&input.recurrence_day_of_month) {
         return Err("Income day must be between 1 and 31.".into());
@@ -88,9 +91,9 @@ pub async fn insert_income(pool: &SqlitePool, input: NewIncome) -> Result<Income
     if !valid {
         return Err("Choose an existing, active destination account.".into());
     }
-    let id: String = sqlx::query_scalar("INSERT INTO incomes (id, name, destination_account_id, type, estimated_amount, recurrence_frequency, recurrence_day_of_month, is_auto_create_transaction, is_active) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, 'monthly', ?, 0, ?) RETURNING id")
+    let id: String = sqlx::query_scalar("INSERT INTO incomes (id, name, destination_account_id, type, estimated_amount, recurrence_frequency, recurrence_day_of_month, is_auto_create_transaction, is_active, is_irregular) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, 'monthly', ?, 0, ?, ?) RETURNING id")
         .bind(name).bind(input.destination_account_id).bind(input.income_type).bind(amount)
-        .bind(input.recurrence_day_of_month).bind(input.is_active)
+        .bind(input.recurrence_day_of_month).bind(input.is_active).bind(input.recurrence_frequency == "irregular")
         .fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     crate::income_deductions::replace(&mut tx, &id, &input.deductions).await?;
     let income = sqlx::query_as::<_, Income>(&format!("{SELECT} WHERE i.id = ?"))
@@ -130,8 +133,8 @@ async fn update(pool: &SqlitePool, input: UpdateIncome) -> Result<Income, String
     if available != Some(true) && !(available == Some(false) && destination == input.changes.destination_account_id && !input.changes.is_active) {
         return Err("Choose an active destination account. An inactive source may keep its existing archived destination.".into());
     }
-    sqlx::query("UPDATE incomes SET name=?,destination_account_id=?,estimated_amount=?,recurrence_day_of_month=?,is_active=?,is_auto_create_transaction=0,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(input.changes.name.trim()).bind(input.changes.destination_account_id).bind(amount).bind(input.changes.recurrence_day_of_month).bind(input.changes.is_active).bind(&input.id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE incomes SET name=?,destination_account_id=?,estimated_amount=?,is_irregular=?,recurrence_day_of_month=?,is_active=?,is_auto_create_transaction=0,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(input.changes.name.trim()).bind(input.changes.destination_account_id).bind(amount).bind(input.changes.recurrence_frequency == "irregular").bind(input.changes.recurrence_day_of_month).bind(input.changes.is_active).bind(&input.id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
     let result = sqlx::query_as::<_, Income>(&format!("{SELECT} WHERE i.id=?")).bind(&input.id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(result)
@@ -184,6 +187,37 @@ mod tests {
         crate::save_currency(pool, "THB").await.unwrap();
         sqlx::query("INSERT INTO accounts (id, name, type, opening_balance) VALUES ('bank', 'Everyday bank', 'bank', 150000)").execute(pool).await.unwrap();
     }
+    #[tokio::test]
+    async fn irregular_income_roundtrips_and_preserves_cycle_overrides() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(":memory:").foreign_keys(true)).await.unwrap();
+        seed(&pool).await;
+        let mut value = input();
+        value.income_type = "variable".into();
+        value.recurrence_frequency = "irregular".into();
+        value.estimated_amount = "0".into();
+        let source = insert_income(&pool, value).await.unwrap();
+        assert_eq!(source.recurrence_frequency, "irregular");
+        sqlx::query("INSERT INTO planner_income_amounts VALUES(?,'2026-01',0)").bind(&source.id).execute(&pool).await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        let record = crate::cloud_sync_income::current(&mut conn, &source.id).await.unwrap();
+        let Some(crate::cloud_sync_store::Value::Income(definition)) = record.value else { panic!("missing income") };
+        definition.validate().unwrap();
+        assert_eq!(definition.recurrence_frequency, "irregular");
+        crate::cloud_sync_income::apply_definition(&mut conn, &source.id, Some(&definition)).await.unwrap();
+        drop(conn);
+        let mut changes = input();
+        changes.income_type = "variable".into();
+        let scheduled = update(&pool, UpdateIncome { id: source.id.clone(), changes }).await.unwrap();
+        assert_eq!(scheduled.recurrence_frequency, "monthly");
+        let amount: i64 = sqlx::query_scalar("SELECT amount FROM planner_income_amounts WHERE income_id=?").bind(&source.id).fetch_one(&pool).await.unwrap();
+        assert_eq!(amount, 0);
+        let mut invalid = input();
+        invalid.recurrence_frequency = "irregular".into();
+        assert!(insert_income(&pool, invalid).await.is_err());
+        let balance: i64 = sqlx::query_scalar("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&pool).await.unwrap();
+        assert_eq!(balance, 0);
+    }
+
     #[tokio::test]
     async fn source_edits_preserve_receipts_deductions_overrides_and_balances() {
         let pool = SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(":memory:").foreign_keys(true)).await.unwrap();

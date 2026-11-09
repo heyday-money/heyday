@@ -510,11 +510,12 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let source = database(&directory.path().join("source.db")).await;
         populate(&source).await;
+        sqlx::raw_sql("INSERT INTO accounts(id,name,type) VALUES('cash','Cash','cash'); INSERT INTO account_logos VALUES('cash','logo')").execute(&source).await.unwrap();
         let expected = contents(&source).await;
         let file = directory.path().join("export.db");
         export(&source, &file).await.unwrap();
         let prepared = prepare(&file).await.unwrap();
-        assert_eq!(prepared.preview.accounts, 3);
+        assert_eq!(prepared.preview.accounts, 4);
         assert_eq!(prepared.preview.transactions, 3);
         assert_eq!(prepared.preview.currency.as_deref(), Some("THB"));
         let target = database(&directory.path().join("target.db")).await;
@@ -567,7 +568,7 @@ mod tests {
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&target).await.unwrap(),9007199254740993);
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM salary_payments").fetch_one(&target).await.unwrap(),0);
         let history:Vec<i64>=sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version").fetch_all(&target).await.unwrap();
-        assert_eq!(history,vec![1,2,3,4,5,6,7,8,9]);
+        assert_eq!(history,vec![1,2,3,4,5,6,7,8,9,10,11]);
     }
 
     #[tokio::test]
@@ -615,7 +616,13 @@ mod tests {
         populate(&pool).await;
         crate::cloud_sync_store::enable(&pool,"https://example.test","account","dataset","key").await.unwrap();
         sqlx::raw_sql("UPDATE cloud_sync_binding SET financial_enabled=1,income_enabled=1,planner_enabled=1,full_enabled=1; INSERT INTO cloud_sync_pending(id,record_id,revision,request) VALUES(1,'planner-expense-0',1,'{\"savedCiphertext\":\"unchanged\"}');").execute(&pool).await.unwrap();
-        let before = contents(&pool).await;
+        let mut before = contents(&pool).await;
+        before.push(("account_logos".into(), Vec::new()));
+        before.sort_by(|a, b| a.0.cmp(&b.0));
+        // Migration 10 appends the default monthly planning flag to existing sources.
+        for (table, rows) in &mut before {
+            if table == "incomes" { for row in rows { row.push_str(",0"); } }
+        }
         let history: Vec<(i64,Vec<u8>,bool)> = sqlx::query_as("SELECT version,checksum,success FROM _sqlx_migrations ORDER BY version").fetch_all(&pool).await.unwrap();
         let backup = directory.path().join("migration-eight.db");
         export(&pool,&backup).await.unwrap();
@@ -634,7 +641,7 @@ mod tests {
         // Existing migration-8 backups still validate and upgrade in a staged copy.
         let prepared = prepare(&backup).await.unwrap();
         let mut staged = connect(&prepared.directory.path().join("restore.db"),true).await.unwrap();
-        assert_eq!(validate(&mut staged).await.unwrap(),9);
+        assert_eq!(validate(&mut staged).await.unwrap(),11);
         assert_eq!(std::fs::read(&backup).unwrap(),backup_bytes);
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM cloud_sync_pending").fetch_one(&mut staged).await.unwrap(),0);
     }

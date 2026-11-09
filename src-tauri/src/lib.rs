@@ -235,6 +235,7 @@ pub fn run() {
             income_deductions::list_income_deductions,
             income_deductions::save_salary_deductions,
             transactions::create_transaction,
+            transactions::update_transaction,
             transactions::list_transactions,
             transactions::get_expense_report,
             transactions::delete_transaction,

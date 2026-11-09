@@ -12,7 +12,7 @@ import type { IncomeDeduction } from './desktop'
 export type PlannerCategoryId = 'income' | 'deductions' | 'debt' | 'installments' | 'cards' | 'expenses'
 export type CycleStatus = 'tracking' | 'forecast' | 'complete'
 export interface PlannerIncome {
-  id: string; name: string; estimated_amount: string; recurrence_day_of_month: number
+  id: string; name: string; estimated_amount: string; recurrence_frequency?: 'monthly' | 'irregular'; recurrence_day_of_month: number
   is_active: boolean; destination_account_name: string; account_archived: boolean
 }
 export interface PlannerDebtAccount {
@@ -122,7 +122,7 @@ export function scheduledAmount(item: PlannerItem, month: string): bigint | null
 export function plannerItems(data: PlannerData): PlannerItem[] {
   const sources: PlannerItem[] = data.source_currency === 'THB' ? data.incomes.map(income => ({
     id: `income:${income.id}`, category_id: 'income', name: income.name,
-    description: translate("Income source · monthly on day {value0} · {value1}{value2}", { value0: income.recurrence_day_of_month, value1: income.destination_account_name, value2: (!income.is_active ? translate(" · Inactive") : (income.account_archived ? translate(" · Account unavailable") : '')) }),
+    description: income.recurrence_frequency === 'irregular' ? translate("Irregular income. Enter an estimate only for the cycle when you expect payment.") : translate("Income source · monthly on day {value0} · {value1}{value2}", { value0: income.recurrence_day_of_month, value1: income.destination_account_name, value2: (!income.is_active ? translate(" · Inactive") : (income.account_archived ? translate(" · Account unavailable") : '')) }),
     card_name: '', transaction_category_id: null, schedule_amount: null, schedule_start: null, schedule_end: null, income,
   })) : []
   const linked: PlannerItem[] = []
@@ -153,7 +153,7 @@ export function plannerItems(data: PlannerData): PlannerItem[] {
   return [...sources, ...linked, ...data.items, ...actualRows(data)]
 }
 function expectedIncomeBetween(income: PlannerIncome, from: string, to: string, payday: number): bigint | null {
-  if (!income.is_active || income.account_archived) return null
+  if (!income.is_active || income.account_archived || income.recurrence_frequency === 'irregular') return null
   const day = income.recurrence_day_of_month
   // Count monthly occurrences in [start, end), clamping each calendar month independently.
   const count = monthIndex(to) - monthIndex(from)

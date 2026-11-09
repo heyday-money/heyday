@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Account, AccountType } from '../lib/desktop'
 import { useInstitutions } from './InstitutionProvider'
-import { InstitutionLogo } from './InstitutionLogo'
+import { AccountIcon } from './InstitutionLogo'
 import { Input } from './ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover'
 
@@ -69,7 +69,7 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false)
   }}>
     <PopoverAnchor asChild><div className="relative">
-      <span className="pointer-events-none absolute top-2 left-2"><InstitutionLogo institution={institution(value)} name={selected?.name ?? ''} /></span>
+      <span className="pointer-events-none absolute top-2 left-2"><AccountIcon logoAssetId={directory.accounts.find(a => a.id === value)?.logo_asset_id} type={selected?.type} institution={institution(value)} name={selected?.name ?? ''} /></span>
       <Input id={id} ref={input} className="pr-8 pl-9" role="combobox" aria-autocomplete="list" aria-expanded={open}
         aria-controls={open ? listId : undefined} aria-activedescendant={open && index >= 0 ? `${listId}-${choices[index].id}` : undefined}
         aria-required="true" disabled={disabled} autoComplete="off" placeholder={translate("Search accounts")} title={selected?.name}
@@ -99,7 +99,7 @@ export function AccountCombobox({ id, value, accounts, disabled, onChange }: {
         {group.accounts.map(account => <div key={account.id} id={`${listId}-${account.id}`} role="option" aria-selected={account.id === value}
           className={`flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm ${choices[index]?.id === account.id ? 'bg-soft text-ink' : ''}`}
           onMouseDown={event => event.preventDefault()} onMouseMove={() => setActive(choices.findIndex(choice => choice.id === account.id))} onClick={() => choose(account)}>
-          <InstitutionLogo institution={institution(account.id)} name={account.name} /><span className="min-w-0 break-words">{account.name}</span>
+          <AccountIcon logoAssetId={directory.accounts.find(a => a.id === account.id)?.logo_asset_id} type={account.type} institution={institution(account.id)} name={account.name} /><span className="min-w-0 break-words">{account.name}</span>
         </div>)}
       </div>)}
       {!choices.length && <p role="status" className="px-2 py-3 text-sm text-muted">{translate("No matching accounts.")}</p>}

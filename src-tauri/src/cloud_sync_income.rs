@@ -54,7 +54,8 @@ impl Definition {
         label(&self.name, 100, false)?;
         id(&self.destination_account_id)?;
         if !["salary", "variable", "investment", "other"].contains(&self.kind.as_str())
-            || self.recurrence_frequency != "monthly"
+            || !["monthly", "irregular"].contains(&self.recurrence_frequency.as_str())
+            || (self.recurrence_frequency == "irregular" && self.estimated_amount != "0")
             || !(1..=31).contains(&self.recurrence_day_of_month)
             || self.deductions.len() > 100
             || (self.kind != "salary" && !self.deductions.is_empty())
@@ -94,7 +95,7 @@ impl Definition {
     }
 }
 pub async fn current(conn: &mut SqliteConnection, source: &str) -> Result<Record, String> {
-    let row:Option<(String,String,String,String,String,i64,bool)>=sqlx::query_as("SELECT name,type,destination_account_id,CAST(estimated_amount AS TEXT),recurrence_frequency,recurrence_day_of_month,is_active FROM incomes WHERE id=?").bind(source).fetch_optional(&mut *conn).await.map_err(|_|DATABASE)?;
+    let row:Option<(String,String,String,String,String,i64,bool)>=sqlx::query_as("SELECT name,type,destination_account_id,CAST(estimated_amount AS TEXT),CASE WHEN is_irregular=1 THEN 'irregular' ELSE recurrence_frequency END,recurrence_day_of_month,is_active FROM incomes WHERE id=?").bind(source).fetch_optional(&mut *conn).await.map_err(|_|DATABASE)?;
     let value = if let Some((
         name,
         kind,
@@ -193,8 +194,8 @@ pub async fn apply_definition(
             }
         }
     }
-    sqlx::query("INSERT INTO incomes(id,name,type,destination_account_id,estimated_amount,recurrence_frequency,recurrence_day_of_month,is_active,is_auto_create_transaction) VALUES(?,?,?,?,?,'monthly',?,?,0) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,destination_account_id=EXCLUDED.destination_account_id,estimated_amount=EXCLUDED.estimated_amount,recurrence_day_of_month=EXCLUDED.recurrence_day_of_month,is_active=EXCLUDED.is_active,is_auto_create_transaction=0,updated_at=CURRENT_TIMESTAMP")
-        .bind(source).bind(&v.name).bind(&v.kind).bind(&v.destination_account_id).bind(nonnegative(&v.estimated_amount)?).bind(v.recurrence_day_of_month).bind(v.is_active).execute(&mut *conn).await.map_err(|_|BLOCKED)?;
+    sqlx::query("INSERT INTO incomes(id,name,type,destination_account_id,estimated_amount,recurrence_frequency,recurrence_day_of_month,is_active,is_auto_create_transaction,is_irregular) VALUES(?,?,?,?,?,'monthly',?,?,0,?) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,destination_account_id=EXCLUDED.destination_account_id,estimated_amount=EXCLUDED.estimated_amount,is_irregular=EXCLUDED.is_irregular,recurrence_day_of_month=EXCLUDED.recurrence_day_of_month,is_active=EXCLUDED.is_active,is_auto_create_transaction=0,updated_at=CURRENT_TIMESTAMP")
+        .bind(source).bind(&v.name).bind(&v.kind).bind(&v.destination_account_id).bind(nonnegative(&v.estimated_amount)?).bind(v.recurrence_day_of_month).bind(v.is_active).bind(v.recurrence_frequency == "irregular").execute(&mut *conn).await.map_err(|_|BLOCKED)?;
     let old: Vec<String> = sqlx::query_scalar("SELECT id FROM income_deductions WHERE income_id=?")
         .bind(source)
         .fetch_all(&mut *conn)

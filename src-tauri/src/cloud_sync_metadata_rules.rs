@@ -157,7 +157,7 @@ pub async fn dependencies(
             add("id", "account");
             add("institution_id", "metadata:institution");
         }
-        "facility" | "default-history" | "payoff" | "reconciliation" | "debt-amount" => {
+        "account-logo" | "facility" | "default-history" | "payoff" | "reconciliation" | "debt-amount" => {
             add("account_id", "account")
         }
         "contract" => {
@@ -258,6 +258,7 @@ pub async fn relationships(conn: &mut SqliteConnection, v: &Metadata) -> Result<
             )
             .await?
         }
+        "account-logo" => { account_type(conn, get(f, "account_id")?, &["cash"]).await?; }
         "facility" => {
             let ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type='loan' AND loan_type='personal_loan')").bind(get(f,"account_id")?).fetch_one(&mut *conn).await.map_err(|_|DATABASE)?;
             if !ok {

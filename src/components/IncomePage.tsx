@@ -46,6 +46,7 @@ export function IncomePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [incomeType, setIncomeType] = useState<IncomeType>('salary')
+  const [planning, setPlanning] = useState<'monthly' | 'irregular'>('monthly')
   const [gross, setGross] = useState('')
   const [deductions, setDeductions] = useState(initialDeductions)
   const [editingDeductions, setEditingDeductions] = useState<Income | null>(null)
@@ -80,7 +81,7 @@ export function IncomePage() {
   const close = () => { setOpen(false); setEditing(null); setDirty(false); setConfirmDiscard(false); setError(null) }
   const changeOpen = (next: boolean) => {
     if (saveLock.current) return
-    if (next) { setEditing(null); setIncomeType('salary'); setGross(''); setDeductions(initialDeductions()); setDirty(false); setConfirmDiscard(false); setError(null); setOpen(true) }
+    if (next) { setEditing(null); setIncomeType('salary'); setPlanning('monthly'); setGross(''); setDeductions(initialDeductions()); setDirty(false); setConfirmDiscard(false); setError(null); setOpen(true) }
     else if (dirty) setConfirmDiscard(true)
     else close()
   }
@@ -89,7 +90,7 @@ export function IncomePage() {
     editIdRef.current = source.id
     editTriggerRef.current = trigger
     if (saveLock.current || !currency) return
-    setEditing(source); setIncomeType(source.type); setGross(amountText(source.estimated_amount, currency))
+    setEditing(source); setPlanning(source.recurrence_frequency); setIncomeType(source.type); setGross(amountText(source.estimated_amount, currency))
     setDirty(false); setConfirmDiscard(false); setError(null); setOpen(true)
   }, [currency])
 
@@ -101,15 +102,15 @@ export function IncomePage() {
     const text = (key: string) => String(data.get(key) ?? '').trim()
     setError(null); setSaving(true)
     try {
-      const amount = decimalToInteger(text('estimated_amount'), fractionDigits(currency))
+      const amount = planning === 'irregular' ? '0' : decimalToInteger(text('estimated_amount'), fractionDigits(currency))
       if (BigInt(amount) < 0n) throw new Error("Estimated amount cannot be negative.")
-      const rows = !editing && incomeType === 'salary' ? deductionInputs(deductions, currency) : []
+      const rows = !editing && incomeType === 'salary' && planning === 'monthly' ? deductionInputs(deductions, currency) : []
       if (rows.reduce((sum, row) => sum + BigInt(row.amount), 0n) > BigInt(amount)) throw new Error("Total deductions cannot exceed gross salary.")
       if (editing && BigInt(amount) < BigInt(editing.deductions_total ?? '0')) throw new Error("Estimated gross salary cannot be lower than its existing deductions. Adjust deductions first.")
       const input = {
         name: text('name'), type: editing?.type ?? text('type') as IncomeType,
         destination_account_id: text('destination_account_id'), estimated_amount: amount,
-        currency, recurrence_frequency: 'monthly' as const, recurrence_day_of_month: Number(text('day')),
+        currency, recurrence_frequency: planning, recurrence_day_of_month: planning === 'irregular' ? 1 : Number(text('day')),
         is_active: text('is_active') === 'true', is_auto_create_transaction: false,
       }
       const income = editing ? await updateIncome({ ...input, id: editing.id }) : await createIncome({ ...input, deductions: rows })
@@ -148,16 +149,17 @@ export function IncomePage() {
               <fieldset disabled={saving}>
                 <div className="grid grid-cols-2 gap-5 max-[520px]:grid-cols-1">
                   <FormField label={translate("Income name")}><Input ref={nameRef} name="name" defaultValue={editing?.name ?? ''} required maxLength={100} className={fieldStyle} placeholder={translate("e.g. Monthly salary")} /></FormField>
-                  <FormField label={translate("Income type")}><NativeSelect name="type" disabled={!!editing} value={incomeType} onChange={e => setIncomeType(e.target.value as IncomeType)} className={fieldStyle}>{incomeTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</NativeSelect></FormField>
+                  <FormField label={translate("Income type")}><NativeSelect name="type" disabled={!!editing} value={incomeType} onChange={e => { setIncomeType(e.target.value as IncomeType); setPlanning(e.target.value === 'variable' || e.target.value === 'other' ? 'irregular' : 'monthly') }} className={fieldStyle}>{incomeTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</NativeSelect></FormField>
                   <FormField label={translate("Destination account")}><AccountSelect name="destination_account_id" required defaultValue={editing?.destination_account_id ?? ''} className={fieldStyle}><option value="" disabled>{translate("Choose an account")}</option>{editing && !accounts.some(account => account.id === editing.destination_account_id) && <option value={editing.destination_account_id}>{editing.destination_account_name} {" "}{translate("· Unavailable (inactive sources only)")}</option>}{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</AccountSelect></FormField>
-                  <FormField label={translate("Estimated amount ({value0})", { value0: currency })}><Input name="estimated_amount" inputMode="decimal" value={gross} onChange={e => setGross(e.target.value)} required className={fieldStyle} placeholder="0" /></FormField>
+                  <FormField label={translate("Planning")}><NativeSelect value={planning} onChange={e => setPlanning(e.target.value as 'monthly' | 'irregular')} className={fieldStyle}><option value="monthly">{translate("Scheduled")}</option><option value="irregular">{translate("Irregular / When received")}</option></NativeSelect></FormField>
+                  {planning === 'monthly' && <><FormField label={translate("Estimated amount ({value0})", { value0: currency })}><Input name="estimated_amount" inputMode="decimal" value={gross} onChange={e => setGross(e.target.value)} required className={fieldStyle} placeholder="0" /></FormField>
                   <FormField label={translate("Frequency")}><NativeSelect name="frequency" defaultValue="monthly" className={fieldStyle}><option value="monthly">{translate("Monthly")}</option></NativeSelect></FormField>
-                  <FormField label={translate("Day of month")}><NativeSelect name="day" defaultValue={String(editing?.recurrence_day_of_month ?? 1)} className={fieldStyle}>{Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>{translate("Day")}{" "}{day}</option>)}</NativeSelect></FormField>
+                  <FormField label={translate("Day of month")}><NativeSelect name="day" defaultValue={String(editing?.recurrence_day_of_month ?? 1)} className={fieldStyle}>{Array.from({ length: 31 }, (_, index) => index + 1).map(day => <option key={day} value={day}>{translate("Day")}{" "}{day}</option>)}</NativeSelect></FormField></>}
                   <FormField label={translate("Status")}><NativeSelect name="is_active" defaultValue={String(editing?.is_active ?? true)} className={fieldStyle}><option value="true">{translate("Active")}</option><option value="false">{translate("Inactive")}</option></NativeSelect></FormField>
                 </div>
-                {!editing && incomeType === 'salary' && <><p className="mt-3 text-xs">{translate("Enter gross salary before deductions as the estimated amount.")}</p><SalaryDeductionFields accounts={accounts} rows={deductions} onChange={next => { setDeductions(next); setDirty(true) }} gross={gross} currency={currency} /></>}
+                {!editing && incomeType === 'salary' && planning === 'monthly' && <><p className="mt-3 text-xs">{translate("Enter gross salary before deductions as the estimated amount.")}</p><SalaryDeductionFields accounts={accounts} rows={deductions} onChange={next => { setDeductions(next); setDirty(true) }} gross={gross} currency={currency} /></>}
                 {editing && <p className="mt-3 text-xs">{translate("Income type is fixed. Inactive sources stay visible and stop generating estimates. Saved cycle overrides remain.")}{" "}{editing.type === 'salary' && translate("Existing deductions: {value0}. Use Manage Deductions to change them.", { value0: formatAmount(editing.deductions_total ?? '0', currency) })}</p>}
-                <p className="mt-4 text-[12px]">{translate("When the scheduled day doesn’t exist, use the last day of that month. This schedule is independent of your payday cycle.")}</p>
+                <p className="mt-4 text-[12px]">{planning === 'irregular' ? translate("Record payments when received. Optionally enter estimates for specific cycles in Outlook; no monthly income is assumed.") : translate("When the scheduled day doesn’t exist, use the last day of that month. This schedule is independent of your payday cycle.")}</p>
                 <div className="mt-5 rounded-xl border border-line p-4"><label className="flex items-center gap-2 text-[13px] text-muted"><input type="checkbox" disabled checked={false} readOnly className="size-4" />{translate("Automatically create transactions")}</label><p className="mt-2 text-[12px]">{translate("Coming later. Income sources currently describe estimates only.")}</p></div>
               </fieldset>
               {error && <p role="alert" className="mt-4 text-[14px]">{translate(error)}</p>}
@@ -187,11 +189,11 @@ function IncomeTable({ sources, accounts, currency, onEdit, onEditButton, onReco
   const moneyMeta = { headerClassName: `${meta.headerClassName} text-right`, cellClassName: `${meta.cellClassName} text-right whitespace-nowrap tabular-nums` }
   const columns = useMemo<ColumnDef<Income>[]>(() => [
     { id: 'source', header: translate('Income source'), meta: { ...meta, rowHeader: true, cellClassName: `${meta.cellClassName} min-w-44 max-w-64` }, cell: ({ row: { original: source } }) => <><h3 className="break-words font-semibold text-ink">{source.name}</h3><div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-normal text-muted"><span>{incomeTypes.find(type => type.value === source.type)?.label}</span><span className={`rounded-full px-2 py-0.5 ${source.is_active ? 'bg-soft text-brand' : 'bg-page text-muted'}`}>{source.is_active ? translate('Active') : translate('Inactive')}</span></div></> },
-    { id: 'gross', header: translate('Estimated gross'), meta: moneyMeta, cell: ({ row }) => formatAmount(row.original.estimated_amount, currency) },
+    { id: 'gross', header: translate('Estimated gross'), meta: moneyMeta, cell: ({ row }) => row.original.recurrence_frequency === 'irregular' ? translate('Not estimated') : formatAmount(row.original.estimated_amount, currency) },
     { id: 'deductions', header: translate('Deductions'), meta: moneyMeta, cell: ({ row }) => row.original.type === 'salary' ? formatAmount(row.original.deductions_total ?? '0', currency) : '—' },
-    { id: 'net', header: translate('Estimated net'), meta: { ...moneyMeta, cellClassName: `${moneyMeta.cellClassName} font-semibold text-ink` }, cell: ({ row }) => formatAmount((BigInt(row.original.estimated_amount) - (row.original.type === 'salary' ? BigInt(row.original.deductions_total ?? '0') : 0n)).toString(), currency) },
+    { id: 'net', header: translate('Estimated net'), meta: { ...moneyMeta, cellClassName: `${moneyMeta.cellClassName} font-semibold text-ink` }, cell: ({ row }) => row.original.recurrence_frequency === 'irregular' ? translate('Not estimated') : formatAmount((BigInt(row.original.estimated_amount) - (row.original.type === 'salary' ? BigInt(row.original.deductions_total ?? '0') : 0n)).toString(), currency) },
     { id: 'destination', header: translate('Destination account'), meta: { ...meta, cellClassName: `${meta.cellClassName} min-w-36 max-w-56 break-words` }, cell: ({ row }) => <><AccountLabel id={row.original.destination_account_id} name={row.original.destination_account_name} />{!accounts.some(a => a.id === row.original.destination_account_id) && <span className="mt-1 block text-xs text-muted">{translate('Account unavailable')}</span>}</> },
-    { id: 'schedule', header: translate('Schedule'), meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap` }, cell: ({ row }) => <>{translate('Monthly · Day')} {row.original.recurrence_day_of_month}{row.original.recurrence_day_of_month > 28 && <span className="mt-1 block text-xs text-muted">{translate(' (or month-end)')}</span>}</> },
+    { id: 'schedule', header: translate('Schedule'), meta: { ...meta, cellClassName: `${meta.cellClassName} whitespace-nowrap` }, cell: ({ row }) => row.original.recurrence_frequency === 'irregular' ? translate('When received') : <>{translate('Monthly · Day')} {row.original.recurrence_day_of_month}{row.original.recurrence_day_of_month > 28 && <span className="mt-1 block text-xs text-muted">{translate(' (or month-end)')}</span>}</> },
     { id: 'actions', header: translate('Actions'), meta: { ...meta, headerClassName: `${meta.headerClassName} text-right` }, cell: ({ row: { original: source } }) => <div className="flex items-center justify-end gap-1">
       {source.type === 'salary' && <Button size="sm" variant="outline" className="mr-1" aria-label={translate('Record salary payment')} disabled={!source.is_active || !accounts.some(a => a.id === source.destination_account_id && ['cash', 'bank', 'wallet'].includes(a.type))} onClick={() => onRecord(source)}>{translate('Record payment')}</Button>}
       <Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="ghost" ref={button => onEditButton(source.id, button)} aria-label={translate('Edit {value0}', { value0: source.name })} onClick={event => onEdit(source, event.currentTarget)}><Pencil aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{translate('Edit income source')}</TooltipContent></Tooltip>

@@ -48,6 +48,7 @@ pub struct PlannerIncome {
     name: String,
     estimated_amount: String,
     recurrence_day_of_month: i64,
+    recurrence_frequency: String,
     is_active: bool,
     destination_account_name: String,
     account_archived: bool,
@@ -133,7 +134,7 @@ pub(crate) async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sql
         income_deductions: sqlx::query_as(&format!("{} ORDER BY rowid",crate::income_deductions::SELECT)).fetch_all(&mut *conn).await?,
         credit_cards: sqlx::query_as("SELECT id,name,is_archived FROM accounts WHERE type='credit_card' ORDER BY name,id").fetch_all(&mut *conn).await?,
         card_transactions: sqlx::query_as("SELECT (SELECT COALESCE(lp.loan_account_id,c.account_id) FROM loan_payment_parts lp LEFT JOIN loan_contracts c ON c.id=lp.contract_id WHERE lp.transaction_id=t.id) AS loan_account_id,(SELECT component FROM loan_payment_parts WHERE transaction_id=t.id) AS loan_component,t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id WHERE a.type='credit_card' OR d.type='credit_card' ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
-        incomes: sqlx::query_as("SELECT i.id,i.name,CAST(i.estimated_amount AS TEXT) AS estimated_amount,i.recurrence_day_of_month,i.is_active,a.name AS destination_account_name,a.is_archived AS account_archived FROM incomes i JOIN accounts a ON a.id=i.destination_account_id ORDER BY i.created_at,i.id").fetch_all(&mut *conn).await?,
+        incomes: sqlx::query_as("SELECT i.id,i.name,CAST(i.estimated_amount AS TEXT) AS estimated_amount,i.recurrence_day_of_month,CASE WHEN i.is_irregular=1 THEN 'irregular' ELSE i.recurrence_frequency END AS recurrence_frequency,i.is_active,a.name AS destination_account_name,a.is_archived AS account_archived FROM incomes i JOIN accounts a ON a.id=i.destination_account_id ORDER BY i.created_at,i.id").fetch_all(&mut *conn).await?,
         debt_accounts: sqlx::query_as("SELECT id,name,loan_type,CAST(current_balance AS TEXT) AS current_balance,CAST(monthly_installment AS TEXT) AS monthly_installment,notes,is_archived,(SELECT paid_off_on FROM loan_payoffs WHERE account_id=accounts.id) AS paid_off_on FROM accounts WHERE type='loan' ORDER BY name,id").fetch_all(&mut *conn).await?,
         installments: sqlx::query_as("SELECT i.id,i.name,i.debt_account_id,d.name AS debt_account_name,d.type AS debt_account_type,a.name AS account_name,CAST(i.monthly_amount AS TEXT) AS monthly_amount,i.installment_count,i.first_due_date,(a.is_archived=0 AND d.is_archived=0 AND a.type IN ('cash','bank','wallet') AND d.type IN ('credit_card','loan')) AS accounts_available FROM installments i JOIN accounts a ON a.id=i.account_id JOIN accounts d ON d.id=i.debt_account_id ORDER BY i.first_due_date,i.id").fetch_all(&mut *conn).await?,
         source_currency: sqlx::query_scalar("SELECT currency FROM settings WHERE id=1").fetch_one(&mut *conn).await?,
@@ -642,6 +643,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        // Adapt the historical fixture to the current snapshot fields.
+        sqlx::raw_sql(include_str!("../migrations/0010_irregular_income.sql").split("DROP TRIGGER").next().unwrap()).execute(&pool).await.unwrap();
         let data = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert_eq!(data.period_start_day, 31);
         assert_eq!(
@@ -799,6 +802,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        // Adapt the historical fixture to the current snapshot fields.
+        sqlx::raw_sql(include_str!("../migrations/0010_irregular_income.sql").split("DROP TRIGGER").next().unwrap()).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "income-0"));
         assert!(result
@@ -1010,6 +1015,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        // Adapt the historical fixture to the current snapshot fields.
+        sqlx::raw_sql(include_str!("../migrations/0010_irregular_income.sql").split("DROP TRIGGER").next().unwrap()).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -1145,6 +1152,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        // Adapt the historical fixture to the current snapshot fields.
+        sqlx::raw_sql(include_str!("../migrations/0010_irregular_income.sql").split("DROP TRIGGER").next().unwrap()).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result
             .items
@@ -1282,6 +1291,8 @@ mod tests {
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0036_loan_payoffs.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0038_account_loan_repayments.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0039_selective_defaults.sql")).execute(&pool).await.unwrap();
+        // Adapt the historical fixture to the current snapshot fields.
+        sqlx::raw_sql(include_str!("../migrations/0010_irregular_income.sql").split("DROP TRIGGER").next().unwrap()).execute(&pool).await.unwrap();
         let result = snapshot(&mut *pool.acquire().await.unwrap()).await.unwrap();
         assert!(result.items.iter().any(|i| i.id == "deductions-0"));
         assert!(result.items.iter().any(|i| i.name == "My social security"));

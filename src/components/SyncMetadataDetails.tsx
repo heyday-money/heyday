@@ -6,7 +6,7 @@ import { formatAmount } from '../lib/money'
 export function metadataTitle(kind: string) {
   const labels: Record<string, string> = {
     logo: t('Custom logo'), institution: t('Institution'), payee: t('Payee'), provider: t('Subscription provider'),
-    'account-link': t('Account institution'), facility: t('Loan facility'), contract: t('Loan contract'), installment: t('Installment'),
+    'account-logo': t('Cash account logo'), 'account-link': t('Account institution'), facility: t('Loan facility'), contract: t('Loan contract'), installment: t('Installment'),
     subscription: t('Subscription'), 'payment-plan': t('Payment plan'), 'planner-item': t('Planner item'),
     'planner-amount': t('Planner amount'), 'debt-amount': t('Debt forecast'), 'installment-amount': t('Installment forecast'),
     cycle: t('Cycle status'), opening: t('Opening cash'), settings: t('Financial settings'), 'card-limit': t('Shared credit limit'),

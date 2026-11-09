@@ -109,19 +109,21 @@ export interface Account {
   initial_loan_amount?: string | null
 }
 import type { LoanContract, LoanFacility } from './loans'
-export type NewAccount = Omit<Account, 'payroll_linked' | 'id' | 'current_balance' | 'paid_off_on' | 'is_archived'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null }
+export type NewAccount = Omit<Account, 'payroll_linked' | 'id' | 'current_balance' | 'paid_off_on' | 'is_archived'> & { currency: string; revolving_credit_limit?: string | null; institution_id?: string | null; logo_change?: LogoChange }
 
 export function listAccounts(includePaidOff = false, includeArchived = false): Promise<Account[]> {
   return invoke<Account[]>('list_accounts', { includePaidOff, includeArchived })
 }
 export type AccountUpdate = Omit<NewAccount, 'opening_balance'> & { id: string }
 export async function updateAccount(input: AccountUpdate): Promise<Account> {
-  const account = await invoke<Account>('update_account', { input })
+  const { logo_change: logoChange, ...details } = input
+  const account = await invoke<Account>('update_account', { input: details, logoChange })
   window.dispatchEvent(new Event('accounts-changed'))
   return account
 }
 export async function createAccount(input: NewAccount): Promise<Account> {
-  const account = await invoke<Account>('create_account', { input })
+  const { logo_change: logoChange, ...details } = input
+  const account = await invoke<Account>('create_account', { input: details, logoChange })
   window.dispatchEvent(new Event('accounts-changed'))
   return account
 }
@@ -135,7 +137,7 @@ export interface Income {
   type: IncomeType
   estimated_amount: string
   deductions_total: string
-  recurrence_frequency: 'monthly'
+  recurrence_frequency: 'monthly' | 'irregular'
   recurrence_day_of_month: number
   is_auto_create_transaction: boolean
   is_active: boolean
@@ -198,6 +200,13 @@ export async function createTransaction(input: NewTransaction): Promise<Transact
   const result = await invoke<Transaction>('create_transaction', { input })
   window.dispatchEvent(new Event('transactions-changed'))
   window.dispatchEvent(new Event('accounts-changed'))
+  return result
+}
+export async function updateTransaction(input: NewTransaction & { expected: Transaction }): Promise<Transaction> {
+  const result = await invoke<Transaction>('update_transaction', { input })
+  window.dispatchEvent(new Event('transactions-changed'))
+  window.dispatchEvent(new Event('accounts-changed'))
+  window.dispatchEvent(new Event('verification-changed'))
   return result
 }
 export async function deleteTransaction(id: string, confirmReconciled = false): Promise<void> {

@@ -81,8 +81,20 @@ pub async fn asset(
         .map_err(|e| e.to_string())
 }
 
+pub async fn save_account(conn: &mut SqliteConnection, account: &str, change: Option<&LogoChange>) -> Result<(), String> {
+    let Some(change) = change else { return Ok(()); };
+    let cash: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type='cash')").bind(account).fetch_one(&mut *conn).await.map_err(|e| e.to_string())?;
+    if !cash { return Err("Only cash accounts support an account logo.".into()); }
+    if let Some(asset) = asset(conn, change).await? {
+        sqlx::query("INSERT INTO account_logos(account_id,logo_asset_id) VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET logo_asset_id=EXCLUDED.logo_asset_id").bind(account).bind(asset).execute(&mut *conn).await.map_err(|e| e.to_string())?;
+    } else {
+        sqlx::query("DELETE FROM account_logos WHERE account_id=?").bind(account).execute(&mut *conn).await.map_err(|e| e.to_string())?;
+    }
+    prune(conn).await
+}
+
 pub async fn prune(conn: &mut SqliteConnection) -> Result<(), String> {
-    sqlx::query("DELETE FROM logo_assets WHERE NOT EXISTS(SELECT 1 FROM institutions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM payees WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscriptions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscription_providers WHERE logo_asset_id=logo_assets.id)")
+    sqlx::query("DELETE FROM logo_assets WHERE NOT EXISTS(SELECT 1 FROM account_logos WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM institutions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM payees WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscriptions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscription_providers WHERE logo_asset_id=logo_assets.id)")
         .execute(conn).await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -297,6 +309,7 @@ mod tests {
             .unwrap();
         sqlx::raw_sql(include_str!("../tests/fixtures/alpha-migrations/0040_subscription_management.sql")).execute(&pool).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0003_subscription_providers.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0011_cash_account_logos.sql").split("CREATE TRIGGER").next().unwrap()).execute(&pool).await.unwrap();
         let baseline: (String, Option<String>) =
             sqlx::query_as("SELECT logo_mode,logo_asset_id FROM institutions WHERE id='bank-002'")
                 .fetch_one(&pool)

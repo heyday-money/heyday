@@ -156,7 +156,11 @@ pub(crate) fn validate_account(mut input: NewAccount, allow_unclassified: bool) 
     Ok(input)
 }
 
+#[cfg(test)]
 pub async fn insert_account(pool: &SqlitePool, input: NewAccount) -> Result<Account, String> {
+    insert_with_logo(pool, input, None).await
+}
+async fn insert_with_logo(pool: &SqlitePool, input: NewAccount, logo_change: Option<crate::logos::LogoChange>) -> Result<Account, String> {
     let input = validate_account(input, false)?;
     let revolving_limit = input
         .revolving_credit_limit
@@ -232,6 +236,7 @@ pub async fn insert_account(pool: &SqlitePool, input: NewAccount) -> Result<Acco
             .await
             .map_err(|e| e.to_string())?;
     }
+    crate::logos::save_account(&mut tx, &account.id, logo_change.as_ref()).await?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(account)
 }
@@ -257,7 +262,11 @@ pub struct AccountUpdate {
     institution_id: Option<String>,
 }
 
+#[cfg(test)]
 async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, String> {
+    update_with_logo(pool, input, None).await
+}
+async fn update_with_logo(pool: &SqlitePool, input: AccountUpdate, logo_change: Option<crate::logos::LogoChange>) -> Result<Account, String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let saved: Account = sqlx::query_as(&format!(
         "SELECT {COLUMNS} FROM accounts WHERE id = ? AND is_archived = 0"
@@ -348,6 +357,7 @@ async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, Stri
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
+    crate::logos::save_account(&mut tx, &account.id, logo_change.as_ref()).await?;
     tx.commit().await.map_err(|e| e.to_string())?;
     account.payroll_linked = payroll_linked;
     Ok(account)
@@ -357,18 +367,20 @@ async fn update(pool: &SqlitePool, input: AccountUpdate) -> Result<Account, Stri
 pub async fn update_account(
     pool: tauri::State<'_, SqlitePool>,
     input: AccountUpdate,
+    logo_change: Option<crate::logos::LogoChange>,
 ) -> Result<Account, String> {
     let _database_operation = crate::backups::operation()?;
-    update(pool.inner(), input).await
+    update_with_logo(pool.inner(), input, logo_change).await
 }
 
 #[tauri::command]
 pub async fn create_account(
     pool: tauri::State<'_, SqlitePool>,
     input: NewAccount,
+    logo_change: Option<crate::logos::LogoChange>,
 ) -> Result<Account, String> {
     let _database_operation = crate::backups::operation()?;
-    insert_account(pool.inner(), input).await
+    insert_with_logo(pool.inner(), input, logo_change).await
 }
 
 #[tauri::command]
@@ -425,6 +437,7 @@ pub(crate) async fn remove_archived(pool: &SqlitePool, account_id: &str) -> Resu
             "This account has linked records. Remove its links before deleting it.".to_owned()
         } else { error.to_string() }
     })?;
+    crate::logos::prune(&mut tx).await?;
     tx.commit().await.map_err(|e| e.to_string())
 }
 
@@ -598,6 +611,38 @@ mod tests {
         object.remove("is_archived");
         object.insert("currency".into(), serde_json::json!("THB"));
         serde_json::from_value(value).unwrap()
+    }
+
+    #[tokio::test]
+    async fn cash_logo_edits_are_atomic_preserve_balances_and_survive_pruning() {
+        use base64::Engine;
+        fn custom(color: u8) -> crate::logos::LogoChange {
+            let mut bytes=vec![];
+            { let mut encoder=png::Encoder::new(&mut bytes,1,1); encoder.set_color(png::ColorType::Rgba); encoder.set_depth(png::BitDepth::Eight); encoder.write_header().unwrap().write_image_data(&[color,20,30,255]).unwrap(); }
+            crate::logos::LogoChange::Custom { data:format!("data:image/png;base64,{}",base64::engine::general_purpose::STANDARD.encode(bytes)) }
+        }
+        let pool=database().await; crate::save_currency(&pool,"THB").await.unwrap();
+        let account=insert_with_logo(&pool,input("cash"),Some(custom(10))).await.unwrap();
+        let old:String=sqlx::query_scalar("SELECT logo_asset_id FROM account_logos WHERE account_id=?").bind(&account.id).fetch_one(&pool).await.unwrap();
+        update_with_logo(&pool,edit_input(&account),None).await.unwrap();
+        crate::logos::prune(&mut *pool.acquire().await.unwrap()).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM logo_assets WHERE id=?").bind(&old).fetch_one(&pool).await.unwrap(),1);
+        let result=update_with_logo(&pool,edit_input(&account),Some(custom(40))).await.unwrap();
+        assert_eq!(result.opening_balance,account.opening_balance);assert_eq!(result.current_balance,account.current_balance);
+        let replacement:String=sqlx::query_scalar("SELECT logo_asset_id FROM account_logos WHERE account_id=?").bind(&account.id).fetch_one(&pool).await.unwrap();assert_ne!(old,replacement);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM logo_assets").fetch_one(&pool).await.unwrap(),1);
+        let mut changes=edit_input(&account);changes.name="Must roll back".into();
+        assert!(update_with_logo(&pool,changes,Some(crate::logos::LogoChange::Custom{data:"invalid".into()})).await.is_err());
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT name FROM accounts WHERE id=?").bind(&account.id).fetch_one(&pool).await.unwrap(),account.name);
+        assert!(insert_with_logo(&pool,input("bank"),Some(custom(10))).await.is_err());
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM accounts").fetch_one(&pool).await.unwrap(),1);
+        update_with_logo(&pool,edit_input(&account),Some(crate::logos::LogoChange::None)).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM account_logos").fetch_one(&pool).await.unwrap(),0);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM logo_assets").fetch_one(&pool).await.unwrap(),0);
+        update_with_logo(&pool,edit_input(&account),Some(custom(80))).await.unwrap();
+        sqlx::query("UPDATE accounts SET is_archived=1 WHERE id=?").bind(&account.id).execute(&pool).await.unwrap();
+        remove_archived(&pool,&account.id).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM logo_assets").fetch_one(&pool).await.unwrap(),0);
     }
 
     #[tokio::test]
