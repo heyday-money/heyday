@@ -54,6 +54,9 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: android-actions/setup-android@v3
+        with:
+          # Override the default list, which includes the unavailable legacy tools package.
+          packages: platform-tools
       - name: Install pinned NDK
         run: sdkmanager "ndk;$NDK_VERSION"
       - name: Configure SQLite C compiler and Rust linker
