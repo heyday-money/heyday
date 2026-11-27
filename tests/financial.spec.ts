@@ -189,3 +189,14 @@ test('irregular sources never produce dated forecasts in account outlook', () =>
   expect(periods[0].buckets.income.actual).toBe(3000n)
   expect(periods.every(period => period.buckets.income.forecast === 0n)).toBe(true)
 })
+
+
+test('Tracking contributes to Net Worth once and never to spendable cash forecasts', () => {
+  const input=data();input.accounts=[account('bank','bank','10000000'),account('car','tracking','60000000'),account('car-loan','loan','35000000'),{...account('old-asset','tracking','99999999'),is_archived:true}];
+  expect(netWorth(input.accounts)).toEqual({assets:70000000n,liabilities:35000000n,total:35000000n});
+  expect(monthlyOutlook(input,new Date(2026,0,15))[0].opening).toBe(10000000n);
+  input.transactions=[transaction('transfer','friend','200000','bank'),transaction('income','bank','5000')];
+  input.accounts[0].current_balance='10205000';
+  const period=monthlyOutlook(input,new Date(2026,0,15))[0];
+  expect(period.buckets.income.actual).toBe(5000n);expect(period.buckets.expenses.actual).toBe(0n);expect(period.actualNet).toBe(205000n);
+})

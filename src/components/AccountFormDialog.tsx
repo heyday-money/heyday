@@ -1,3 +1,4 @@
+import { TrackingFormDialog } from './TrackingFormDialog'
 import { LogoPicker } from './LogoPicker'
 import { useLogoAsset } from './LogoImage'
 import type { LogoChange } from '../lib/logos'
@@ -25,6 +26,7 @@ export const accountTypes = [
   { value: 'wallet', get label() { return translate("Digital Wallet") }, get groupLabel() { return translate("Wallets") }, icon: Wallet },
   { value: 'credit_card', get label() { return translate("Credit card") }, get groupLabel() { return translate("Credit cards") }, icon: CreditCard },
   { value: 'loan', get label() { return translate("Loan") }, get groupLabel() { return translate("Loans") }, icon: Landmark },
+  { value: 'tracking', get label() { return translate("Tracking") }, get groupLabel() { return translate("Tracking") }, icon: Landmark },
   { value: 'investment', get label() { return translate("Investment") }, get groupLabel() { return translate("Investments") }, icon: TrendingUp },
 ] as const
 const inputStyle = 'mt-2 w-full rounded-[10px] border border-line bg-page text-[14px] text-ink focus-visible:outline-2 focus-visible:outline-brand'
@@ -118,6 +120,8 @@ export function AccountFormDialog({ account: editing, initialType, currency, onC
       setError(error instanceof Error ? error.message : typeof error === 'string' ? error : "Could not save account. Please try again.")
     } finally { setSaving(false) }
   }
+
+  if (type === 'tracking') return <TrackingFormDialog account={editing} currency={currency} onClose={onClose} onSaved={onSaved} onOtherType={() => setType('cash')} />
 
   return <Dialog open onOpenChange={changeOpen}>
         <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden border-line bg-card p-0 sm:max-w-[640px]" showCloseButton={!busy}

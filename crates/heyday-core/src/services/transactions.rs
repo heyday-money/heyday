@@ -105,6 +105,9 @@ pub async fn adjust_wide(
             .await
             .map_err(|e| e.to_string())?
             .ok_or("Choose an existing account.")?;
+    if kind == "tracking" {
+        return Err("Use a dedicated Tracking action.".into());
+    }
     if active && archived {
         return Err("Choose an active account.".into());
     }
@@ -413,6 +416,8 @@ pub async fn remove_in_connection(
     id: &str,
     confirmed: bool,
 ) -> Result<(), String> {
+    if crate::services::tracking::has_table(conn, "insurance_entries").await? && sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM insurance_entries WHERE transaction_id=?)").bind(id).fetch_one(&mut *conn).await.map_err(|e|e.to_string())? { return Err("Reverse this premium from Insurance history.".into()); }
+    if crate::services::tracking::has_table(conn, "tracking_entries").await? && sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM tracking_entries WHERE transaction_id=?)").bind(id).fetch_one(&mut *conn).await.map_err(|e|e.to_string())? { return Err("Reverse this action from the Tracking account history.".into()); }
     crate::cloud_sync_ledger::protect_imported_deletion(conn, id).await?;
     let group = crate::salary_payments::group(conn, id).await?;
     let ids = if let Some(group) = &group {
@@ -510,9 +515,13 @@ pub async fn decorate_in_connection(
     let names = accounts
         .into_iter()
         .collect::<std::collections::HashMap<_, _>>();
+    let tracking_ids: std::collections::HashSet<String> = if crate::services::tracking::has_table(conn, "tracking_entries").await? { sqlx::query_scalar::<_,String>("SELECT transaction_id FROM tracking_entries").fetch_all(&mut *conn).await.map_err(|_|crate::database::ledger::DATABASE)?.into_iter().collect() } else { Default::default() };
+    let insurance_ids:std::collections::HashSet<String>=if crate::services::tracking::has_table(conn,"insurance_entries").await?{sqlx::query_scalar("SELECT transaction_id FROM insurance_entries").fetch_all(&mut *conn).await.map_err(|e|e.to_string())?.into_iter().collect()}else{Default::default()};
     for row in rows {
+        if insurance_ids.contains(&row.id){row.imported_linked_payment=true;}
+        if tracking_ids.contains(&row.id) { row.imported_linked_payment=true; }
         if let Some((protected, entry)) = entries.get(&row.id) {
-            row.imported_linked_payment = *protected;
+            row.imported_linked_payment |= *protected;
             if row.income_source_name.is_none() {
                 if let Some(source) = &entry.income_source {
                     row.income_source_id = Some(source.id.clone());

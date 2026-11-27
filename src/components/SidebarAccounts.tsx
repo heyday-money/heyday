@@ -7,7 +7,7 @@ import { formatAmount } from '../lib/money'
 
 const groups = [
   ['cash', 'Cash'], ['bank', 'Bank'], ['wallet', 'Wallets'], ['credit_card', 'Credit cards'],
-  ['loan', 'Loans'], ['investment', 'Investments'],
+  ['loan', 'Loans'], ['investment', 'Investments'], ['tracking', 'Tracking'],
 ] as const
 
 export function accountDisplayBalance(account: Pick<Account, 'type' | 'opening_balance'> & Partial<Pick<Account, 'current_balance'>>) {

@@ -16,12 +16,17 @@ jobs:
   core:
     name: Standalone core (Rust 1.89)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.89
       - run: cargo test --locked --manifest-path crates/heyday-core/Cargo.toml
       - run: python3 scripts/check-core-consumer.py
+      - name: Verify independent Git dependency
+        env:
+          CORE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/check-core-git-consumer.py --rev "$CORE_REVISION"
+      - run: python3 scripts/test-release-version.py
 
   frontend:
     name: Frontend and browser tests

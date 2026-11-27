@@ -9,6 +9,8 @@ use sha2::{Digest, Sha256};
 use sqlx::SqliteConnection;
 
 pub fn validate(v: &Metadata) -> Result<(), String> {
+    if v.kind == "insurance" { return super::insurance::decode(v).map(|_| ()); }
+    if v.kind == "tracking" { return super::tracking::decode(v).map(|_| ()); }
     let f = &v.fields;
     let bad = || Err(UNSAFE.to_string());
     match v.kind.as_str() {
@@ -135,6 +137,10 @@ pub async fn transaction_dependency(
     conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<String, String> {
+    let insurance:Option<String>=sqlx::query_scalar("SELECT policy_id FROM insurance_entries WHERE transaction_id=?").bind(id).fetch_optional(&mut *conn).await.map_err(|_|DATABASE)?;
+    if let Some(id)=insurance{return Ok(format!("metadata:insurance:{id}"))}
+    let tracking:Option<String>=sqlx::query_scalar("SELECT e.account_id FROM tracking_entries t JOIN tracking_events e ON e.id=t.event_id WHERE t.transaction_id=?").bind(id).fetch_optional(&mut *conn).await.map_err(|_|DATABASE)?;
+    if let Some(id)=tracking{return Ok(format!("metadata:tracking:{id}"))}
     let group:Option<String>=sqlx::query_scalar("SELECT m.group_id FROM ledger_sync_members m JOIN transactions t ON t.id=m.transaction_id WHERE t.id=?").bind(id).fetch_optional(conn).await.map_err(|_|DATABASE)?;
     Ok(format!("transaction:{}", group.as_deref().unwrap_or(id)))
 }
@@ -142,6 +148,8 @@ pub async fn dependencies(
     conn: &mut SqliteConnection,
     v: &Metadata,
 ) -> Result<Vec<String>, String> {
+    if v.kind == "insurance" { return super::insurance::dependencies(v); }
+    if v.kind == "tracking" { return super::tracking::dependencies(v); }
     let f = &v.fields;
     let mut result = vec![];
     let mut add = |column: &str, entity: &str| {
@@ -190,6 +198,10 @@ pub async fn dependencies(
         _ => {}
     }
     for dep in &mut result {
+        if let Some(id)=dep.strip_prefix("account:") {
+            let tracking:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND type='tracking')").bind(id).fetch_one(&mut *conn).await.map_err(|_|DATABASE)?;
+            if tracking { *dep=format!("metadata:tracking:{id}"); }
+        }
         if dep.starts_with(':') {
             dep.remove(0);
         }
@@ -390,7 +402,7 @@ pub async fn relationships(conn: &mut SqliteConnection, v: &Metadata) -> Result<
             account_type(
                 conn,
                 get(f, "account_id")?,
-                &["bank", "wallet", "credit_card", "loan"],
+                &["bank", "wallet", "credit_card", "loan", "cash", "tracking"],
             )
             .await?;
             if let Some(id) = optional(f, "reconciliation_id") {

@@ -83,6 +83,7 @@ const navigation = [
   { to: "/transactions", get label() { return translate("Transactions") }, icon: ArrowLeftRight },
   { to: "/installments", get label() { return translate("Installments") }, icon: ListOrdered },
   { to: "/subscriptions", get label() { return translate("Subscriptions") }, icon: Repeat },
+  {to:"/insurance",get label(){return translate("Insurance")},icon:Repeat},
   { to: "/income", get label() { return translate("Income") }, icon: ArrowUpRight },
   { to: "/accounts", get label() { return translate("Accounts") }, icon: Wallet },
   { to: "/settings", get label() { return translate("Settings") }, icon: SettingsIcon },

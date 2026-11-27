@@ -1,0 +1,11 @@
+/Users/anonymous/Workspace/heyday/desktop/src-tauri/targe/debug/deps/zeroize-736edca12283d208.d: /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/lib.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/aarch64.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/barrier.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/stack.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/../README.md
+
+/Users/anonymous/Workspace/heyday/desktop/src-tauri/targe/debug/deps/libzeroize-736edca12283d208.rlib: /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/lib.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/aarch64.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/barrier.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/stack.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/../README.md
+
+/Users/anonymous/Workspace/heyday/desktop/src-tauri/targe/debug/deps/libzeroize-736edca12283d208.rmeta: /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/lib.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/aarch64.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/barrier.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/stack.rs /Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/../README.md
+
+/Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/lib.rs:
+/Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/aarch64.rs:
+/Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/barrier.rs:
+/Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/stack.rs:
+/Users/anonymous/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zeroize-1.9.1/src/../README.md:

@@ -7,7 +7,7 @@ import { formatAmount } from '../lib/money'
 import { useFinancialData } from '../lib/useFinancialData'
 import { Button } from './ui/button'
 
-const types = [ ['cash', 'Cash'], ['bank', 'Bank'], ['wallet', 'Wallets'], ['credit_card', 'Credit cards'], ['loan', 'Loans'], ['investment', 'Investments'] ] as const
+const types = [ ['cash', 'Cash'], ['bank', 'Bank'], ['wallet', 'Wallets'], ['credit_card', 'Credit cards'], ['loan', 'Loans'], ['investment', 'Investments'], ['tracking', 'Tracking'] ] as const
 export function NetWorthPage() {
   useLanguage()
 
@@ -24,14 +24,15 @@ export function NetWorthPage() {
     <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       {[[translate("Net worth"), totals.total], [translate("Assets"), totals.assets], [translate("Liabilities"), totals.liabilities]].map(([label, amount]) => <div key={String(label)} className="min-w-0 rounded-2xl border border-line bg-card p-6"><dt className="text-sm text-muted">{translate(String(label))}</dt><dd className="mt-3 break-words text-[28px] font-semibold tabular-nums">{money(amount as bigint)}</dd></div>)}
     </dl>
-    <p className="mt-4 text-xs">{translate("Based on manual opening balances and recorded transactions. Investment values are entered manually. Overdrafts count as liabilities; card and loan credits count as assets. Expected income and payment plans are excluded.")}</p>
+    <p className="mt-4 text-xs">{translate("Based on manual opening balances and recorded transactions. Investment and Tracking values are entered manually. Overdrafts count as liabilities; card and loan credits count as assets. Expected income and payment plans are excluded.")}</p>
+    {data.accounts.some(a=>a.type==='tracking')&&<p className="mt-2 text-xs">{translate('Tracking values count once as assets, not spendable cash. Linked loans remain liabilities. Insurance coverage is excluded; only recorded cash surrender value is included.')}</p>}
     {!data.accounts.length ? <div className="mt-6 rounded-2xl border border-line bg-card p-8"><h3 className="font-semibold">{translate("No accounts yet")}</h3><Link to="/accounts" className="mt-3 inline-block text-brand">{translate("Add your first account →")}</Link></div> : <div className="mt-6 space-y-5">{types.map(([type, label]) => {
-      const accounts = data.accounts.filter(account => account.type === type)
+      const accounts = data.accounts.filter(account => !account.is_archived && account.type === type)
       if (!accounts.length) return null
       const total = accounts.reduce((sum, account) => sum + accountValue(account), 0n)
       return <section key={type} aria-label={translate("{value0} breakdown", { value0: label })} className="rounded-2xl border border-line bg-card p-5"><div className="mb-3 flex flex-wrap justify-between gap-3"><h3 className="font-semibold">{translate(String(label))}</h3><span className="font-semibold tabular-nums">{money(total)}</span></div><ul className="divide-y divide-line">{accounts.map(account => {
         const value = accountValue(account)
-        return <li key={account.id} className="flex flex-wrap justify-between gap-3 py-3"><Link to="/accounts" className="min-w-0 break-words hover:text-brand"><AccountLabel id={account.id} name={account.name} /></Link><div className="text-right"><span className={`tabular-nums ${value < 0n ? 'text-red-700 dark:text-red-400' : value > 0n ? 'text-green-700 dark:text-green-400' : ''}`}>{money(value)}</span><span className="ml-2 text-xs text-muted">{value < 0n ? translate("Liability") : value > 0n ? translate("Asset") : translate("Zero balance")}</span></div></li>
+        return <li key={account.id} className="flex flex-wrap justify-between gap-3 py-3"><Link to="/accounts/$accountId/details" params={{accountId:account.id}} className="min-w-0 break-words hover:text-brand"><AccountLabel id={account.id} name={account.name} /></Link><div className="text-right"><span className={`tabular-nums ${value < 0n ? 'text-red-700 dark:text-red-400' : value > 0n ? 'text-green-700 dark:text-green-400' : ''}`}>{money(value)}</span><span className="ml-2 text-xs text-muted">{value < 0n ? translate("Liability") : value > 0n ? translate("Asset") : translate("Zero balance")}</span></div></li>
       })}</ul></section>
     })}</div>}
     <p className="mt-5 text-xs">{translate("Historical net worth charts will be available when balance snapshots are supported.")}</p>

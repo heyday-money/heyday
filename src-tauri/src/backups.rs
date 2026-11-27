@@ -78,6 +78,26 @@ async fn integrity(conn: &mut SqliteConnection) -> Result<(), String> {
 async fn schema(conn: &mut SqliteConnection) -> Result<Vec<(String, String, String)>, String> {
     sqlx::query_as("SELECT type,name,sql FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*' AND sql IS NOT NULL ORDER BY type,name").fetch_all(conn).await.map_err(err)
 }
+// Validate without rewriting bytes: content hashes and IDs are sync identities.
+async fn validate_logos(conn: &mut SqliteConnection) -> Result<(), String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use sha2::{Digest, Sha256};
+    use heyday_core::services::logos::{normalize, MAX_BYTES};
+    let assets: Vec<(String, String, String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT id,content_hash,mime_type,width,height,length(data) FROM logo_assets"
+    ).fetch_all(&mut *conn).await.map_err(err)?;
+    for (id, hash, mime, width, height, size) in assets {
+        let invalid = || "The backup contains a corrupt logo image. Current data has not been changed.".to_string();
+        if mime != "image/png" || !(1..=128).contains(&width) || !(1..=128).contains(&height)
+            || size <= 0 || size > MAX_BYTES as i64 { return Err(invalid()); }
+        let bytes: Vec<u8> = sqlx::query_scalar("SELECT data FROM logo_assets WHERE id=?")
+            .bind(id).fetch_one(&mut *conn).await.map_err(err)?;
+        if format!("{:x}", Sha256::digest(&bytes)) != hash { return Err(invalid()); }
+        let (_, w, h) = normalize(&format!("data:image/png;base64,{}", STANDARD.encode(&bytes))).map_err(|_| invalid())?;
+        if (width, height) != (i64::from(w), i64::from(h)) { return Err(invalid()); }
+    }
+    Ok(())
+}
 async fn validate(conn: &mut SqliteConnection) -> Result<i64, String> {
     integrity(conn).await?;
     let history: Vec<(i64, Vec<u8>, bool)> =
@@ -139,6 +159,11 @@ async fn validate(conn: &mut SqliteConnection) -> Result<i64, String> {
     if settings != 1 {
         return Err("The backup is missing its application settings.".into());
     }
+    if history.last().unwrap().0 >= 14 { heyday_core::services::insurance::validate_database(conn).await?; }
+    if history.last().unwrap().0 >= 12 {
+        heyday_core::services::tracking::validate_database(conn).await?;
+    }
+    validate_logos(conn).await?;
     Ok(history.last().unwrap().0)
 }
 async fn vacuum(conn: &mut SqliteConnection, path: &Path) -> Result<(), String> {
@@ -470,6 +495,16 @@ mod tests {
         INSERT INTO reconciliation_entries VALUES(30,'receipt','2026-01-28','Salary','income',490000);
         INSERT INTO loan_facilities VALUES('loan',1000000);
         INSERT INTO loan_contracts(id,account_id,name,principal,remaining_principal,borrowing_date,receiving_account_id,payment_account_id,interest_rate,monthly_amount,installment_count,first_due_date,borrowing_kind) VALUES('contract','loan','Historic contract',10000,0,'2025-01-01','bank','bank',7500,1000,10,'2025-02-01','existing');").execute(pool).await.unwrap();
+        use sha2::{Digest, Sha256};
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, 1, 1);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.write_header().unwrap().write_image_data(&[0, 0, 0, 255]).unwrap();
+        }
+        sqlx::query("UPDATE logo_assets SET data=?,content_hash=? WHERE id='logo'")
+            .bind(&bytes).bind(format!("{:x}", Sha256::digest(&bytes))).execute(pool).await.unwrap();
     }
     // Compare every data table, including exact integers, blob bytes, timestamps,
     // explicit zeros, archived accounts and foreign-key identities.
@@ -541,6 +576,75 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn corrupt_and_missing_logos_reject_restore_without_changing_files() {
+        use sha2::{Digest, Sha256};
+        let directory = tempfile::tempdir().unwrap();
+        let source = database(&directory.path().join("source.db")).await;
+        populate(&source).await;
+        let target = database(&directory.path().join("target.db")).await;
+        let previous = contents(&target).await;
+        for (index, mutation) in [
+            "UPDATE logo_assets SET data=X'89504E47'",
+            "UPDATE logo_assets SET content_hash='wrong'",
+            "UPDATE logo_assets SET width=2",
+            "DELETE FROM logo_assets WHERE id='logo'",
+        ].iter().enumerate() {
+            let file = directory.path().join(format!("bad-{index}.db"));
+            export(&source, &file).await.unwrap();
+            let mut conn = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file).foreign_keys(false)).await.unwrap();
+            sqlx::query(mutation).execute(&mut conn).await.unwrap();
+            if index == 0 {
+                sqlx::query("UPDATE logo_assets SET content_hash=?")
+                    .bind(format!("{:x}", Sha256::digest([0x89, 0x50, 0x4e, 0x47])))
+                    .execute(&mut conn).await.unwrap();
+            }
+            conn.close().await.unwrap();
+            let original = std::fs::read(&file).unwrap();
+            let error = prepare(&file).await.unwrap_err();
+            assert!(error.contains(if index == 3 { "broken record references" } else { "corrupt logo" }), "{error}");
+            assert_eq!(std::fs::read(&file).unwrap(), original);
+            assert_eq!(contents(&target).await, previous);
+        }
+    }
+
+    #[tokio::test]
+    async fn tracking_backup_round_trip_preserves_metadata_events_and_balances() {
+        use heyday_core::services::tracking;
+        let directory = tempfile::tempdir().unwrap();
+        let source = database(&directory.path().join("tracking-source.db")).await;
+        heyday_core::database::settings::save_currency(&source, "THB").await.unwrap();
+        let draft = serde_json::from_value(serde_json::json!({"name":"Car","subtype":"vehicle","currency":"THB","opening_value":"60000000","opening_date":"2024-01-01"})).unwrap();
+        let asset = tracking::create(&source, draft).await.unwrap();
+        tracking::record(&source, tracking::EventInput {
+            cash_account_id: None,
+            id: "valuation".into(), account_id: asset.id.clone(), expected_revision: "0".into(), currency: "THB".into(), date: "2024-02-01".into(), notes: "Appraisal".into(),
+            action: tracking::EventAction::Value { value: "55000000".into() },
+        }).await.unwrap();
+        sqlx::query("INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('tracking-bank','Bank','bank',2000000,2000000)").execute(&source).await.unwrap();
+        let receivable = tracking::create(&source,serde_json::from_value(serde_json::json!({"name":"Receivable","subtype":"receivable","currency":"THB","opening_value":"0","opening_date":"2024-01-01"})).unwrap()).await.unwrap();
+        for (id,revision,action,cash) in [
+            ("lend","0",tracking::EventAction::Lend{principal:"1000000".into()},Some("tracking-bank".into())),
+            ("receive","1",tracking::EventAction::Receive{principal:"200000".into(),interest:"5000".into()},Some("tracking-bank".into())),
+            ("undo","2",tracking::EventAction::Reverse{event_id:"receive".into()},None),
+        ] {
+            tracking::record(&source,tracking::EventInput { id:id.into(),account_id:receivable.id.clone(),expected_revision:revision.into(),currency:"THB".into(),date:"2024-02-01".into(),notes:String::new(),action,cash_account_id:cash }).await.unwrap();
+        }
+        let expected = contents(&source).await;
+        let file = directory.path().join("tracking.db");
+        export(&source, &file).await.unwrap();
+        let original = std::fs::read(&file).unwrap();
+        let prepared = prepare(&file).await.unwrap();
+        let target = database(&directory.path().join("tracking-target.db")).await;
+        replace(&target, &prepared, &directory.path().join("recovery")).await.unwrap();
+        assert_eq!(contents(&target).await, expected);
+        assert_eq!(std::fs::read(file).unwrap(), original);
+        let restored = tracking::get(&target, &asset.id).await.unwrap();
+        assert_eq!(restored.current_value, "55000000");
+        assert_eq!(restored.revision, "1");
+        assert_eq!(restored.latest_valuation_date, "2024-02-01");
+    }
+
+    #[tokio::test]
     async fn beta_one_backup_upgrades_staged_copy_and_preserves_original() {
         let directory=tempfile::tempdir().unwrap();
         let source=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(directory.path().join("source.db")).create_if_missing(true)).await.unwrap();
@@ -559,7 +663,7 @@ mod tests {
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&target).await.unwrap(),9007199254740993);
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM salary_payments").fetch_one(&target).await.unwrap(),0);
         let history:Vec<i64>=sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version").fetch_all(&target).await.unwrap();
-        assert_eq!(history,vec![1,2,3,4,5,6,7,8,9,10,11]);
+        assert_eq!(history,vec![1,2,3,4,5,6,7,8,9,10,11,12,13,14]);
     }
 
     #[tokio::test]
@@ -609,6 +713,10 @@ mod tests {
         sqlx::raw_sql("UPDATE cloud_sync_binding SET financial_enabled=1,income_enabled=1,planner_enabled=1,full_enabled=1; INSERT INTO cloud_sync_pending(id,record_id,revision,request) VALUES(1,'planner-expense-0',1,'{\"savedCiphertext\":\"unchanged\"}');").execute(&pool).await.unwrap();
         let mut before = contents(&pool).await;
         before.push(("account_logos".into(), Vec::new()));
+        before.push(("tracking_accounts".into(), Vec::new()));
+        before.push(("tracking_events".into(), Vec::new()));
+        before.push(("tracking_entries".into(), Vec::new()));
+        for table in ["insurance_policies","insurance_sources","insurance_links","insurance_entries","insurance_categories"] { before.push((table.into(),Vec::new())); }
         before.sort_by(|a, b| a.0.cmp(&b.0));
         // Migration 10 appends the default monthly planning flag to existing sources.
         for (table, rows) in &mut before {
@@ -632,7 +740,7 @@ mod tests {
         // Existing migration-8 backups still validate and upgrade in a staged copy.
         let prepared = prepare(&backup).await.unwrap();
         let mut staged = connect(&prepared.directory.path().join("restore.db"),true).await.unwrap();
-        assert_eq!(validate(&mut staged).await.unwrap(),11);
+        assert_eq!(validate(&mut staged).await.unwrap(),14);
         assert_eq!(std::fs::read(&backup).unwrap(),backup_bytes);
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM cloud_sync_pending").fetch_one(&mut staged).await.unwrap(),0);
     }
@@ -807,4 +915,32 @@ mod tests {
         drop(exclusive);
         assert!(operation().is_ok());
     }
+}
+
+#[cfg(test)]
+mod insurance_backup_tests {
+ use super::*;
+ use serde_json::json;
+ use sqlx::sqlite::SqlitePoolOptions;
+ #[tokio::test]
+ async fn insurance_backup_preserves_policies_sources_payments_reversals_and_original(){
+  use heyday_core::services::insurance as ins;
+  let dir=tempfile::tempdir().unwrap();
+  let source=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(dir.path().join("source.db")).create_if_missing(true).foreign_keys(true)).await.unwrap();
+  MIGRATOR.run(&source).await.unwrap();
+  sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('bank','Bank','bank',10000000,10000000); INSERT INTO subscriptions(id,name,account_id,amount,frequency,first_billing_date,is_active) VALUES('sub','Premium','bank',100000,'monthly','2024-01-31',1);").execute(&source).await.unwrap();
+  let mut draft=insurance_draft();draft.details.replaces=Some(ins::Source{kind:"subscription".into(),id:"sub".into()});ins::save(&source,draft).await.unwrap();
+  ins::pay(&source,ins::RecordPayment{id:"premium".into(),policy_id:"policy".into(),expected_revision:"1".into(),schedule_id:"schedule".into(),due_date:"2024-02-29".into(),date:"2024-02-29".into(),notes:"Receipt".into()}).await.unwrap();
+  ins::reverse(&source,ins::Reverse{id:"undo".into(),policy_id:"policy".into(),payment_id:"premium".into(),expected_revision:"2".into()}).await.unwrap();
+  ins::pay(&source,ins::RecordPayment{id:"second".into(),policy_id:"policy".into(),expected_revision:"3".into(),schedule_id:"schedule".into(),due_date:"2024-03-31".into(),date:"2024-03-31".into(),notes:String::new()}).await.unwrap();
+  let file=dir.path().join("backup.db");export(&source,&file).await.unwrap();let original=std::fs::read(&file).unwrap();
+  let prepared=prepare(&file).await.unwrap();
+  let target=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(dir.path().join("target.db")).create_if_missing(true).foreign_keys(true)).await.unwrap();MIGRATOR.run(&target).await.unwrap();
+  replace(&target,&prepared,&dir.path().join("recovery")).await.unwrap();
+  assert_eq!(ins::list(&source).await.unwrap(),ins::list(&target).await.unwrap());
+  ins::validate_database(&mut *target.acquire().await.unwrap()).await.unwrap();
+  assert_eq!(std::fs::read(file).unwrap(),original);
+  assert_eq!(sqlx::query_scalar::<_,i64>("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&target).await.unwrap(),9900000);
+ }
+ fn insurance_draft()->heyday_core::services::insurance::Save{serde_json::from_value(json!({"id":"policy","expected_revision":null,"currency":"THB","details":{"name":"Car cover","insurer":"Insurer","policy_type":"motor","number_suffix":"1234","coverage_start":"2024-01-01","coverage_end":null,"renewal_date":"2027-01-01","coverage_amount":"70000000","deductible":"500000","notes":"","status":"active","status_date":"2024-01-01","asset_ids":[],"cash_value_id":null,"replaces":null},"schedule":{"id":"schedule","effective_from":"2024-01-01","first_date":"2024-01-31","end_date":null,"frequency":"monthly","amount":"100000","account_id":"bank","category_id":"planner-expense-6"}})).unwrap()}
 }

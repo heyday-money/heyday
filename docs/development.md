@@ -473,8 +473,9 @@ Home and other consumers of `useFinancialData` refresh on every window focus,
 including the same calendar day. Existing request ordering prevents an older
 response from overwriting a newer one; failed refreshes remain retryable.
 
-See [IMPROVEMENTS.md](../IMPROVEMENTS.md) for the remaining feature backlog and
-native release checks.
+In the shared workspace, see [IMPROVEMENTS.md](../../IMPROVEMENTS.md#desktop)
+for the desktop backlog and native release checks. This workspace-level file lives
+outside the standalone desktop repository.
 
 
 ### Account Excel export
@@ -839,3 +840,11 @@ application-owned. See [Phase 4 extraction](shared-core-phase-4.md) and the
 [core README](../crates/heyday-core/README.md) for adapter/locking requirements.
 Crypto vectors now live in `crates/heyday-core/tests/fixtures`, shared by native
 and browser tests. Run core tests as well as desktop tests after sync changes.
+
+
+Phase 5 adds an independent Git-revision consumer and iOS/Android core build jobs.
+Run `python3 scripts/check-core-git-consumer.py --rev <full-published-commit-sha>`
+to verify Git consumption and embedded test fixtures outside the checkout. Use
+`--offline` only after the revision and registry dependencies are cached. Run
+`python3 scripts/test-release-version.py` to verify app/core version isolation.
+See [Phase 5](shared-core-phase-5.md) for CI evidence and remaining execution gates.

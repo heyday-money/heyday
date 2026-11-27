@@ -35,6 +35,8 @@ pub struct Child {
 // Suffix ?: nullable; types: id, name, text:N, int:min:max, money, signed,
 // date, month, enum:a|b, logo (content hash), path, url, timestamp, png, hash.
 pub const SPECS: &[Spec] = &[
+    Spec{kind:"insurance",table:"insurance_policies",keys:"id",columns:"id=id,payload=text:1500000",children:&[]},
+    Spec{kind:"tracking",table:"tracking_accounts",keys:"account_id",columns:"account_id=id,payload=text:1500000",children:&[]},
     Spec{kind:"logo",table:"logo_assets",keys:"content_hash",columns:"content_hash=hash,mime_type=enum:image/png,width=int:1:128,height=int:1:128,data=png",children:&[]},
     Spec{kind:"institution",table:"institutions",keys:"id",columns:"id=id,name=name,short_name=text:100?,bank_code=text:100?,swift_code=text:100?,logo=path?,is_archived=int:0:1,logo_asset_id=logo?,logo_mode=enum:default|custom|none",children:&[]},
     Spec{kind:"payee",table:"payees",keys:"id",columns:"id=id,name=name,is_archived=int:0:1,logo_asset_id=logo?",children:&[]},
@@ -278,7 +280,7 @@ impl Metadata {
             .map(|k| get(&self.fields, k).unwrap())
             .collect();
         Record {
-            schema: 5,
+            schema: if self.kind == "insurance" { 7 } else if self.kind == "tracking" { 6 } else { 5 },
             entity: "metadata".into(),
             id: format!("{}:{}", self.kind, ids.join(":")),
             value: Some(Value::Metadata(self.clone())),
@@ -332,6 +334,8 @@ async fn read_rows(
 }
 pub async fn current(conn: &mut SqliteConnection, id: &str) -> Result<Record, String> {
     let (s, values) = parse(id)?;
+    if s.kind == "insurance" { return super::insurance::current(conn, values[0]).await; }
+    if s.kind == "tracking" { return super::tracking::current(conn, values[0]).await; }
     let clause = format!(
         "WHERE {}{}",
         s.keys
@@ -461,6 +465,11 @@ pub async fn apply(
     confirmed: bool,
 ) -> Result<(), String> {
     let (s, keys) = parse(id)?;
+    if s.kind == "insurance" { if let Some(v)=value{v.validate(id)?;} let (_,keys)=parse(id)?; return super::insurance::apply(conn,keys[0],value).await; }
+    if s.kind == "tracking" {
+        if let Some(v) = value { v.validate(id)?; crate::cloud_sync_metadata_rules::relationships(conn, v).await?; }
+        return super::tracking::apply(conn, keys[0], value).await;
+    }
     if let Some(v) = value {
         v.validate(id)?;
         crate::cloud_sync_metadata_rules::relationships(conn, v).await?;
@@ -612,7 +621,7 @@ pub async fn enable(pool: &SqlitePool) -> Result<(), String> {
                 .await
                 .map_err(|_| DATABASE)?;
         }
-        sqlx::query("INSERT INTO cloud_sync_dirty(record_id) SELECT DISTINCT 'transaction:'||group_id FROM ledger_sync_members m WHERE EXISTS(SELECT 1 FROM transactions t WHERE t.id=m.transaction_id) ON CONFLICT(record_id) DO UPDATE SET revision=revision+1").execute(&mut *tx).await.map_err(|_|DATABASE)?;
+        sqlx::query("INSERT INTO cloud_sync_dirty(record_id) SELECT DISTINCT 'transaction:'||group_id FROM ledger_sync_members m WHERE EXISTS(SELECT 1 FROM transactions t WHERE t.id=m.transaction_id) AND NOT EXISTS(SELECT 1 FROM tracking_entries te WHERE te.transaction_id=m.transaction_id) AND NOT EXISTS(SELECT 1 FROM insurance_entries ie WHERE ie.transaction_id=m.transaction_id) ON CONFLICT(record_id) DO UPDATE SET revision=revision+1").execute(&mut *tx).await.map_err(|_|DATABASE)?;
     }
     tx.commit().await.map_err(|_| DATABASE.into())
 }

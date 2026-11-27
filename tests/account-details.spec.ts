@@ -87,7 +87,7 @@ test('loan history includes linked charges and payroll, preserving correction sa
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
   await history.getByRole('button', { name: 'Delete Imported loan fee', exact: true }).click()
   await expect(dialog.getByRole('button', { name: 'Delete transaction', exact: true })).toBeDisabled()
-  await expect(dialog).toContainText('Delete this linked payment on the device')
+  await expect(dialog.getByRole('status')).toHaveText('Open the original salary, loan, installment, Tracking asset or insurance policy to reverse this linked payment. If its details are missing, sync first.')
 })
 
 test('history retries independently, retains archived activity, and handles an empty account', async ({ page }) => {

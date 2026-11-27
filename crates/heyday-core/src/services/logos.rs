@@ -111,7 +111,8 @@ pub async fn save_account(
 }
 
 pub async fn prune(conn: &mut SqliteConnection) -> Result<(), String> {
-    sqlx::query("DELETE FROM logo_assets WHERE NOT EXISTS(SELECT 1 FROM account_logos WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM institutions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM payees WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscriptions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscription_providers WHERE logo_asset_id=logo_assets.id)")
+    let tracking = if crate::services::tracking::has_table(conn, "tracking_accounts").await? { "NOT EXISTS(SELECT 1 FROM tracking_accounts WHERE logo_asset_id=logo_assets.id) AND " } else { "" };
+    sqlx::query(&format!("DELETE FROM logo_assets WHERE {tracking}NOT EXISTS(SELECT 1 FROM account_logos WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM institutions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM payees WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscriptions WHERE logo_asset_id=logo_assets.id) AND NOT EXISTS(SELECT 1 FROM subscription_providers WHERE logo_asset_id=logo_assets.id)"))
         .execute(conn).await.map_err(|e| e.to_string())?;
     Ok(())
 }

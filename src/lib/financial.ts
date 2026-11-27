@@ -1,3 +1,4 @@
+import { premiumForecast, replaces } from './insurance'
 import { exclusionFor } from './selective-defaults'
 import { t } from './i18n'
 import { cardForecasts, installmentCovered } from './card-billing'
@@ -22,6 +23,7 @@ export function accountValue(account: Account) {
 export function netWorth(accounts: Account[]) {
   let assets = 0n, liabilities = 0n
   for (const account of accounts) {
+    if (account.is_archived) continue
     const value = accountValue(account)
     if (value >= 0n) assets += value
     else liabilities -= value
@@ -85,6 +87,7 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
       }
     }
     for (const plan of data.plans) {
+      if(replaces(data.insurance,'payment-plan',plan.id))continue;
       if (!inside(plan.date) || plan.date <= todayString || !cash.has(plan.account_id)) continue
       if (plan.type === 'expense') add(buckets.expenses, plan.category_id ?? 'uncategorized', plan.category_name ?? t('Uncategorized'), 'forecast', BigInt(plan.amount))
       else if (plan.destination_account_id && debt.has(plan.destination_account_id) && !excluded(plan.destination_account_id)) {
@@ -118,7 +121,11 @@ export function monthlyOutlook(data: FinancialData, today = new Date()) {
         add(buckets.repayments, payment.debtId, payment.debtName, 'forecast', amount - covered)
       }
     }
+    for (const premium of premiumForecast(data.insurance,[...cash],fromKey,toKey)) {
+      if(premium.date>todayString)add(buckets.expenses,premium.schedule.category_id,t('Insurance'),'forecast',BigInt(premium.schedule.amount))
+    }
     for (const subscription of data.subscriptions ?? []) {
+      if(replaces(data.insurance,'subscription',subscription.id))continue;
       if (!subscription.is_active || !cash.has(subscription.account_id)) continue
       for (const date of subscriptionDates(subscription, fromKey, toKey)) {
         if (inside(date) && date > todayString) add(buckets.expenses, subscription.category_id ?? 'uncategorized', subscription.category_name ?? t('Uncategorized'), 'forecast', BigInt(subscription.amount))

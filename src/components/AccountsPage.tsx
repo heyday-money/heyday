@@ -56,7 +56,7 @@ export function AccountsPage() {
       setAccounts(current => [...current.filter(item => item.id !== account.id), account])
       if (selectedType !== 'all') setSelectedType(account.type)
     }} />}
-    <div className="mb-6 flex items-start justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-2xl font-semibold">{translate("A place for every account.")}</h2><p className="mt-2 text-[14px]">{translate("Your cash, savings, investments, and debts.")}</p></div>
       <Button onClick={() => setEditor({ type: selectedType === 'all' ? 'cash' : selectedType })} type="button" disabled={!currency || loading || loadError} size="lg"><Plus size={17} />{translate("Add account")}</Button>
     </div>
@@ -115,7 +115,7 @@ export function AccountsPage() {
               <p className="mt-3 text-[12px]">{account.type === 'loan' ? loanTypes.find(item => item.value === account.loan_type)?.label ?? translate("Loan (unclassified)") : definition.label} · {liability ? translate("Liability") : translate("Asset")}{account.last_four ? translate(" · •••• {value0}", { value0: account.last_four }) : ''}</p>
 
               <p className="mt-4 break-words text-[28px] font-semibold tabular-nums text-ink">{formatAmount(account.current_balance ?? account.opening_balance, currency)}</p>
-              <p className="mt-1 text-[12px]">{liability ? translate("Outstanding Balance") : translate("Current balance")}</p>
+              <p className="mt-1 text-[12px]">{liability ? translate("Outstanding Balance") : account.type === 'tracking' ? translate("Current value") : translate("Current balance")}</p>
               {account.type === 'loan' && <p className="mt-2 text-[13px]">{translate("Initial Loan Amount:")}{" "}{account.initial_loan_amount != null ? formatAmount(account.initial_loan_amount, currency) : translate("Not set")}</p>}
               {account.type === 'loan' && <p className="mt-2 text-[13px]">{translate("Monthly installment:")}{" "}{account.monthly_installment != null ? formatAmount(account.monthly_installment, currency) : translate("Not set")}</p>}
               {account.type === 'credit_card' && <CardCredit id={account.id} individualLimit={account.credit_limit} balance={account.current_balance ?? account.opening_balance} currency={currency} limits={limits} />}

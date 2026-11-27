@@ -76,7 +76,7 @@ export function AddTransactionDialog({ onClose, initialAccountId, editing }: { o
     setLoading(true); setLoadError(false)
     Promise.all([getSettings(), listAccounts(), listTransactionOptions()]).then(([settings, accounts, options]) => {
       if (active) {
-        setCurrency(settings.currency); setAccounts(accounts); setOptions(options)
+        setCurrency(settings.currency); setAccounts(accounts.filter(a => a.type !== 'tracking')); setOptions(options)
         const viewedAccount = accounts.find(account => account.id === initialAccountId)
         if (editing) {
           setAccountId(editing.account_id)

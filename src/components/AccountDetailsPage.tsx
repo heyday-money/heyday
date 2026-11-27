@@ -1,3 +1,4 @@
+import { TrackingDetails } from './TrackingDetails'
 import { AccountDeleteAction } from './AccountDeleteAction'
 import { SelectiveDefaultSettings } from './SelectiveDefault'
 import { useEffect, useState } from 'react'
@@ -62,7 +63,7 @@ function AccountDetails({ accountId }: { accountId: string }) {
   const editable = !account.is_archived && !account.paid_off_on
   const details = [
     [translate("Type"), account.type === 'loan' ? loanTypes.find(t => t.value === account.loan_type)?.label ?? translate("Loan (unclassified)") : accountTypes.find(t => t.value === account.type)?.label],
-    [debt ? translate("Outstanding balance") : translate("Current balance"), formatAmount(account.current_balance, currency)],
+    [debt ? translate("Outstanding balance") : account.type === 'tracking' ? translate("Current value") : translate("Current balance"), formatAmount(account.current_balance, currency)],
     ...(account.last_four ? [[translate("Last four digits"), `•••• ${account.last_four}`]] : []),
     ...(account.type === 'loan' ? [
       [translate("Initial Loan Amount"), account.initial_loan_amount != null ? formatAmount(account.initial_loan_amount, currency) : translate("Not set")],
@@ -87,6 +88,7 @@ function AccountDetails({ accountId }: { accountId: string }) {
       {account.type === 'credit_card' && <CardCredit id={account.id} individualLimit={account.credit_limit} balance={account.current_balance} currency={currency} limits={limits} />}
       {account.notes && <p className="mt-5 break-words whitespace-pre-wrap text-sm">{account.notes}</p>}
     </div>
+    {account.type === 'tracking' && <TrackingDetails account={account} currency={currency} />}
     {loan && <LoanAccountSummary data={loan} onSaved={() => setAttempt(n => n + 1)} />}
     {account.type !== 'loan' && <nav aria-label={translate("Account management")} className="flex flex-wrap gap-3">
       {['bank', 'wallet', 'credit_card', 'loan'].includes(account.type) && <Button asChild variant="outline"><Link to="/accounts/$accountId" params={{ accountId }}>{translate("Transactions & reconciliation")}</Link></Button>}

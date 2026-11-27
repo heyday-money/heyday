@@ -53,5 +53,20 @@
     "version": 11,
     "file": "0011_cash_account_logos.sql",
     "sha384": "d241391b0ae53ab6a27f7ee77aca668d9e460ef91824244fd47a3b760c2e3f56e7533d54ce14f376b03a30f664a59016"
+  },
+  {
+    "version": 12,
+    "file": "0012_tracking_foundation.sql",
+    "sha384": "1650180b7787b5626b57371aa93a617bb932586a865934d3dbc5df84534fe3c553d0b241a257bd7e8390237c7f4380da"
+  },
+  {
+    "version": 13,
+    "file": "0013_tracking_actions_sync.sql",
+    "sha384": "407f49e52c838aadc77e3f7460d58579ab44e087cf9d6b2ed72c9874b46fe128c0542218d47f64987f1dcd3a60f6f4b1"
+  },
+  {
+    "version": 14,
+    "file": "0014_insurance.sql",
+    "sha384": "a8477cc02360b6783925ffb23a9a2d621f02d0b0b3036276325acd4a3cac23d9ef6b8ed31dc722398ae52db9e43e9a53"
   }
 ]

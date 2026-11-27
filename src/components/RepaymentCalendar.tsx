@@ -1,3 +1,4 @@
+import { premiumOccurrences, replaces } from '../lib/insurance'
 import { useId, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -21,8 +22,9 @@ export function RepaymentCalendar({ data, today, loading }: { data: FinancialDat
   const [selected, setSelected] = useState<Date | null>(null)
   const month = selected ?? new Date(today.getFullYear(), today.getMonth(), 1)
   const year = month.getFullYear(), monthIndex = month.getMonth()
-  const deadlines = filter === 'subscriptions' ? [] : repaymentDeadlines(data.accounts, year, monthIndex)
-  const billings = filter === 'repayments' ? [] : subscriptionBillings(data.subscriptions ?? [], data.accounts, year, monthIndex)
+  const deadlines = ['subscriptions','insurance'].includes(filter) ? [] : repaymentDeadlines(data.accounts, year, monthIndex)
+  const billings = ['repayments','insurance'].includes(filter) ? [] : subscriptionBillings((data.subscriptions ?? []).filter(s=>!replaces(data.insurance,'subscription',s.id)), data.accounts, year, monthIndex)
+  const premiums=['repayments','subscriptions'].includes(filter)?[]:(data.insurance??[]).flatMap(p=>premiumOccurrences(p,dateKey(new Date(year,monthIndex,1)),dateKey(new Date(year,monthIndex+1,1)))).filter(o=>!o.payment&&data.accounts.some(a=>a.id===o.schedule.account_id&&!a.is_archived))
   const missing = data?.accounts.filter(a => isDebt(a) && !a.is_archived && !a.paid_off_on && a.payment_due_day == null) ?? []
   const start = (month.getDay() + 6) % 7
   const dayCount = new Date(year, monthIndex + 1, 0).getDate()
@@ -38,9 +40,9 @@ export function RepaymentCalendar({ data, today, loading }: { data: FinancialDat
       </div>
     </div>
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <p className="min-w-0 max-w-xl text-sm text-muted">{t('Account repayment deadlines and subscription billing dates. Scheduled reminders only; payments are not confirmed and balances stay unchanged.')}</p>
+      <p className="min-w-0 max-w-xl text-sm text-muted">{t('Account repayments, subscriptions and unpaid insurance premiums. Scheduled reminders do not confirm payment or change balances.')}</p>
       <div className="flex items-center gap-3"><label htmlFor={filterId} className="shrink-0 text-sm font-medium">{t('Calendar type')}</label><NativeSelect id={filterId} value={filter} onChange={event => setFilter(event.target.value)}>
-        <option value="all">{t('All')}</option><option value="repayments">{t('Repayments')}</option><option value="subscriptions">{t('Subscriptions')}</option>
+        <option value="insurance">{t('Insurance')}</option><option value="all">{t('All')}</option><option value="repayments">{t('Repayments')}</option><option value="subscriptions">{t('Subscriptions')}</option>
       </NativeSelect></div>
     </div>
         <div role="region" aria-label={t('Monthly payment calendar')} tabIndex={0} className="overflow-x-auto rounded-xl border border-line" aria-busy={loading}>
@@ -69,13 +71,13 @@ export function RepaymentCalendar({ data, today, loading }: { data: FinancialDat
                       <SubscriptionLogo subscription={subscription} />
                     </Link>
                   </TooltipTrigger><TooltipContent><p>{subscription.name} · {t('Subscription billing')}</p>{data.settings.currency && <p>{formatAmount(subscription.amount, data.settings.currency)}</p>}<p>{subscription.account_name}</p></TooltipContent></Tooltip>
-                </li>)}</ul>
+                </li>)}{premiums.filter(o=>o.date===date).map(o=><li key={o.policy.id+o.schedule.id}><Link to="/insurance" className="text-xs text-brand" title={formatAmount(o.schedule.amount,o.policy.currency)}>{o.policy.details.name} · {t('Insurance')}</Link></li>)}</ul>
               </td>
             })}</tr>)}</tbody>
           </table>
         </div>
-        {!deadlines.length && !billings.length && <p className="mt-4 text-sm" role="status">{t('No scheduled events for this month and filter.')}</p>}
+        {!deadlines.length && !billings.length && !premiums.length && <p className="mt-4 text-sm" role="status">{t('No scheduled events for this month and filter.')}</p>}
         {filter !== 'subscriptions' && !!missing.length && <div className="mt-4 rounded-xl border border-line p-4 text-sm"><p className="font-medium">{t('Accounts without a payment due day')}</p><ul className="mt-2 flex flex-wrap gap-3">{missing.map(a => <li key={a.id}><Link to="/accounts/$accountId/details" params={{ accountId: a.id }} className="text-brand hover:underline">{a.name}</Link></li>)}</ul></div>}
-        <p className="mt-3 text-xs text-muted">{t('Dates beyond month-end use the last day. Weekends and holidays are not adjusted. Manage repayment due days in account details and billing schedules in Subscriptions.')}</p>
+        <p className="mt-3 text-xs text-muted">{t('Dates beyond month-end use the last day. Weekends and holidays are not adjusted. Manage schedules in account details, Subscriptions or Insurance.')}</p>
   </section></TooltipProvider>
 }

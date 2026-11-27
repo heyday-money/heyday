@@ -27,7 +27,7 @@ export function cloudCancelSignIn(): Promise<void> { return invoke('cloud_cancel
 export function cloudSignOut(forgetDevice = false): Promise<boolean> { return invoke('cloud_sign_out', { forgetDevice }) }
 export function cloudManageSubscription(): Promise<void> { return invoke('cloud_manage_subscription') }
 export interface CloudDevice {
-  id: string; name: string; platform: 'macos' | 'windows' | 'linux';
+  id: string; name: string; platform: 'macos' | 'windows' | 'linux' | 'ios' | 'android';
   createdAt: string; lastSeenAt: string; revokedAt: string | null; current: boolean
 }
 export interface CloudDeviceView { currentDevice: CloudDevice | null; savedName: string | null; page: { devices: CloudDevice[]; nextCursor: string | null } }
@@ -78,7 +78,7 @@ export function updateCurrency(currency: string): Promise<Settings> {
   return invoke<Settings>('update_currency', { currency })
 }
 
-export type AccountType = 'cash' | 'bank' | 'wallet' | 'credit_card' | 'loan' | 'investment'
+export type AccountType = 'cash' | 'bank' | 'wallet' | 'credit_card' | 'loan' | 'investment' | 'tracking'
 export const loanTypes = [
   { value: 'mortgage', get label() { return t('Mortgage') } },
   { value: 'auto_loan', get label() { return t('Auto Loan') } },
@@ -241,6 +241,7 @@ export interface PaymentPlan {
 }
 export type SavePaymentPlan = Omit<PaymentPlan, 'id' | 'account_name' | 'destination_account_name' | 'category_name'> & { id: string | null; currency: string }
 export interface FinancialData {
+  insurance?: import('./insurance').Policy[]
   income_deductions?: IncomeDeduction[]
   selective_defaults?: import('./selective-defaults').SelectiveDefault[]
   card_billing?: CardBillingData

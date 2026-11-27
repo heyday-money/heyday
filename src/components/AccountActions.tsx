@@ -14,7 +14,7 @@ export function AccountActions({ account, onEdit }: { account: Account; onEdit: 
       <TooltipContent>{translate("Edit account")}</TooltipContent>
     </Tooltip>}
     <Tooltip>
-      <TooltipTrigger asChild><Button asChild variant="ghost" size="icon-sm"><Link to="/transactions" search={{ account: account.id }} aria-label={translate("Transaction history")}><History aria-hidden="true" /></Link></Button></TooltipTrigger>
+      <TooltipTrigger asChild><Button asChild variant="ghost" size="icon-sm"><Link to={account.type === 'tracking' ? '/accounts/$accountId/details' : '/transactions'} params={{ accountId: account.id }} search={{ account: account.id }} aria-label={translate("Transaction history")}><History aria-hidden="true" /></Link></Button></TooltipTrigger>
       <TooltipContent>{translate("Transaction history")}</TooltipContent>
     </Tooltip>
   <AccountDeleteAction account={account} />

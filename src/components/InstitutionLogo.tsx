@@ -19,7 +19,7 @@ export function InstitutionLogo({ institution, name = '', className = '' }: { in
 }
 export function AccountIcon({ type, logoAssetId, institution, name = '', className = '' }: { type?: AccountType; logoAssetId?: string | null; institution?: Institution; name?: string; className?: string }) {
   const custom = useLogoAsset(logoAssetId)
-  if (type === 'cash') return <LogoImage src={custom} name={name} className={className} />
+  if (type === 'cash' || type === 'tracking') return <LogoImage src={custom} name={name} className={className} />
   return <InstitutionLogo institution={institution} name={name} className={className} />
 }
 export function AccountLabel({ id, name, compact = false, iconSize = 'sm' }: { id?: string | null; name: string; compact?: boolean; iconSize?: 'sm' | 'lg' }) {

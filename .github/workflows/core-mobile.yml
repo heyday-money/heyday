@@ -1,0 +1,72 @@
+name: Core mobile targets
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: core-mobile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ios:
+    name: Core (${{ matrix.target }})
+    runs-on: macos-14
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-ios
+            sdk: iphoneos
+          - target: aarch64-apple-ios-sim
+            sdk: iphonesimulator
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/heyday-core -> target
+          key: ${{ matrix.target }}
+      - name: Select SDK
+        env:
+          APPLE_SDK: ${{ matrix.sdk }}
+        run: echo "SDKROOT=$(xcrun --sdk "$APPLE_SDK" --show-sdk-path)" >> "$GITHUB_ENV"
+      - run: cargo build --locked --lib --manifest-path crates/heyday-core/Cargo.toml --target ${{ matrix.target }}
+  android:
+    name: Core (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-linux-android, x86_64-linux-android]
+    env:
+      NDK_VERSION: '27.2.12479018'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89
+        with:
+          targets: ${{ matrix.target }}
+      - uses: android-actions/setup-android@v3
+      - name: Install pinned NDK
+        run: sdkmanager "ndk;$NDK_VERSION"
+      - name: Configure SQLite C compiler and Rust linker
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+        run: |
+          toolchain="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          target_key="${RUST_TARGET//-/_}"
+          echo "CC_${target_key}=$toolchain/${RUST_TARGET}24-clang" >> "$GITHUB_ENV"
+          echo "AR_${target_key}=$toolchain/llvm-ar" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_${target_key^^}_LINKER=$toolchain/${RUST_TARGET}24-clang" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/heyday-core -> target
+          key: ${{ matrix.target }}-${{ env.NDK_VERSION }}
+      - run: cargo build --locked --lib --manifest-path crates/heyday-core/Cargo.toml --target ${{ matrix.target }}

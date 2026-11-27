@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Laptop, Monitor, ShieldOff } from 'lucide-react'
+import { Laptop, Monitor, Smartphone, ShieldOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
@@ -87,12 +87,12 @@ export function CloudDevices({ disabled, onBusyChange, onSignedOut, onRegistered
     return Number.isNaN(parsed.getTime()) ? t('Unavailable') : parsed.toLocaleString(getLocale(), { dateStyle: 'medium', timeStyle: 'short' })
   }
   function row(device: CloudDevice, isCurrent = false) {
-    const Icon = device.revokedAt ? ShieldOff : device.platform === 'macos' ? Laptop : Monitor
+    const Icon = device.revokedAt ? ShieldOff : ['ios', 'android'].includes(device.platform) ? Smartphone : device.platform === 'macos' ? Laptop : Monitor
     return <li key={device.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-card p-4">
       <Icon aria-hidden="true" className="size-5 shrink-0 text-muted" />
       <div className="min-w-0 flex-1 basis-40">
         <p className="break-words font-medium">{device.name}</p>
-        <p className="text-xs text-muted">{device.platform === 'macos' ? 'macOS' : device.platform === 'windows' ? 'Windows' : 'Linux'}
+        <p className="text-xs text-muted">{device.platform === 'macos' ? 'macOS' : device.platform === 'windows' ? 'Windows' : device.platform === 'ios' ? 'iOS' : device.platform === 'android' ? 'Android' : 'Linux'}
           {isCurrent && <span className="ml-2 font-semibold text-primary">{t('This device')}</span>}
         </p>
         <p className="mt-1 text-xs text-muted">{device.revokedAt ? t('Revoked on {value0}', { value0: date(device.revokedAt) }) : t('Last active {value0}', { value0: date(device.lastSeenAt) })}</p>

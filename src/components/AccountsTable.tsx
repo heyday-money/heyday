@@ -43,7 +43,7 @@ export function AccountsTable({ accounts, currency, onEdit, showLoanDetails = fa
       const debt = ['credit_card', 'loan'].includes(account.type)
       const balance = BigInt(account.current_balance ?? account.opening_balance)
       const net = debt ? -balance : balance
-      return <><span className={`font-semibold ${net < 0n ? 'text-red-700 dark:text-red-400' : net > 0n ? 'text-green-700 dark:text-green-400' : 'text-ink'}`}>{formatAmount(balance.toString(), currency)}</span><span className="mt-1 block text-xs text-muted">{debt ? balance < 0n ? translate("Credit / overpayment") : translate("Outstanding balance") : balance < 0n ? translate("Negative balance") : translate("Current balance")}</span></>
+      return <><span className={`font-semibold ${net < 0n ? 'text-red-700 dark:text-red-400' : net > 0n ? 'text-green-700 dark:text-green-400' : 'text-ink'}`}>{formatAmount(balance.toString(), currency)}</span><span className="mt-1 block text-xs text-muted">{debt ? balance < 0n ? translate("Credit / overpayment") : translate("Outstanding balance") : balance < 0n ? translate("Negative balance") : account.type === 'tracking' ? translate("Current value") : translate("Current balance")}</span></>
     } },
     ...(showLoanDetails ? [{
       id: 'interest',
