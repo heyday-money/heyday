@@ -4,6 +4,7 @@ dist/
 test-results/
 playwright-report/
 src-tauri/target/
+src-tauri/targe/
 crates/heyday-core/target/
 src-tauri/gen/
 .DS_Store
