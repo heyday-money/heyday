@@ -61,3 +61,7 @@ See ../../docs/shared-core-phase-4.md for the extraction and validation record.
 See ../../docs/shared-core-phase-3.md for database/service boundaries, baseline
 checksums, packaging, and validation. The 0.1 library API is still evolving during
 extraction; desktop IPC and financial formats remain compatible.
+
+See [COMPATIBILITY.md](COMPATIBILITY.md) for independent version contracts and the
+reviewed Git dependency update policy. CI also builds iOS device/simulator and
+Android ARM64/x86_64 targets and verifies a consumer of the full Git revision.

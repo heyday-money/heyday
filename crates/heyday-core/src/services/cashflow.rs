@@ -104,6 +104,8 @@ pub struct PlannerCardTransaction {
 }
 #[derive(Serialize)]
 pub struct Planner {
+    pub insurance:Vec<super::insurance::Policy>,
+    pub insurance_cash_accounts:Vec<String>,
     pub selective_defaults: Vec<crate::selective_defaults::Exclusion>,
     pub ledger_transactions: Vec<PlannerCardTransaction>,
     pub card_billing: crate::card_billing::BillingData,
@@ -126,6 +128,8 @@ pub struct Planner {
 }
 pub async fn snapshot(conn: &mut SqliteConnection) -> Result<Planner, sqlx::Error> {
     let mut result=Planner {
+        insurance:super::insurance::all(conn).await.map_err(sqlx::Error::Protocol)?,
+        insurance_cash_accounts:sqlx::query_scalar("SELECT id FROM accounts WHERE is_archived=0 AND type IN ('cash','bank','wallet')").fetch_all(&mut *conn).await?,
         selective_defaults: crate::selective_defaults::periods(conn).await?,
         ledger_transactions: sqlx::query_as("SELECT (SELECT COALESCE(lp.loan_account_id,c.account_id) FROM loan_payment_parts lp LEFT JOIN loan_contracts c ON c.id=lp.contract_id WHERE lp.transaction_id=t.id) AS loan_account_id,(SELECT component FROM loan_payment_parts WHERE transaction_id=t.id) AS loan_component,t.id,t.type AS kind,t.account_id,a.name AS account_name,a.type AS account_type,t.income_source_id,(SELECT name FROM incomes WHERE id=t.income_source_id) income_source_name,t.category_id,(SELECT name FROM categories WHERE id=t.category_id) category_name,t.destination_account_id,d.type AS destination_account_type,CAST(t.amount AS TEXT) AS amount,t.date FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN accounts d ON d.id=t.destination_account_id ORDER BY t.date,t.id").fetch_all(&mut *conn).await?,
         card_billing: crate::card_billing::snapshot(conn).await?,

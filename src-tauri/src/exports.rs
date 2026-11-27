@@ -6,7 +6,10 @@ use tauri_plugin_dialog::DialogExt;
 // Monetary columns are decimal text: Excel numbers only retain 15 significant
 // digits, whereas our database accepts the full signed 64-bit minor-unit range.
 fn decimal(value: i64, digits: u32) -> String {
-    let value = i128::from(value);
+    decimal_wide(i128::from(value), digits)
+}
+
+fn decimal_wide(value: i128, digits: u32) -> String {
     let scale = 10_i128.pow(digits);
     let sign = if value < 0 { "-" } else { "" };
     let absolute = value.abs();
@@ -45,6 +48,15 @@ const HEADERS: &[&str] = &[
     "Notes",
     "Created at (UTC)",
     "Updated at (UTC)",
+    "Tracking subtype",
+    "Asset opening date",
+    "Latest valuation date",
+    "Debtor",
+    "Receivable due date",
+    "Linked loan ID",
+    "Linked loan name",
+    "Linked loan balance (informational)",
+    "Asset equity (informational)",
 ];
 
 async fn snapshot(pool: &SqlitePool) -> Result<(Option<String>, Vec<Vec<String>>), String> {
@@ -58,7 +70,7 @@ async fn snapshot(pool: &SqlitePool) -> Result<(Option<String>, Vec<Vec<String>>
         Some("KWD" | "BHD") => 3,
         _ => 2,
     };
-    let records = sqlx::query("SELECT a.*, p.paid_off_on, g.name AS group_name, g.credit_limit AS group_limit, f.credit_limit AS facility_limit FROM accounts a LEFT JOIN loan_payoffs p ON p.account_id=a.id LEFT JOIN card_limit_members m ON m.account_id=a.id LEFT JOIN card_limit_groups g ON g.id=m.group_id LEFT JOIN loan_facilities f ON f.account_id=a.id ORDER BY a.type, a.name COLLATE NOCASE, a.id")
+    let records = sqlx::query("SELECT a.*, t.subtype AS tracking_subtype, t.opening_date AS asset_opening_date, t.debtor, t.due_date AS receivable_due_date, t.linked_loan_id, l.name AS linked_loan_name, l.current_balance AS linked_loan_balance, COALESCE((SELECT e.date FROM tracking_events e WHERE e.account_id=a.id AND e.kind IN ('value','buy') AND NOT EXISTS(SELECT 1 FROM tracking_events r WHERE r.reverses_id=e.id) ORDER BY e.revision DESC LIMIT 1),t.opening_date) AS valuation_date, p.paid_off_on, g.name AS group_name, g.credit_limit AS group_limit, f.credit_limit AS facility_limit FROM accounts a LEFT JOIN tracking_accounts t ON t.account_id=a.id LEFT JOIN accounts l ON l.id=t.linked_loan_id LEFT JOIN loan_payoffs p ON p.account_id=a.id LEFT JOIN card_limit_members m ON m.account_id=a.id LEFT JOIN card_limit_groups g ON g.id=m.group_id LEFT JOIN loan_facilities f ON f.account_id=a.id ORDER BY a.type, a.name COLLATE NOCASE, a.id")
         .fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
     let mut rows = Vec::with_capacity(records.len());
     for row in records {
@@ -105,6 +117,23 @@ async fn snapshot(pool: &SqlitePool) -> Result<(Option<String>, Vec<Vec<String>>
             text("notes")?,
             text("created_at")?,
             text("updated_at")?,
+            text("tracking_subtype")?,
+            text("asset_opening_date")?,
+            text("valuation_date")?,
+            text("debtor")?,
+            text("receivable_due_date")?,
+            text("linked_loan_id")?,
+            text("linked_loan_name")?,
+            number("linked_loan_balance", digits)?,
+            if text("tracking_subtype")?.is_empty() {
+                String::new()
+            } else {
+                let value: i64 = row.try_get("current_balance").map_err(|e| e.to_string())?;
+                let loan: Option<i64> = row
+                    .try_get("linked_loan_balance")
+                    .map_err(|e| e.to_string())?;
+                decimal_wide(i128::from(value) - i128::from(loan.unwrap_or(0)), digits)
+            },
         ]);
     }
     tx.commit().await.map_err(|e| e.to_string())?;
@@ -141,6 +170,9 @@ fn workbook(
         format!("Currency: {}. Includes every active, archived and paid-off account from one database snapshot.", currency.unwrap_or("Not selected")),
         "All amounts are exact decimal text in currency units, not minor units. This avoids Excel's 15-digit numeric precision limit.".into(),
         "Positive cash, bank, wallet and investment balances are assets. Negative balances represent overdrafts or negative valuations.".into(),
+        "Tracking balances are recorded asset values, included once in Net Worth and excluded from spendable cash. Receivable due dates are reminders, not cash forecasts.".into(),
+        "Linked loan balances and equity are informational: do not add them to account totals. The loan is already exported as a separate liability. Insurance coverage and premiums do not increase asset value.".into(),
+        "Latest valuation date is the opening date or most recent unreversed valuation/purchase. Review estimates at least every 90 days; receivables are outstanding principal, not market estimates.".into(),
         "Positive credit card and loan balances are amounts owed. Negative debt balances represent credits or overpayments.".into(),
         "Individual card limits remain saved but are inactive for grouped cards. Repeated shared group limits must not be summed.".into(),
         "Blank means not configured; zero is explicit. Annual interest is a percentage. Last four digits and IDs are text.".into(),
@@ -265,6 +297,66 @@ mod tests {
         publish(&path, &bytes).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         assert_eq!(snapshot(&pool).await.unwrap().1, rows);
+    }
+
+    #[tokio::test]
+    async fn tracking_export_keeps_dates_links_and_exact_equity() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        heyday_core::database::MIGRATOR.run(&pool).await.unwrap();
+        sqlx::raw_sql("UPDATE settings SET currency='THB'; INSERT INTO accounts(id,name,type,opening_balance,current_balance) VALUES('loan','Car loan','loan',35000000,35000000),('car','Family car','tracking',60000000,60000000),('r','Receivable','tracking',1000000,1000000); INSERT INTO tracking_accounts(account_id,subtype,opening_date,linked_loan_id,debtor,due_date) VALUES('car','vehicle','2026-01-01','loan',NULL,NULL),('r','receivable','2026-01-01',NULL,'Friend','2026-12-01');").execute(&pool).await.unwrap();
+        let (_, rows) = snapshot(&pool).await.unwrap();
+        let car = rows.iter().find(|r| r[0] == "car").unwrap();
+        assert_eq!(
+            &car[23..],
+            &[
+                "vehicle",
+                "2026-01-01",
+                "2026-01-01",
+                "",
+                "",
+                "loan",
+                "Car loan",
+                "350000.00",
+                "250000.00"
+            ]
+        );
+        let receivable = rows.iter().find(|r| r[0] == "r").unwrap();
+        assert_eq!(&receivable[26..28], &["Friend", "2026-12-01"]);
+        assert!(rows.iter().all(|r| r.len() == HEADERS.len()));
+        let input = serde_json::json!({"id":"value", "account_id":"car", "expected_revision":"0", "currency":"THB", "date":"2026-02-01", "notes":"", "action":{"kind":"value","value":"55000000"}, "cash_account_id":null});
+        heyday_core::services::tracking::record(&pool, serde_json::from_value(input).unwrap())
+            .await
+            .unwrap();
+        let (_, valued) = snapshot(&pool).await.unwrap();
+        let car = valued.iter().find(|r| r[0] == "car").unwrap();
+        assert_eq!(car[25], "2026-02-01");
+        assert_eq!(car[31], "200000.00");
+        let input = serde_json::json!({"id":"undo", "account_id":"car", "expected_revision":"1", "currency":"THB", "date":"2026-02-02", "notes":"", "action":{"kind":"reverse","event_id":"value"}, "cash_account_id":null});
+        heyday_core::services::tracking::record(&pool, serde_json::from_value(input).unwrap())
+            .await
+            .unwrap();
+        let (_, reversed) = snapshot(&pool).await.unwrap();
+        assert_eq!(
+            reversed.iter().find(|r| r[0] == "car").unwrap()[25],
+            "2026-01-01"
+        );
+        // An overpaid loan may make informational equity exceed signed i64.
+        sqlx::query("UPDATE accounts SET current_balance=? WHERE id='loan'")
+            .bind(i64::MIN)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let (_, rows) = snapshot(&pool).await.unwrap();
+        assert_eq!(
+            rows.iter().find(|r| r[0] == "car").unwrap()[31],
+            "92233720369147758.08"
+        );
+        let strings = xml(
+            &workbook(Some("THB"), &rows).unwrap(),
+            "xl/sharedStrings.xml",
+        );
+        assert!(strings.contains("excluded from spendable cash"));
+        assert!(strings.contains("do not add them to account totals"));
     }
 
     #[tokio::test]

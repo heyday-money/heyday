@@ -300,6 +300,10 @@ async fn metadata_records(p: &SqlitePool) -> Vec<store::Record> {
 async fn complete_bootstrap_round_trips_every_metadata_kind_and_derived_balances() {
     let a = db(true).await;
     seed(&a).await;
+    crate::services::tracking::create(&a, serde_json::from_value(json!({"name":"Car","subtype":"vehicle","currency":"THB","opening_value":"60000000","opening_date":"2024-01-01"})).unwrap()).await.unwrap();
+    crate::services::insurance::save(&a,insurance_draft()).await.unwrap();
+    crate::services::insurance::pay(&a,crate::services::insurance::RecordPayment{id:"bootstrap-premium".into(),policy_id:"policy".into(),expected_revision:"1".into(),schedule_id:"schedule".into(),due_date:"2024-02-29".into(),date:"2024-02-29".into(),notes:String::new()}).await.unwrap();
+
     deliver(&a, &[]).await.unwrap();
     let changes = drain(&a).await;
     assert_clean(&a).await;
@@ -826,4 +830,72 @@ async fn catalog_rename_keeps_account_links_when_label_update_arrives_first() {
         .unwrap(),
         ("bank-002".into(), "Renamed bank".into())
     );
+}
+
+
+#[tokio::test]
+async fn tracking_cash_history_sync_is_atomic_idempotent_and_reversible() {
+    use crate::services::tracking::{self, EventInput, EventAction};
+    let a=db(true).await;seed(&a).await;
+    let b=db(true).await;
+    let asset=tracking::create(&a,serde_json::from_value(json!({"name":"Friend loan","subtype":"receivable","currency":"THB","opening_value":"0","opening_date":"2024-01-01"})).unwrap()).await.unwrap();
+    let before:i64=sqlx::query_scalar("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&a).await.unwrap();
+    let lend=||EventInput{id:"tracking-lend".into(),account_id:asset.id.clone(),expected_revision:"0".into(),currency:"THB".into(),date:"2024-06-01".into(),notes:"Principal only".into(),action:EventAction::Lend{principal:"1000000".into()},cash_account_id:Some("bank".into())};
+    tracking::record(&a,lend()).await.unwrap();tracking::record(&a,lend()).await.unwrap();
+    let initial=drain(&a).await;assert!(initial.iter().any(|c|c.request.protocol==6));deliver(&b,&initial).await.unwrap();assert_clean(&a).await;assert_clean(&b).await;
+    assert_eq!(tracking::get(&b,&asset.id).await.unwrap().current_value,"1000000");
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&b).await.unwrap(),before-1000000);
+    tracking::record(&a,EventInput{id:"tracking-receive".into(),account_id:asset.id.clone(),expected_revision:"1".into(),currency:"THB".into(),date:"2024-06-02".into(),notes:"Payment".into(),action:EventAction::Receive{principal:"200000".into(),interest:"5000".into()},cash_account_id:Some("bank".into())}).await.unwrap();
+    let payment=drain(&a).await;deliver(&b,&payment).await.unwrap();assert_clean(&b).await;
+    assert_eq!(tracking::get(&b,&asset.id).await.unwrap().current_value,"800000");
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT amount FROM transactions WHERE id='tracking-receive-interest' AND type='income'").fetch_one(&b).await.unwrap(),5000);
+    assert!(crate::transactions::remove_confirmed(&b,"tracking-receive-interest",false).await.is_err());
+    let mut conn=b.acquire().await.unwrap();
+    let forbidden=crate::cloud_sync_store::Record{schema:2,entity:"transaction".into(),id:"tracking-receive-interest".into(),value:None};
+    assert!(!crate::cloud_sync_ledger::apply(&mut conn,&forbidden,true).await.unwrap());
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM transactions WHERE id='tracking-receive-interest'").fetch_one(&mut *conn).await.unwrap(),1);
+    drop(conn);
+
+    tracking::record(&b,EventInput{id:"tracking-reverse".into(),account_id:asset.id.clone(),expected_revision:"2".into(),currency:"THB".into(),date:"2024-06-03".into(),notes:"Correction".into(),action:EventAction::Reverse{event_id:"tracking-receive".into()},cash_account_id:None}).await.unwrap();
+    let reversed=drain(&b).await;deliver(&a,&reversed).await.unwrap();assert_clean(&a).await;
+    assert_eq!(tracking::get(&a,&asset.id).await.unwrap().current_value,"1000000");
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT current_balance FROM accounts WHERE id='bank'").fetch_one(&a).await.unwrap(),before-1000000);
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM transactions WHERE id LIKE 'tracking-receive-%'").fetch_one(&a).await.unwrap(),0);
+}
+
+#[tokio::test]
+async fn competing_tracking_valuations_require_explicit_conflict_choice() {
+    use crate::services::tracking::{self,EventInput,EventAction};
+    let a=db(true).await;let b=db(true).await;
+    crate::database::settings::save_currency(&a,"THB").await.unwrap();
+    let asset=tracking::create(&a,serde_json::from_value(json!({"name":"Car","subtype":"vehicle","currency":"THB","opening_value":"60000000","opening_date":"2024-01-01"})).unwrap()).await.unwrap();
+    deliver(&b,&drain(&a).await).await.unwrap();
+    let change=|id:&str,value:&str|EventInput{id:id.into(),account_id:asset.id.clone(),expected_revision:"0".into(),currency:"THB".into(),date:"2024-06-01".into(),notes:"Estimate".into(),action:EventAction::Value{value:value.into()},cash_account_id:None};
+    tracking::record(&a,change("estimate-a","55000000")).await.unwrap();tracking::record(&b,change("estimate-b","52000000")).await.unwrap();
+    deliver(&b,&drain(&a).await).await.unwrap();
+    assert_eq!(tracking::get(&b,&asset.id).await.unwrap().current_value,"52000000");
+    choose(&b,&format!("metadata:tracking:{}",asset.id),"remote").await;
+    assert_eq!(tracking::get(&b,&asset.id).await.unwrap().current_value,"55000000");
+    assert_clean(&b).await;
+}
+
+fn insurance_draft()->crate::services::insurance::Save{serde_json::from_value(json!({"id":"policy","expected_revision":null,"currency":"THB","details":{"name":"Car cover","insurer":"Insurer","policy_type":"motor","number_suffix":"1234","coverage_start":"2024-01-01","coverage_end":null,"renewal_date":"2027-01-01","coverage_amount":"70000000","deductible":"500000","notes":"","status":"active","status_date":"2024-01-01","asset_ids":[],"cash_value_id":null,"replaces":null},"schedule":{"id":"schedule","effective_from":"2024-01-01","first_date":"2024-01-31","end_date":null,"frequency":"monthly","amount":"100000","account_id":"bank","category_id":"planner-expense-6"}})).unwrap()}
+
+#[tokio::test]
+async fn insurance_premiums_sync_atomically_retry_reverse_and_conflict(){
+ use crate::services::insurance as ins;
+ let a=db(true).await;seed(&a).await;let b=db(true).await;
+ ins::save(&a,insurance_draft()).await.unwrap();
+ let initial=drain(&a).await;assert!(initial.iter().any(|c|c.request.protocol==7));deliver(&b,&initial).await.unwrap();assert_clean(&b).await;
+ let pay=||ins::RecordPayment{id:"premium-payment".into(),policy_id:"policy".into(),expected_revision:"1".into(),schedule_id:"schedule".into(),due_date:"2024-02-29".into(),date:"2024-02-29".into(),notes:String::new()};
+ ins::pay(&a,pay()).await.unwrap();ins::pay(&a,pay()).await.unwrap();
+ deliver(&b,&drain(&a).await).await.unwrap();assert_clean(&b).await;
+ assert_eq!(ins::list(&b).await.unwrap()[0].payments.len(),1);
+ ins::reverse(&b,ins::Reverse{id:"premium-reverse".into(),policy_id:"policy".into(),payment_id:"premium-payment".into(),expected_revision:"2".into()}).await.unwrap();
+ deliver(&a,&drain(&b).await).await.unwrap();assert_clean(&a).await;
+ assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM transactions WHERE id='premium-payment'").fetch_one(&a).await.unwrap(),0);
+ let mut left=insurance_draft();left.expected_revision=Some("3".into());left.schedule=None;left.details.name="Left".into();ins::save(&a,left).await.unwrap();
+ let mut right=insurance_draft();right.expected_revision=Some("3".into());right.schedule=None;right.details.name="Right".into();ins::save(&b,right).await.unwrap();
+ deliver(&b,&drain(&a).await).await.unwrap();assert_eq!(ins::list(&b).await.unwrap()[0].details.name,"Right");
+ choose(&b,"metadata:insurance:policy","remote").await;assert_eq!(ins::list(&b).await.unwrap()[0].details.name,"Left");assert_clean(&b).await;
 }

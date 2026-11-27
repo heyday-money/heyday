@@ -180,7 +180,7 @@ impl Mutation {
         )
     }
     fn validate(&self) -> Result<(), String> {
-        if !matches!(self.protocol, 1 | 2 | 3 | 4 | 5)
+        if !matches!(self.protocol, 1 | 2 | 3 | 4 | 5 | 6 | 7)
             || self.payload.format != "heyday-record-v2"
             || self.payload.algorithm != "A256GCM-HKDF-SHA256"
             || !matches!(self.operation.as_str(), "put" | "delete")
@@ -322,7 +322,7 @@ pub fn encrypt_with_identity(
     plaintext: &[u8],
     protocol: u8,
 ) -> Result<Mutation, String> {
-    if !matches!(protocol, 1 | 2 | 3 | 4 | 5)
+    if !matches!(protocol, 1 | 2 | 3 | 4 | 5 | 6 | 7)
         || plaintext.len() > ciphertext_limit(protocol) - 16
         || base_version < 0
     {

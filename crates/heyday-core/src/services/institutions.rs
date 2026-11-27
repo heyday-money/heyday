@@ -139,7 +139,7 @@ pub async fn list_institutions(pool: &SqlitePool) -> Result<InstitutionDirectory
             .fetch_all(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
-    let accounts = sqlx::query_as("SELECT id,name,type AS kind,institution_id,(SELECT logo_asset_id FROM account_logos WHERE account_id=accounts.id) AS logo_asset_id FROM accounts")
+    let accounts = sqlx::query_as("SELECT id,name,type AS kind,institution_id,COALESCE((SELECT logo_asset_id FROM account_logos WHERE account_id=accounts.id),(SELECT logo_asset_id FROM tracking_accounts WHERE account_id=accounts.id)) AS logo_asset_id FROM accounts")
         .fetch_all(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;

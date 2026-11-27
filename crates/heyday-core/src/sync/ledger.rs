@@ -233,8 +233,8 @@ pub async fn enable(pool: &SqlitePool) -> Result<(), String> {
             .execute(&mut *tx)
             .await
             .map_err(|_| DATABASE)?;
-        for query in ["INSERT INTO cloud_sync_dirty(record_id) SELECT 'account:'||id FROM accounts WHERE true ON CONFLICT DO NOTHING",
-            "INSERT INTO cloud_sync_dirty(record_id) SELECT DISTINCT 'transaction:'||m.group_id FROM ledger_sync_members m JOIN transactions t ON t.id=m.transaction_id WHERE true ON CONFLICT DO NOTHING"] {
+        for query in ["INSERT INTO cloud_sync_dirty(record_id) SELECT 'account:'||id FROM accounts WHERE type<>'tracking' ON CONFLICT DO NOTHING",
+            "INSERT INTO cloud_sync_dirty(record_id) SELECT DISTINCT 'transaction:'||m.group_id FROM ledger_sync_members m JOIN transactions t ON t.id=m.transaction_id WHERE NOT EXISTS(SELECT 1 FROM tracking_entries te WHERE te.transaction_id=t.id) AND NOT EXISTS(SELECT 1 FROM insurance_entries ie WHERE ie.transaction_id=t.id) ON CONFLICT DO NOTHING"] {
             sqlx::query(query).execute(&mut *tx).await.map_err(|_| DATABASE)?;
         }
     }
@@ -242,7 +242,7 @@ pub async fn enable(pool: &SqlitePool) -> Result<(), String> {
 }
 async fn verify_balances(conn: &mut SqliteConnection) -> Result<(), String> {
     let accounts: Vec<(String, String, i64, i64)> =
-        sqlx::query_as("SELECT id,type,opening_balance,current_balance FROM accounts")
+        sqlx::query_as("SELECT id,type,opening_balance,current_balance FROM accounts WHERE type<>'tracking'")
             .fetch_all(&mut *conn)
             .await
             .map_err(|_| DATABASE)?;
@@ -526,6 +526,10 @@ async fn apply_group(
     value: Option<&TransactionGroup>,
     confirmed: bool,
 ) -> Result<(), String> {
+    let owned: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tracking_entries t JOIN ledger_sync_members m ON m.transaction_id=t.transaction_id WHERE m.group_id=?)").bind(id).fetch_one(&mut *conn).await.map_err(|_| DATABASE)?;
+    if owned { return Err(BLOCKED.into()); }
+    let owned:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM insurance_entries i JOIN ledger_sync_members m ON m.transaction_id=i.transaction_id WHERE m.group_id=?)").bind(id).fetch_one(&mut *conn).await.map_err(|_|DATABASE)?;
+    if owned { return Err(BLOCKED.into()); }
     let old = group(conn, id).await?;
     if let (Some(a), Some(b)) = (&old, value) {
         if same(a, b) {
@@ -605,6 +609,7 @@ async fn apply_group(
                 .await
                 .map_err(|_| DATABASE)?;
         let (kind, balance) = row.ok_or(BLOCKED)?;
+        if kind == "tracking" { return Err(BLOCKED.into()); }
         let next = i128::from(balance)
             + if matches!(kind.as_str(), "loan" | "credit_card") {
                 -inflow
@@ -776,6 +781,11 @@ pub async fn apply(
 pub fn summary(value: &Value) -> Category {
     match value {
         Value::Category(v) => v.clone(),
+        Value::Metadata(v) if v.kind=="insurance" => { let p=super::insurance::decode(v).ok(); Category{name:p.as_ref().map(|p|p.details.name.clone()).unwrap_or_else(||"Insurance".into()),icon:"tag".into(),is_archived:p.is_some_and(|p|p.details.status=="archived")} },
+        Value::Metadata(v) if v.kind=="tracking" => {
+            let s=super::tracking::decode(v).ok();
+            Category {name:s.as_ref().map(|s|s.draft.name.clone()).unwrap_or_else(||"Tracking".into()),icon:"folder".into(),is_archived:s.is_some_and(|s|s.archived)}
+        },
         Value::Metadata(v) => Category {
             name: crate::cloud_sync_metadata::optional(&v.fields, "name")
                 .or_else(|| crate::cloud_sync_metadata::optional(&v.fields, "month"))

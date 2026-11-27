@@ -1,3 +1,4 @@
+import { InsurancePage } from './components/InsurancePage'
 import { t as translate, useLanguage } from "./lib/i18n"
 import { CardBillingPage } from './components/CardBillingPage'
 import { LoanAccountPage } from './components/LoanAccountPage'
@@ -21,6 +22,7 @@ const rootRoute = createRootRoute({
   notFoundComponent: () => <section className="rounded-[22px] border border-line bg-card p-[27px]"><h2>{translate("Page not found")}</h2><a href="#/">{translate("Return home")}</a></section>,
 })
 const routeTree = rootRoute.addChildren([
+  createRoute({getParentRoute:()=>rootRoute,path:'/insurance',validateSearch:(s:Record<string,unknown>)=>({asset:typeof s.asset==='string'?s.asset:undefined}),component:InsurancePage}),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/details', component: AccountDetailsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/billing', component: CardBillingPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/loans', component: LoanAccountPage }),

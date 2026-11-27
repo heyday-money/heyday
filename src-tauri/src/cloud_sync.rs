@@ -85,7 +85,7 @@ async fn get_page(
     json(
         client
             .get(url)
-            .header("X-Heyday-Sync", "5")
+            .header("X-Heyday-Sync", "7")
             .header("X-Heyday-Keys", "2")
             .bearer_auth(&credentials.access_token)
             .send()
@@ -123,7 +123,7 @@ impl heyday_core::sync::engine::Adapter for DesktopAdapter<'_> {
         json(
             self.client
                 .post(self.base.join("api/v1/sync/push").map_err(|_| NETWORK)?)
-                .header("X-Heyday-Sync", "5")
+                .header("X-Heyday-Sync", "7")
                 .header("X-Heyday-Keys", "2")
                 .bearer_auth(&self.credentials.access_token)
                 .json(sent)

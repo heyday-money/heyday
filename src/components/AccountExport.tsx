@@ -27,6 +27,7 @@ export function AccountExport({ disabled }: { disabled: boolean }) {
     <h3 id="account-export-title" className="text-lg font-semibold">{t('Export accounts')}</h3>
     <p className="mt-2 text-sm text-muted">{t('Download all active, archived, and paid-off accounts as an Excel (.xlsx) file. Includes balances and account details, without transaction history. Amounts are exported as exact text to preserve precision.')}</p>
     <p className="mt-2 text-sm text-muted">{t('Excel exports are for your records and cannot be restored into the app. Use Backup & restore for a complete backup.')}</p>
+    <p className="mt-2 text-sm text-muted">{t('Tracking exports include subtype, valuation date, debtor, due date and linked-loan equity. Equity is informational and must not be added to totals.')}</p>
     <Button className="mt-4" variant="outline" disabled={!desktopAvailable || disabled || busy} onClick={() => void exportAccounts()}><FileSpreadsheet aria-hidden="true" />{busy ? t('Exporting…') : t('Export accounts to Excel')}</Button>
     {path && <p className="mt-3 break-all text-xs text-muted">{t('Export saved at:')} {path}</p>}
     {error && <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">{t(error)}</p>}

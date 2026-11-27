@@ -98,7 +98,7 @@ fn device_name(value: &str) -> Result<&str, String> {
 fn validate_device(device: &CloudDevice) -> Result<(), String> {
     if !valid_uuid(&device.id)
         || device_name(&device.name).is_err()
-        || !matches!(device.platform.as_str(), "macos" | "windows" | "linux")
+        || !matches!(device.platform.as_str(), "macos" | "windows" | "linux" | "ios" | "android")
     {
         return Err(INVALID.into());
     }
@@ -522,6 +522,21 @@ pub async fn cloud_revoke_device(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_lists_accept_mobile_companions_and_reject_unknown_platforms() {
+        let mut device = CloudDevice {
+            id: "11111111-1111-4111-8111-111111111111".into(), name: "Phone".into(),
+            platform: "ios".into(), created_at: String::new(), last_seen_at: String::new(),
+            revoked_at: None, current: false,
+        };
+        assert!(validate_device(&device).is_ok());
+        device.platform = "android".into();
+        assert!(validate_device(&device).is_ok());
+        device.platform = "web".into();
+        assert!(validate_device(&device).is_err());
+    }
+
 
     #[tokio::test]
     async fn subscription_status_reads_scoped_bearer_metadata_before_device_registration() {

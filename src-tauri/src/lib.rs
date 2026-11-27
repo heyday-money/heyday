@@ -1,6 +1,8 @@
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use tauri::Manager;
 mod accounts;
+mod tracking;
+mod insurance;
 mod backups;
 mod cloud_auth;
 mod cloud_crypto;
@@ -183,6 +185,14 @@ pub fn run() {
             reconciliation::set_transaction_verification,
             reconciliation::finish_reconciliation,
             accounts::create_account,
+            insurance::list_insurance,
+            insurance::save_insurance,
+            insurance::pay_insurance,
+            insurance::reverse_insurance,
+            tracking::get_tracking_account,
+            tracking::create_tracking_account,
+            tracking::edit_tracking_account,
+            tracking::record_tracking_event,
             accounts::update_account,
             accounts::list_accounts,
             accounts::set_account_archived,

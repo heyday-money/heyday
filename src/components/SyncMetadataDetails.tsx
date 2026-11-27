@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { getSettings, type SyncMetadata } from '../lib/desktop'
 import { t } from '../lib/i18n'
+import type { TrackingAccount } from '../lib/tracking'
+import { trackingTypes } from '../lib/tracking'
 import { formatAmount } from '../lib/money'
 
 export function metadataTitle(kind: string) {
   const labels: Record<string, string> = {
-    logo: t('Custom logo'), institution: t('Institution'), payee: t('Payee'), provider: t('Subscription provider'),
+    insurance:t('Insurance'), tracking: t('Tracking'), logo: t('Custom logo'), institution: t('Institution'), payee: t('Payee'), provider: t('Subscription provider'),
     'account-logo': t('Cash account logo'), 'account-link': t('Account institution'), facility: t('Loan facility'), contract: t('Loan contract'), installment: t('Installment'),
     subscription: t('Subscription'), 'payment-plan': t('Payment plan'), 'planner-item': t('Planner item'),
     'planner-amount': t('Planner amount'), 'debt-amount': t('Debt forecast'), 'installment-amount': t('Installment forecast'),
@@ -19,6 +21,31 @@ const monetary = new Set(['amount', 'monthly_amount', 'schedule_amount', 'credit
 export function MetadataDetails({ value, accounts }: { value: SyncMetadata; accounts: Record<string, string> }) {
   const [currency, setCurrency] = useState<string | null>(null)
   useEffect(() => { let active = true; void getSettings().then(s => { if (active) setCurrency(s.currency) }).catch(() => {}); return () => { active = false } }, [])
+  if(value.kind==='insurance'&&value.fields.payload){
+    try{
+      const p=JSON.parse(value.fields.payload) as import('../lib/insurance').Policy,d=p.details
+      return <div className="mt-3 space-y-3 text-sm">
+        <p className="font-medium">{d.name} · {d.insurer}</p>
+        <p>{d.status} · {d.coverage_start} – {d.coverage_end??'—'}{d.number_suffix&&` · •••• ${d.number_suffix}`}</p>
+        <p>{t('Coverage amount')}: {formatAmount(d.coverage_amount,p.currency)} · {t('Deductible')}: {formatAmount(d.deductible,p.currency)}</p>
+        <p>{t('Renewal date')}: {d.renewal_date??'—'}</p>
+        <p>{t('Insured assets')}: {d.asset_ids.map(id=>accounts[id]??t('Account unavailable')).join(', ')||'—'}</p>
+        <p>{t('Insurance cash-value account')}: {d.cash_value_id?accounts[d.cash_value_id]??t('Account unavailable'):'—'}</p>
+        {d.replaces&&<p>{t('Linked source forecasts are replaced by this policy. Unlinking restores the original forecast.')}</p>}
+        <p className="whitespace-pre-wrap">{d.notes}</p>
+        <details open><summary>{t('Premium schedule and history')}</summary><ul className="max-h-48 overflow-auto">{p.schedules.map(s=><li key={s.id}>{s.effective_from} · {s.first_date} – {s.end_date??'—'} · {s.frequency} · {formatAmount(s.amount,p.currency)} · {accounts[s.account_id]??t('Account unavailable')}</li>)}</ul></details>
+        <p>{t('Choosing a version also updates its linked cash movements.')}</p>
+        <ul className="max-h-64 overflow-auto">{p.payments.map(v=><li key={v.id}>{v.date} · {t('Due date')}: {v.due_date} · {formatAmount(v.amount,p.currency)} · {accounts[v.account_id]??t('Account unavailable')} · {v.reversal_id?t('Reversed'):t('Paid')}<p>{v.notes}</p></li>)}</ul>
+      </div>
+    }catch{return <p>{t('Could not load insurance details.')}</p>}
+  }
+  if (value.kind === 'tracking') {
+    try {
+      const asset = JSON.parse(value.fields.payload ?? '') as Pick<TrackingAccount, 'id' | 'draft' | 'events' | 'revision' | 'archived'>
+      const amount = asset.events.at(-1)?.next_value ?? asset.draft.opening_value
+      return <div className="mt-3 space-y-2 text-sm"><p className="font-medium">{asset.draft.name}</p><p>{trackingTypes.find(x=>x.value===asset.draft.subtype)?.label}</p><p>{t('Current value')}: {formatAmount(amount,asset.draft.currency)}</p><p>{t('Opening date')}: {asset.draft.opening_date}</p>{asset.draft.debtor&&<p>{t('Debtor')}: {asset.draft.debtor}</p>}<p>{t('Asset history')}: {asset.events.length}</p><p>{t('Choosing a version also updates its linked cash movements.')}</p><ul className="max-h-48 overflow-auto">{asset.events.map(e=><li key={e.id}>{e.date} · {formatAmount(e.next_value,asset.draft.currency)} · {e.notes}</li>)}</ul></div>
+    } catch { return <p>{t('Could not load Tracking details.')}</p> }
+  }
   const labels: Record<string, string> = {
     name: t('Name'), account_id: t('Account'), receiving_account_id: t('Receiving account'), payment_account_id: t('Payment account'), debt_account_id: t('Debt account'), destination_account_id: t('Destination account'),
     amount: t('Amount'), monthly_amount: t('Monthly amount'), schedule_amount: t('Scheduled amount'), credit_limit: t('Credit limit'), principal: t('Principal'), basis_principal: t('Principal before recorded repayments'),

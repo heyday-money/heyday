@@ -1,3 +1,4 @@
+import { premiumForecast, replaces, type Policy } from './insurance'
 import { exclusionFor, excludedOnDate, includedCycleCount, type SelectiveDefault } from './selective-defaults'
 import { t as translate } from "./i18n"
 import { getLocale } from "./i18n"
@@ -36,6 +37,7 @@ export interface PlannerCardTransaction {
   destination_account_id: string | null; destination_account_type: string | null; amount: string; date: string
 }
 export interface PlannerItem {
+  insurance_id?:string
   actual_key?: string
   credit_card?: PlannerCreditCard
   debt_account?: PlannerDebtAccount
@@ -46,6 +48,8 @@ export interface PlannerItem {
   transaction_category_id: string | null; schedule_amount: string | null; schedule_start: string | null; schedule_end: string | null
 }
 export interface PlannerData {
+  insurance?:Policy[]
+  insurance_cash_accounts?:string[]
   selective_defaults?: SelectiveDefault[]
   ledger_transactions?: PlannerCardTransaction[]
   card_billing?: CardBillingData
@@ -125,7 +129,7 @@ export function plannerItems(data: PlannerData): PlannerItem[] {
     description: income.recurrence_frequency === 'irregular' ? translate("Irregular income. Enter an estimate only for the cycle when you expect payment.") : translate("Income source · monthly on day {value0} · {value1}{value2}", { value0: income.recurrence_day_of_month, value1: income.destination_account_name, value2: (!income.is_active ? translate(" · Inactive") : (income.account_archived ? translate(" · Account unavailable") : '')) }),
     card_name: '', transaction_category_id: null, schedule_amount: null, schedule_start: null, schedule_end: null, income,
   })) : []
-  const linked: PlannerItem[] = []
+  const linked: PlannerItem[] = data.source_currency==='THB'?(data.insurance??[]).map(p=>({id:'insurance:'+p.id,insurance_id:p.id,category_id:'expenses',name:p.details.name,description:translate('Unpaid insurance premiums. Record payments in Insurance.'),card_name:'',transaction_category_id:null,schedule_amount:null,schedule_start:null,schedule_end:null})):[]
   if (data.source_currency === 'THB') {
     const defaults = { card_name: '', transaction_category_id: null, schedule_amount: null, schedule_start: null, schedule_end: null }
     for (const deduction of data.income_deductions) {
@@ -261,6 +265,8 @@ function recordedItemPayments(data: PlannerData, item: PlannerItem, from: string
   return item.debt_account ? actualBetween(data, from, to).values.get(`debt:${item.debt_account.id}`) ?? 0n : 0n
 }
 function forecastItemAmount(data: PlannerData, item: PlannerItem, month: string) {
+  if(replaces(data.insurance,'planner-item',item.id))return {value:null,source:translate('Replaced by insurance schedule')};
+  if(item.insurance_id)return {value:premiumForecast(data.insurance?.filter(p=>p.id===item.insurance_id),data.insurance_cash_accounts??[],boundaryKey(month,data.period_start_day),boundaryKey(addMonths(month,1),data.period_start_day)).reduce((n,o)=>n+BigInt(o.schedule.amount),0n),source:translate('Insurance')};
   if (itemExclusion(data, item, month)) return { value: 0n, source: 'Selective Default' }
   if (archivedForecastAccount(data, item)) return { value: recordedItemPayments(data, item, month, addMonths(month, 1)), source: 'Recorded payments' }
   if (paidOffForCycle(data, item, month)) return { value: 0n, source: 'Loan paid off' }
@@ -289,6 +295,8 @@ function forecastOpeningForCycle(data: PlannerData, month: string): bigint | nul
   let cash = BigInt(data.opening.amount)
   const from = monthIndex(data.opening.month), to = monthIndex(month)
   for (const item of plannerItems(data)) {
+    if(replaces(data.insurance,'planner-item',item.id))continue;
+    if(item.insurance_id){cash-=premiumForecast(data.insurance?.filter(p=>p.id===item.insurance_id),data.insurance_cash_accounts??[],boundaryKey(data.opening.month,data.period_start_day),boundaryKey(month,data.period_start_day)).reduce((n,o)=>n+BigInt(o.schedule.amount),0n);continue}
     const sign = item.category_id === 'income' ? 1n : -1n
     if (archivedForecastAccount(data, item)) {
       cash -= recordedItemPayments(data, item, data.opening.month, month)

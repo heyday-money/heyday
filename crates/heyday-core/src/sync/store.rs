@@ -64,8 +64,13 @@ impl Record {
             | (2, "account" | "transaction", None)
             | (3, "income" | "transaction", None)
             | (4, "income-plan", None)
-            | (5, "metadata" | "transaction", None) => {}
-            (5, "metadata", Some(Value::Metadata(value))) => value.validate(&self.id)?,
+            | (5, "transaction", None) => {}
+            (5, "metadata", None) if !self.id.starts_with("tracking:") && !self.id.starts_with("insurance:") => {},
+            (5, "metadata", Some(Value::Metadata(value))) if value.kind != "tracking" && value.kind != "insurance" => value.validate(&self.id)?,
+            (6, "metadata", Some(Value::Metadata(value))) if value.kind == "tracking" => value.validate(&self.id)?,
+            (7, "metadata", Some(Value::Metadata(value))) if value.kind == "insurance" => value.validate(&self.id)?,
+            (7, "metadata", None) if self.id.starts_with("insurance:") => {},
+            (6, "metadata", None) if self.id.starts_with("tracking:") => {},
             (5, "transaction", Some(Value::Transaction(value))) if value.links.is_some() => {
                 value.validate(&self.id)?
             }
@@ -501,7 +506,7 @@ pub async fn apply_page(
         .await
         .map_err(|_| DATABASE)?;
     for (change, record) in changes {
-        if record.schema == 5 && !full {
+        if record.schema >= 5 && !full {
             return Err(crate::cloud_sync_metadata::CONSENT.into());
         }
         if record.schema == 4 && !planner {
